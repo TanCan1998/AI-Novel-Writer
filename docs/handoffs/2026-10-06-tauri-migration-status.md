@@ -10,11 +10,11 @@
 | 项 | 值 |
 |---|---|
 | 分支 | `master` |
-| 基准 SHA | `cb71878`（fork 初始化提交；后续全部工作未提交，见「未提交变更」） |
+| 基准 SHA | `a0fd2f4`（阶段 0 锚点提交；后续批次 A–H 以此为起点） |
 | 当前阶段 | **阶段 0 完成**（TS 侧 + Rust 侧验证全绿），下一步批次 A |
 | 结构 | **已重设计为独立迁移根 `tauri-app/`**（用户确认的方案 B），根目录三文件已还原上游原样 |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（遵循 AGENTS.md 第 3 条规则）；crates 走 rsproxy 镜像；VS Build Tools 已装 |
-| 未提交变更 | 新增：`tauri-app/`、两份文档；修改：`.gitignore`（仅 Tauri 忽略条目） |
+| 未提交变更 | 无（阶段 0 已提交为 `a0fd2f4`，546 文件 +139516 行） |
 | 未验证事项 | ① `pnpm tauri dev` 窗口冒烟未做（编译链已通，风险低）；② tauri-app vitest 全量超时未定位；③ i18n 覆盖校验未在 tauri-app 配置 |
 
 ### 结构重设计（2026-10-06 第二次更新，用户确认）
