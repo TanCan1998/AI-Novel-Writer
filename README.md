@@ -10,6 +10,16 @@
 
 <h1 align="center">AI 小说作家 / AI Novel Writer</h1>
 
+> ## ⚙️ 本 Fork 的目的
+>
+> 此仓库是 [EthanYoQ/AI-Novel-Writer](https://github.com/EthanYoQ/AI-Novel-Writer) 的 **Fork**，目标是将其桌面应用**迁移到 Tauri 2 生态**，**主要为了减少内存占用**（相比 Electron）。
+>
+> - **迁移策略**：仅**新增** Tauri 支持（`src-tauri/`），保留原有 **Electron** 实现继续可运行，用于**同步上游仓库的修改**。
+> - **上游同步**：通过 `git remote add upstream https://github.com/EthanYoQ/AI-Novel-Writer.git` 关联原仓库，定期 `git fetch upstream` 合并上游演进，避免功能分叉。
+> - **文档**：迁移评估见 `docs/research/2026-10-04-tauri-migration-evaluation.md`；pi agent 开发指南见 `docs/agents/pi-development.md`。
+>
+> 以下内容与原项目一致。
+
 <div align="center">
 
 [English](README_en.md) | **中文**
