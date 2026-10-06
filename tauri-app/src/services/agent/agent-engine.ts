@@ -1,0 +1,598 @@
+/**
+ * Agent 核心引擎 — ReAct（Reasoning + Acting）循环
+ *
+ * 这是 Agent 的大脑，负责：
+ * 1. 将用户消息、系统提示、Tool 描述组装为 LLM 输入
+ * 2. 解析 LLM 输出中的 <tool_call> 标签
+ * 3. 执行 Tool 并将结果注入为 observation
+ * 4. 循环直到 LLM 不再调用 Tool 或达到最大循环次数
+ *
+ * 参考 Claude Code 的 query.ts 和 QueryEngine 设计，
+ * 但简化为 Vela 的 Electron + React 架构。
+ */
+
+import {
+  toolRegistry,
+  type AgentExecutionContext,
+  type ToolResult,
+  type ToolArtifact,
+} from './tool-registry'
+import { createAgentExecutionContext } from './tools/project-context'
+import { writingLanguageText, type WritingLanguage } from '../../shared/writing-language'
+import type { FileWriteCommitState } from '../../shared/ipc-channels'
+
+// ===== 常量 =====
+
+/** ReAct 循环最大次数（防止死循环） */
+const MAX_TOOL_ROUNDS = 8
+
+/** Tool 执行超时（毫秒） */
+const TOOL_TIMEOUT_MS = 30_000
+
+/** Tool 返回内容最大长度（字符） */
+const TOOL_RESULT_MAX_CHARS = 3000
+
+// ===== 类型 =====
+
+/** Tool 调用信息 */
+export interface ToolCallInfo {
+  id: string
+  toolName: string
+  arguments: Record<string, unknown>
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'result_unknown' | 'waiting_confirm'
+  result?: string
+  error?: string
+  commitState?: FileWriteCommitState
+  /** Tool 来源标记 */
+  source?: string
+  /** Frozen project identity used to render and execute a confirmed domain proposal. */
+  projectSession?: AgentExecutionContext['projectSession']
+}
+
+/** One optional blueprint diff selected from a transient novel-config impact preview. */
+export interface ConfigImpactBlueprintProposal {
+  readonly name: 'propose_chapter_blueprint'
+  readonly arguments: Record<string, unknown>
+}
+
+export interface ToolConfirmationDecision {
+  readonly confirmed: boolean
+  readonly blueprintProposals?: readonly ConfigImpactBlueprintProposal[]
+}
+
+/** Agent Engine 回调 */
+export interface AgentEngineCallbacks {
+  /** 流式文本片段 */
+  onTextChunk: (chunk: string) => void
+  /** Tool 调用开始 */
+  onToolCallStart: (toolCall: ToolCallInfo) => void
+  /** Tool 调用完成 */
+  onToolCallComplete: (toolCall: ToolCallInfo) => void
+  /** Tool 需要用户确认 */
+  onToolCallConfirmRequired: (toolCall: ToolCallInfo) => Promise<boolean | ToolConfirmationDecision>
+  /** 全部完成 */
+  onDone: (fullText: string, toolCalls: ToolCallInfo[], artifacts: ToolArtifact[]) => void
+  /** 错误 */
+  onError: (error: string) => void
+}
+
+/** LLM 消息格式 */
+export interface LLMMessage {
+  role: 'system' | 'user' | 'assistant'
+  content: string
+}
+
+/** LLM 生成函数签名（由 agent-store 提供实际实现） */
+export type LLMGenerateFn = (
+  messages: LLMMessage[],
+  modelId: string,
+) => Promise<string>
+
+const TOOL_CALL_BLOCK = /<(tool_call|｜DSML｜tool_call)>[\s\S]*?<\/\1>/g
+const TOOL_CALL_TAG = /<\/?(?:tool_call|｜DSML｜tool_call)>/g
+
+/** Remove provider tool-protocol markup before any model text reaches the UI. */
+export function cleanAgentVisibleText(text: string): string {
+  return text
+    .replace(TOOL_CALL_BLOCK, '')
+    .replace(/<tool_result[\s\S]*?<\/tool_result>/g, '')
+    .replace(TOOL_CALL_TAG, '')
+    .replace(/<\/?tool_result[^>]*>/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+// ===== 核心引擎 =====
+
+/**
+ * 执行 Agent ReAct 循环
+ *
+ * 流程：
+ * 1. 将系统提示（含 Tool 描述）+ 历史消息 + 用户消息发送给 LLM
+ * 2. 解析 LLM 回复中的 <tool_call> 标签
+ * 3. 如果有 tool_call → 执行 Tool → 将结果作为 observation 追加到消息历史 → 重新调用 LLM
+ * 4. 循环直到 LLM 不再调用 Tool 或达到 MAX_TOOL_ROUNDS
+ * 5. 返回最终文本回复
+ */
+export async function runAgentLoop(
+  systemPrompt: string,
+  historyMessages: LLMMessage[],
+  userMessage: string,
+  modelId: string | undefined,
+  generateFn: LLMGenerateFn,
+  callbacks: AgentEngineCallbacks,
+  abortSignal?: AbortSignal,
+  providedExecutionContext?: AgentExecutionContext,
+): Promise<void> {
+  const allToolCalls: ToolCallInfo[] = []
+  const allArtifacts: ToolArtifact[] = []
+  // One agent run gets one immutable project identity. Tool calls later in the
+  // loop must not silently borrow a lease issued after a same-path reopen.
+  const executionContext = providedExecutionContext ?? createAgentExecutionContext(modelId)
+  const modelText = (zhCN: string, enUS: string) => (
+    writingLanguageText(executionContext.writingLanguage, zhCN, enUS)
+  )
+  const uiText = (zhCN: string, enUS: string) => (
+    executionContext.uiLocale === 'en-US' ? enUS : zhCN
+  )
+
+  // 构建消息列表
+  const messages: LLMMessage[] = [
+    { role: 'system', content: systemPrompt },
+    ...historyMessages,
+    { role: 'user', content: userMessage },
+  ]
+
+  let rounds = 0
+  let fullAssistantText = ''
+
+  while (rounds < MAX_TOOL_ROUNDS) {
+    // 检查中止信号
+    if (abortSignal?.aborted) {
+      callbacks.onDone(fullAssistantText + uiText('\n\n_（已停止生成）_', '\n\n_(Generation stopped)_'), allToolCalls, allArtifacts)
+      return
+    }
+
+    rounds++
+
+    // 调用 LLM
+    let llmResponse: string
+    try {
+      llmResponse = await generateFn(messages, modelId ?? '')
+    } catch {
+      if (abortSignal?.aborted) {
+        callbacks.onDone(fullAssistantText + uiText('\n\n_（已停止生成）_', '\n\n_(Generation stopped)_'), allToolCalls, allArtifacts)
+        return
+      }
+      callbacks.onError(uiText('AI 请求失败，请重试。', 'The AI request failed. Please try again.'))
+      return
+    }
+
+    // 检查中止
+    if (abortSignal?.aborted) {
+      callbacks.onDone(fullAssistantText + uiText('\n\n_（已停止生成）_', '\n\n_(Generation stopped)_'), allToolCalls, allArtifacts)
+      return
+    }
+
+    // 解析 LLM 回复：分离文本和 tool_call
+    const { textParts, toolCalls } = parseToolCalls(llmResponse)
+
+    // 输出文本部分（清理可能残留的 tool_call/tool_result 标记）
+    const textContent = cleanAgentVisibleText(textParts.join(''))
+    if (textContent) {
+      callbacks.onTextChunk(textContent)
+      fullAssistantText += textContent
+    }
+
+    // 如果没有 tool_call，循环结束
+    if (toolCalls.length === 0) {
+      callbacks.onDone(fullAssistantText, allToolCalls, allArtifacts)
+      return
+    }
+
+    // 将 LLM 的完整回复加入历史（包含 tool_call 标签）
+    messages.push({ role: 'assistant', content: llmResponse })
+
+    // 依次执行每个 tool_call。配置影响预览中明确选择的蓝图差异会在
+    // 配置写入成功后插入此轮，并继续走同一条确认与工具执行路径。
+    const observationParts: string[] = []
+    const roundToolCalls = [...toolCalls]
+    let resultUnknown = false
+
+    for (let toolIndex = 0; toolIndex < roundToolCalls.length; toolIndex++) {
+      if (abortSignal?.aborted) break
+      const tc = roundToolCalls[toolIndex]
+      const toolCallInfo: ToolCallInfo = {
+        id: crypto.randomUUID(),
+        toolName: tc.name,
+        arguments: tc.arguments,
+        status: 'pending',
+        projectSession: executionContext.projectSession,
+      }
+      allToolCalls.push(toolCallInfo)
+
+      // 查找 Tool
+      const tool = toolRegistry.get(tc.name)
+      if (!tool) {
+        toolCallInfo.status = 'failed'
+        toolCallInfo.error = uiText(`未知工具：${tc.name}`, `Unknown tool: ${tc.name}`)
+        callbacks.onToolCallComplete(toolCallInfo)
+        observationParts.push(`<tool_result name="${tc.name}" error="true">\n${modelText(
+          `未知工具：${tc.name}。可用工具：${toolRegistry.listAll().map(t => t.name).join(', ')}`,
+          `Unknown tool: ${tc.name}. Available tools: ${toolRegistry.listAll().map(t => t.name).join(', ')}`,
+        )}\n</tool_result>`)
+        continue
+      }
+
+      // 记录来源
+      toolCallInfo.source = tool.source
+
+      // 需要用户确认的 Tool
+      let confirmationDecision: ToolConfirmationDecision = { confirmed: true }
+      if (tool.requiresConfirmation) {
+        toolCallInfo.status = 'waiting_confirm'
+        callbacks.onToolCallStart(toolCallInfo)
+
+        const response = await callbacks.onToolCallConfirmRequired(toolCallInfo)
+        confirmationDecision = typeof response === 'boolean' ? { confirmed: response } : response
+        if (!confirmationDecision.confirmed) {
+          toolCallInfo.status = 'failed'
+          if (!tool.isReadOnly) toolCallInfo.commitState = 'not_committed'
+          toolCallInfo.error = uiText('用户拒绝执行', 'The user declined this action')
+          callbacks.onToolCallComplete(toolCallInfo)
+          observationParts.push(`<tool_result name="${tc.name}" error="true">\n${modelText('用户拒绝了此操作', 'The user declined this action')}\n</tool_result>`)
+          continue
+        }
+        // The waiting confirmation card already represents this call. Its
+        // completion below updates that same card instead of appending a
+        // second one when execution begins.
+        toolCallInfo.status = 'running'
+      } else {
+        // Non-confirming tools still need one visible lifecycle card.
+        toolCallInfo.status = 'running'
+        callbacks.onToolCallStart(toolCallInfo)
+      }
+
+      // 执行 Tool
+
+      let sideEffectStarted = false
+      try {
+        const result = await executeToolWithTimeout(
+          tool.execute,
+          tc.arguments,
+          Object.freeze({
+            ...executionContext,
+            markSideEffectStarted: () => { sideEffectStarted = true },
+          }),
+          TOOL_TIMEOUT_MS,
+          executionContext.writingLanguage,
+          tool.isReadOnly,
+          () => sideEffectStarted,
+          abortSignal,
+        )
+
+        // 截断过长的结果
+        const truncatedContent = truncateResult(
+          result.content,
+          TOOL_RESULT_MAX_CHARS,
+          executionContext.writingLanguage,
+        )
+
+        toolCallInfo.commitState = result.commitState
+        if (!tool.isReadOnly && result.commitState === 'unknown') {
+          toolCallInfo.status = 'result_unknown'
+          toolCallInfo.error = uiText(
+            '操作可能已提交，但回执未返回；结果待确认，本轮不会自动重试。',
+            'The operation may have committed, but no receipt returned. Its result is unknown and this run will not retry it automatically.',
+          )
+          callbacks.onToolCallComplete(toolCallInfo)
+          resultUnknown = true
+          break
+        }
+
+        toolCallInfo.status = result.success ? 'completed' : 'failed'
+        if (result.success) {
+          toolCallInfo.result = truncatedContent
+        } else {
+          toolCallInfo.error = uiText('工具执行失败，请重试。', 'Tool execution failed. Please try again.')
+        }
+        if (result.artifacts) allArtifacts.push(...result.artifacts)
+
+        callbacks.onToolCallComplete(toolCallInfo)
+
+        if (result.success) {
+          observationParts.push(`<tool_result name="${tc.name}">\n${truncatedContent}\n</tool_result>`)
+          if (tc.name === 'propose_novel_config' && confirmationDecision.blueprintProposals?.length) {
+            roundToolCalls.splice(toolIndex + 1, 0, ...confirmationDecision.blueprintProposals)
+          }
+        } else {
+          observationParts.push(`<tool_result name="${tc.name}" error="true">\n${modelText('工具执行失败。', 'Tool execution failed.')}\n</tool_result>`)
+        }
+      } catch (error) {
+        const unknownWriteResult = !tool.isReadOnly && sideEffectStarted
+        if (!tool.isReadOnly) {
+          toolCallInfo.commitState = unknownWriteResult ? 'unknown' : 'not_committed'
+        }
+        toolCallInfo.status = unknownWriteResult ? 'result_unknown' : 'failed'
+        toolCallInfo.error = unknownWriteResult
+          ? uiText(
+              '操作可能已提交，但回执未返回；结果待确认，本轮不会自动重试。',
+              'The operation may have committed, but no receipt returned. Its result is unknown and this run will not retry it automatically.',
+            )
+          : error instanceof ToolExecutionTimeoutError
+          ? uiText('工具停止等待：执行超时，操作已取消。', 'Tool wait timed out; the operation was cancelled.')
+          : abortSignal?.aborted
+            ? uiText('工具已在提交前取消。', 'The tool was cancelled before commit.')
+            : uiText('工具执行失败，请重试。', 'Tool execution failed. Please try again.')
+        callbacks.onToolCallComplete(toolCallInfo)
+        if (unknownWriteResult) {
+          resultUnknown = true
+          break
+        } else {
+          observationParts.push(`<tool_result name="${tc.name}" error="true">\n${modelText('工具执行失败。', 'Tool execution failed.')}\n</tool_result>`)
+        }
+      }
+    }
+
+    if (resultUnknown) {
+      callbacks.onDone(fullAssistantText + uiText(
+        '\n\n_（写入结果待确认；为避免重复写入，本轮已停止。）_',
+        '\n\n_(The write result is unknown. This run stopped to avoid a duplicate write.)_',
+      ), allToolCalls, allArtifacts)
+      return
+    }
+
+    // 将所有 tool 结果作为 user role 的 observation 注入
+    // 加上明确提示，防止 LLM 误以为这是用户新发言
+    const observation = `${modelText(
+      '[以下是工具执行结果，请根据结果继续回答用户的问题]',
+      '[The following are tool results. Continue answering the user based on them.]',
+    )}\n\n${observationParts.join('\n\n')}\n\n${modelText(
+      '[请根据上面的工具结果，继续回答用户的原始问题。如果需要更多信息可以继续调用工具。]',
+      '[Continue answering the original request using the tool results above. Call another tool only if more information is needed.]',
+    )}`
+    messages.push({ role: 'user', content: observation })
+  }
+
+  // 达到最大循环次数
+  if (rounds >= MAX_TOOL_ROUNDS) {
+    fullAssistantText += uiText(
+      '\n\n已达到最大工具调用次数限制，自动停止。',
+      '\n\nThe maximum number of tool calls was reached, so generation stopped.',
+    )
+  }
+
+  callbacks.onDone(fullAssistantText, allToolCalls, allArtifacts)
+}
+
+// ===== 工具函数 =====
+
+/** 解析的 Tool 调用 */
+interface ParsedToolCall {
+  name: string
+  arguments: Record<string, unknown>
+}
+
+/**
+ * Some providers emit a function-style tool call as two plain-text lines
+ * instead of the XML shape requested by the system prompt.  Treat that form
+ * as a command only when it consumes the *entire* response and names a tool
+ * already registered for this agent run.  This keeps ordinary prose and
+ * arbitrary JSON from acquiring side effects.
+ */
+function parseRegisteredRawToolCall(text: string): ParsedToolCall | null {
+  const match = /^\s*([A-Za-z][\w.-]*)[ \t]*\r?\n\s*(\{[\s\S]*\})\s*$/.exec(text)
+  if (!match) return null
+
+  const [, name, rawArguments] = match
+  if (!toolRegistry.get(name)) return null
+
+  try {
+    const argumentsValue: unknown = JSON.parse(rawArguments)
+    if (
+      typeof argumentsValue !== 'object'
+      || argumentsValue === null
+      || Array.isArray(argumentsValue)
+    ) return null
+    return { name, arguments: argumentsValue as Record<string, unknown> }
+  } catch {
+    return null
+  }
+}
+
+function parseRegisteredJsonEnvelope(text: string): ParsedToolCall | null {
+  const envelope = text.trim()
+  if (!envelope.startsWith('{') || !envelope.endsWith('}')) return null
+
+  try {
+    const value: unknown = JSON.parse(envelope)
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+    const keys = Object.keys(value)
+    if (keys.length !== 2 || !keys.includes('name') || !keys.includes('arguments')) return null
+    const { name, arguments: args } = value as Record<string, unknown>
+    if (
+      typeof name !== 'string'
+      || !toolRegistry.get(name)
+      || !args
+      || typeof args !== 'object'
+      || Array.isArray(args)
+    ) return null
+    return { name, arguments: args as Record<string, unknown> }
+  } catch {
+    return null
+  }
+}
+
+function parseTaggedToolCallContent(text: string): ParsedToolCall | null {
+  const emptyTool = /^<([A-Za-z][\w.-]*)>\s*<\/\1>$/.exec(text)
+  if (emptyTool && toolRegistry.get(emptyTool[1])) {
+    return { name: emptyTool[1], arguments: {} }
+  }
+
+  const match = /^<name>\s*([A-Za-z][\w.-]*)\s*<\/name>\s*<arguments>\s*(\{[\s\S]*\})\s*<\/arguments>$/.exec(text)
+  if (!match) return null
+
+  try {
+    const args: unknown = JSON.parse(match[2])
+    if (!args || typeof args !== 'object' || Array.isArray(args)) return null
+    return { name: match[1], arguments: args as Record<string, unknown> }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * 从 LLM 输出中解析 <tool_call>...</tool_call> 标签
+ *
+ * 返回分离后的文本片段和 tool 调用列表。
+ * 增强版：支持 JSON 前后有多余文字的容错解析。
+ */
+export function parseToolCalls(text: string): {
+  textParts: string[]
+  toolCalls: ParsedToolCall[]
+} {
+  const rawToolCall = parseRegisteredRawToolCall(text)
+  if (rawToolCall) {
+    return { textParts: [], toolCalls: [rawToolCall] }
+  }
+
+  const jsonEnvelope = parseRegisteredJsonEnvelope(text)
+  if (jsonEnvelope) {
+    return { textParts: [], toolCalls: [jsonEnvelope] }
+  }
+
+  const toolCalls: ParsedToolCall[] = []
+  const textParts: string[] = []
+
+  // 匹配标准 XML 或 SiliconFlow DSML 的 tool_call 包装。
+  const regex = /<(tool_call|｜DSML｜tool_call)>\s*([\s\S]*?)\s*<\/\1>/g
+  let lastIndex = 0
+  let match: RegExpExecArray | null = null
+  let matchedProtocolBlock = false
+
+  while ((match = regex.exec(text)) !== null) {
+    matchedProtocolBlock = true
+    // 收集标签前的文本
+    if (match.index > lastIndex) {
+      const before = text.slice(lastIndex, match.index).trim()
+      if (before) textParts.push(before)
+    }
+    lastIndex = regex.lastIndex
+
+    // 解析 JSON（增强容错）
+    const rawContent = match[2].trim()
+    let parsed = false
+
+    // 策略 1：直接解析整个内容
+    try {
+      const data = JSON.parse(rawContent)
+      if (data.name && typeof data.name === 'string') {
+        toolCalls.push({ name: data.name, arguments: data.arguments ?? {} })
+        parsed = true
+      }
+    } catch { /* 尝试容错解析 */ }
+
+    // 策略 2：兼容供应商在 tool_call 内输出严格的 name/arguments 子标签。
+    if (!parsed) {
+      const taggedToolCall = parseTaggedToolCallContent(rawContent)
+      if (taggedToolCall) {
+        toolCalls.push(taggedToolCall)
+        parsed = true
+      }
+    }
+
+    // 策略 3：从内容中提取 JSON 对象（LLM 可能在 JSON 前后加了额外文字）
+    if (!parsed) {
+      const jsonMatch = rawContent.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        try {
+          const data = JSON.parse(jsonMatch[0])
+          if (data.name && typeof data.name === 'string') {
+            toolCalls.push({ name: data.name, arguments: data.arguments ?? {} })
+            parsed = true
+          }
+        } catch {
+          console.warn('[AgentEngine] tool_call JSON 容错解析也失败:', rawContent)
+        }
+      }
+    }
+
+    // 完全解析失败，丢弃该标签（不再打回 textParts，避免泄露 XML）
+    if (!parsed) {
+      console.warn('[AgentEngine] tool_call 标签解析失败，已丢弃:', rawContent)
+    }
+  }
+
+  // 收集最后一个标签后的文本
+  if (lastIndex < text.length) {
+    const after = text.slice(lastIndex).trim()
+    if (after) textParts.push(after)
+  }
+
+  // 如果没有匹配到任何标签，整个文本都是 textParts
+  if (!matchedProtocolBlock && toolCalls.length === 0 && textParts.length === 0) {
+    textParts.push(text)
+  }
+
+  return { textParts, toolCalls }
+}
+
+/**
+ * 带超时的 Tool 执行
+ */
+async function executeToolWithTimeout(
+  executeFn: (
+    args: Record<string, unknown>,
+    context?: AgentExecutionContext,
+  ) => Promise<ToolResult>,
+  args: Record<string, unknown>,
+  context: AgentExecutionContext,
+  timeoutMs: number,
+  writingLanguage: WritingLanguage,
+  isReadOnly: boolean,
+  hasSideEffectStarted: () => boolean,
+  outerSignal?: AbortSignal,
+): Promise<ToolResult> {
+  const controller = new AbortController()
+  const forwardAbort = () => controller.abort(outerSignal?.reason)
+  if (outerSignal?.aborted) forwardAbort()
+  else outerSignal?.addEventListener('abort', forwardAbort, { once: true })
+  const toolContext = Object.freeze({ ...context, abortSignal: controller.signal })
+  const execution = executeFn(args, toolContext)
+
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      execution,
+      new Promise<ToolResult>((_, reject) => {
+        timer = setTimeout(() => {
+          // A dispatched write gets the same finite foreground wait, but is
+          // reported as unknown rather than cancelled/retryable.
+          if (isReadOnly || !hasSideEffectStarted()) controller.abort()
+          reject(new ToolExecutionTimeoutError(writingLanguageText(
+            writingLanguage,
+            `工具执行超时（${timeoutMs / 1000}s）`,
+            `Tool execution timed out (${timeoutMs / 1000}s)`,
+          )))
+        }, timeoutMs)
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+    outerSignal?.removeEventListener('abort', forwardAbort)
+  }
+}
+
+class ToolExecutionTimeoutError extends Error {}
+
+/**
+ * 截断过长的 Tool 结果
+ */
+function truncateResult(content: string, maxChars: number, writingLanguage: WritingLanguage): string {
+  if (content.length <= maxChars) return content
+  return content.slice(0, maxChars) + writingLanguageText(
+    writingLanguage,
+    `\n\n…（内容已截断，完整内容共 ${content.length} 字符。可使用 read_file 工具获取完整文件内容）`,
+    `\n\n... (Result truncated. The complete content is ${content.length} characters; use read_file to retrieve it.)`,
+  )
+}

@@ -1,0 +1,289 @@
+/**
+ * Agent Tool UI 样式
+ *
+ * 覆盖 ToolCallBlock、ConfirmCard、ArtifactCard 等组件的样式。
+ * 使用 CSS 变量确保主题兼容。
+ */
+
+/* ===== ToolCallBlock — Tool 调用可视化区块 ===== */
+
+.tool-call-block {
+  margin: 6px 0;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+  font-size: 0.75rem;
+  transition: border-color 0.2s ease;
+}
+
+.tool-call-block:hover {
+  border-color: var(--color-text-muted);
+}
+
+.tool-call-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background-color: var(--color-hover);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease;
+}
+
+.tool-call-header:hover {
+  background-color: var(--color-border);
+}
+
+.tool-call-icon {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.tool-call-name {
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.tool-call-source-badge {
+  font-size: 0.65rem;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.tool-call-source-badge.builtin {
+  background-color: color-mix(in srgb, var(--color-info) 12%, transparent);
+  color: var(--color-text);
+}
+
+.tool-call-source-badge.mcp {
+  background-color: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  color: var(--color-text);
+}
+
+.tool-call-source-badge.skill {
+  background-color: color-mix(in srgb, var(--color-success) 12%, transparent);
+  color: var(--color-success-text);
+}
+
+.tool-call-status {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+}
+
+.tool-call-status.completed {
+  color: var(--color-success);
+}
+
+.tool-call-status.failed {
+  color: var(--color-error);
+}
+
+.tool-call-status.running {
+  color: var(--color-accent);
+}
+
+.tool-call-status.waiting_confirm {
+  color: var(--color-warning);
+}
+
+.tool-call-status:has(> .completed) > span {
+  color: var(--color-success-text);
+}
+
+.tool-call-status:has(> .failed) > span {
+  color: var(--color-error-text);
+}
+
+.tool-call-status:has(> .waiting_confirm) > span {
+  color: var(--color-warning-text);
+}
+
+.tool-call-body {
+  padding: 8px 10px;
+  border-top: 1px solid var(--color-border);
+  background-color: var(--color-bg);
+}
+
+.tool-call-params {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.7rem;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.tool-call-result {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--color-border);
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.tool-call-result::-webkit-scrollbar {
+  width: 4px;
+}
+
+.tool-call-result::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 2px;
+}
+
+/* 结果区域 hover 时显示复制按钮 */
+.tool-call-result:hover button {
+  opacity: 0.6 !important;
+}
+
+.tool-call-result:hover button:hover {
+  opacity: 1 !important;
+}
+
+.tool-call-arrow {
+  margin-left: auto;
+  transition: transform 0.2s ease;
+  color: var(--color-text-muted);
+  opacity: 0.5;
+}
+
+.tool-call-arrow.expanded {
+  transform: rotate(90deg);
+}
+
+/* ===== ConfirmCard — 操作确认卡片 ===== */
+
+.confirm-card {
+  margin: 6px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--color-warning);
+  background: color-mix(in srgb, var(--color-warning) 6%, transparent);
+}
+
+.confirm-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-warning-text);
+}
+
+.confirm-card-body {
+  font-size: 0.72rem;
+  color: var(--color-text-secondary);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+
+.confirm-card-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.confirm-card-btn {
+  padding: 4px 14px;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.confirm-card-btn.approve {
+  background-color: var(--color-success);
+  color: var(--color-success-foreground);
+}
+
+.confirm-card-btn.approve:hover {
+  background-color: color-mix(in srgb, var(--color-success) 85%, black);
+}
+
+.confirm-card-btn.reject {
+  background-color: var(--color-hover);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.confirm-card-btn.reject:hover {
+  background-color: var(--color-border);
+}
+
+/* ===== ArtifactCard — 产物卡片 ===== */
+
+.artifact-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-hover);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.artifact-card:hover {
+  border-color: var(--color-accent);
+  background-color: rgba(var(--color-accent-rgb), 0.06);
+}
+
+.artifact-icon {
+  display: flex;
+  align-items: center;
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.artifact-name {
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.artifact-type {
+  margin-left: auto;
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+/* ===== 旋转动画 ===== */
+
+@keyframes tool-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.tool-spinner {
+  animation: tool-spin 1s linear infinite;
+}
+
+/* ===== 脉冲动画（等待确认） ===== */
+
+@keyframes tool-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.tool-pulse {
+  animation: tool-pulse 1.5s ease-in-out infinite;
+}

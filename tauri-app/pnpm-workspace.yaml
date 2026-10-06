@@ -1,0 +1,7 @@
+# 迁移项目自持边界：阻止 pnpm 向上吸附到仓库根的 pnpm-workspace.yaml，
+# 使 tauri-app 与 Electron 基线的依赖树完全隔离（packages 指自身 = 单包 workspace）。
+packages:
+  - '.'
+
+allowBuilds:
+  esbuild: true

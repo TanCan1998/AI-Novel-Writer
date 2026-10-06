@@ -43,6 +43,10 @@ tailwind.config.js.bak
 .release-gate*.txt
 /.vitest-attachments/
 
+# Tauri / Rust 构建产物（tauri-app 迁移根）
+tauri-app/src-tauri/target
+tauri-app/src-tauri/gen/schemas
+
 # 本地工具索引与会话
 .codegraph/
 .superpowers/

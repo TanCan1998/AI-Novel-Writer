@@ -1,0 +1,29 @@
+[package]
+name = "ai-novel-writer"
+version = "1.1.0"
+description = "AI Novel Writer — 本地优先的长篇小说创作工作台（Tauri 2 后端）"
+edition = "2021"
+
+# 迁移自 Electron 主进程（electron/）。迁移期间 Electron 保留可运行，
+# 本 crate 仅承载 Tauri 侧实现；分层映射见 docs/agents/pi-development.md。
+
+[lib]
+# lib.rs 独立于 main.rs，便于桌面/移动端复用与单元测试。
+name = "ai_novel_writer_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 按需引入（不提前加，避免无用编译）：
+# - rusqlite (features=["bundled"])        → 批次 C 数据库层
+# - reqwest                                 → 批次 D LLM 适配
+# - tauri-plugin-{fs,updater,shell,notification} → 批次 B/H 按频道批准
+
+[profile.dev]
+incremental = true

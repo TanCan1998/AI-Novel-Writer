@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "主窗口默认能力。迁移期间按批次追加最小权限（fs/updater/shell 等在各频道迁移获批后开启），禁止一次性放开。",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}
