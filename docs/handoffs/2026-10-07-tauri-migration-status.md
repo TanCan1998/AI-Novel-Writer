@@ -386,6 +386,45 @@ MUTATING 命令复用。
 
 ---
 
+## 本次会话结束状态（2026-10-07）
+
+**工作区**：干净（仅未跟踪的 `.pi/` agent 临时目录，不入 Git）；`master` 已与 `origin/master` 同步。
+
+| 项 | 值 |
+|---|---|
+| HEAD | `da4073f` |
+| 会话提交 | 6 个：`fa07875` reviews · `39ee0c2` post-process · `e0e1004` llm/摘要 · `d89861f` project 清理 · `da4073f` 校验脚本 |
+| 已注册命令 | **90**（骨架 1 + A 11 + B 22 + C 子域 56） |
+| 验证 | `cargo check --all-targets` 0 告警 · `cargo test --lib` **166/166** · `pnpm typecheck`/`lint` exit 0 · `pnpm run check:channels` orphan 空 |
+| 未迁移频道 | 102（契约 191 invoke 频道；已按批次归类，见上） |
+
+### 下一次会话的推荐起手
+
+1. **GUI 实机冒烟**（最优先，见下）——批次 C 的 56 个命令至今未经真实项目验证。
+2. 双击风险上最低的推进项：**批次 D（`llm:*` 14 频道）**，完成后可消除启动即报的
+   `llm_list_models not found`（遗留项 12）。
+3. 若要接数据层：批次 F（豁免/叙事线程/派生树/恢复候选，16 频道，互依赖少）；
+   批次 E（continuity + finalization + `chapter:*`）需先落 finalization 仓储，风险最大。
+
+### GUI 冒烟清单（建议逐项打勾）
+
+```bash
+cd tauri-app && pnpm tauri dev
+```
+
+- [ ] 窗口标题为 `Lorekeeper`，能打开真实小说目录（`.vela/project.json` 存在）
+- [ ] 项目主台账读写（新建/重开项目，配置保存后重进不漂移）
+- [ ] 蓝图：批量写入 → 列表回读 → 范围提交 → 角色同步 pending → complete
+- [ ] 草稿：创建（version 自增）→ 改正文 → 依赖变旧标记
+- [ ] 修稿：create → replace-pending → merge（幂等重放）
+- [ ] 审稿：create → get-latest
+- [ ] 后处理：create-run → mark-step-ok/failed → is-all-passed
+- [ ] LLM：调用后 get-stats / get-history 数值合理
+- [ ] 清理：`generatedText` 后根目录 `第N章*.txt` 进入 `.vela/trash/`
+- [ ] 全程无 `Command ... not found`（未迁频道除外，如 `llm:list-models`）
+
+---
+
 ## 本次更新（第十九次：`project 清理` — 批次 C 数据库层收口）
 
 ### 1. `db/schema.rs`：新增 `CREATE_IMPORT_OPERATIONS`
