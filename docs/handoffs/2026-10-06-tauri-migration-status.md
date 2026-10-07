@@ -252,7 +252,7 @@
 14. **`pnpm tauri dev` 会规范化 `Cargo.toml`**（第六次更新后期实测发现）：注释中若写 `features=["bundled"]` 这类 TOML 片段，dev 启动后会被重写为 `features= ["bundled"]`（tauri CLI 内部 toml 格式化），造成每次 dev 后工作区无故脏。→ ✅ **已规避**：注释改写为不含 TOML 片段形式的等价表述；**后续在 `Cargo.toml` 注释中写示例配置时，请直接用已带空格的规范写法，避免反复产生噪声 diff**。
 15. **L3 项目目录改名押后**：`.vela` → `.lorekeeper` 需同步约 20 个前端非测试文件 + 若干测试；`vela://` 伪协议暂不改。收口后单独提交、单独验证。
 16. **可见品牌未改（押后项）**：`tauri-app/src/shared/brand.ts`（zhName/enName/shortName）、`src/i18n/messages/{zh-CN,en-US}.ts` 的 `app.windowTitle`、`BottomPanel.tsx` 的版本号行、`theme-store` 的 localStorage 键 `ai-novel-writer-theme`、以及 agent 工具描述里的「AI小说作家」；均有对应测试需同步。
-17. **`official_homepage` 仍是上游仓库地址**：`OFFICIAL_HOMEPAGE_URL = https://github.com/EthanYoQ/AI-Novel-Writer`（与基线同源，有契约测试）。是否改指本 fork 属产品决策，待确认。
+17. ~~**`official_homepage` 仍是上游仓库地址**~~ → ✅ **已改指本 fork**（`https://github.com/TanCan1998/AI-Novel-Writer`，2026-10-07）：同步更新 `tauri-app/src/shared/official-homepage.ts`、其契约测试、`src-tauri/src/commands/official_homepage.rs`（常量 + 断言）；根目录基线副本保持不动（上游同步锚点）。
 18. ~~**隔离改造后未重跑 dev 冒烟**~~ → ✅ **已完成（第九次更新）**：进程名 `lorekeeper`、窗口标题 `Lorekeeper`、exe `tauri-app/src-tauri/target/debug/lorekeeper.exe`、vite@5190 正常；仅预期报错 `Command llm_list_models not found`（批次 D）。两点待留意：① `~/.lorekeeper/` 只在首次打开/创建/移除项目时才生成（本次未触发）；② `target/debug/` 下仍残留重命名前的旧产物 `ai-novel-writer.exe`（构建产物，不入 Git，可随时清理）。
 
 ---

@@ -9,7 +9,7 @@ use tauri::AppHandle;
 /// 官方主页 URL（固定）。待 tauri-plugin-opener 接入后由命令实际使用
 /// （当前为骨架：不打开外部链接），暂抑制死代码警告。
 #[allow(dead_code)]
-const OFFICIAL_HOMEPAGE_URL: &str = "https://github.com/EthanYoQ/AI-Novel-Writer";
+const OFFICIAL_HOMEPAGE_URL: &str = "https://github.com/TanCan1998/AI-Novel-Writer";
 
 /// Official Homepage:open 命令
 #[tauri::command]
@@ -36,7 +36,7 @@ mod tests {
 
     #[test]
     fn official_homepage_url_is_constant() {
-        assert_eq!(OFFICIAL_HOMEPAGE_URL, "https://github.com/EthanYoQ/AI-Novel-Writer");
+        assert_eq!(OFFICIAL_HOMEPAGE_URL, "https://github.com/TanCan1998/AI-Novel-Writer");
     }
 
     #[test]
