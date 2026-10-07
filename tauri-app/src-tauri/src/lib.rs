@@ -15,6 +15,22 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // 阶段 0 骨架联调命令（非业务频道，验证 invoke/状态注入链路）
             commands::app_health_check,
+            // 批次 A：基础配置
+            commands::config_get,
+            commands::config_set,
+            // 批次 A：窗口管理
+            commands::window_minimize,
+            commands::window_toggle_maximize,
+            commands::window_close,
+            commands::window_resolve_close,
+            // 批次 A：皮肤管理
+            commands::skin_get_state,
+            commands::skin_execute,
+            commands::skin_read_custom_asset,
+            // 批次 A：官方主页
+            commands::official_homepage_open,
+            // 批次 A：模型资源
+            commands::model_provider_resource_open,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

@@ -12,6 +12,20 @@
 
 use serde::Serialize;
 
+mod config; // 批次 A：配置管理
+mod window; // 批次 A：窗口管理
+mod skin; // 批次 A：皮肤管理
+mod official_homepage; // 批次 A：官方主页
+mod model_provider_resource; // 批次 A：模型资源
+
+/// 再导出各批次模块的全部公开项（含 Tauri 命令宏 `__cmd__*`），
+/// 供 `lib.rs` 的 `generate_handler![commands::xxx]` 与 `state.rs` 引用。
+pub use config::*;
+pub use model_provider_resource::*;
+pub use official_homepage::*;
+pub use skin::*;
+pub use window::*;
+
 /// 阶段 0 骨架健康检查报告。
 /// 不对应任何 Electron IPC 频道，仅供 Tauri 联调验证 invoke 链路。
 #[derive(Debug, Serialize)]
@@ -34,6 +48,8 @@ pub fn health_check_report(started_at_ms: u64) -> HealthCheckReport {
 pub fn app_health_check(state: tauri::State<'_, crate::state::AppState>) -> HealthCheckReport {
     health_check_report(state.started_at_ms)
 }
+
+// 批次 A：窗口管理命令
 
 #[cfg(test)]
 mod tests {
