@@ -77,7 +77,11 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 ### 4.8 AppDataChannels（7）— controller: `app-data-controller.ts` — 批次 H
 `prompt:load-global`（返回 `AppPromptLoadReceipt` 含 diagnostics）、`prompt:save-global`、`prompt:delete-global`；`skills:list-user`、`skills:inspect-github`、`skills:install-github`、`skills:uninstall-user`。固定 app-data 位置，渲染进程不决定路径。
 
-### 4.9 LLMChannels（14 + 事件 3）— controller: `llm-controller.ts` — 批次 D
+### 4.9 LLMChannels（14 + 事件 3）— controller: `llm-controller.ts` — 批次 D（拆 D1/D2）
+**D1 ✅（2026-10-07）：模型管理 7 频道**（`llm:list-models` / `save-model` / `delete-model` /
+`get|set-default-model` / `get|set-default-embedding-model`）—— 仅依赖 JSON 文件读写，零新增依赖；
+顺带补齐了 `config:get/set` 的真实持久化（`~/.lorekeeper/config.json`）。
+**D2 ⬜（需 Ask first）**：生成 / 流式 / 租约 / 发现 / 连通性 7 频道 + 3 事件，需新增 HTTP 客户端 crate。
 租约：`llm:begin-execution-lease(modelId)`（返回 `ModelExecutionLeaseReceipt` 能力证据）、`llm:close-execution-lease(leaseId)`。
 生成：`llm:generate(request)`（显式终态 `finishReason`）、`llm:generate-stream(requestId, request)`、`llm:cancel(requestId)`。
 模型管理：`llm:list-models`、`llm:discover-models`、`llm:save-model`、`llm:delete-model`（级联返回默认模型）、`llm:set-default-model`、`llm:get-default-model`、`llm:set-default-embedding-model`、`llm:get-default-embedding-model`、`llm:test-connection(model, creativeStrategy?)`。
@@ -160,7 +164,7 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 | **A** | window(+G4 决策协议)、config、skin、official-homepage、model-provider-resource | 0 | 前端可见性最快，先打通 invoke/event 双通道 |
 | **B** | project、fs 基础、external-file-grant、dialog | 0 | 会话租约签发/校验（ADR 0001）、fs 授权（ADR 0002） |
 | **C** | db 子域逐步：project-core → blueprints → characters/roster → drafts → revisions → reviews → post-process → summary/llm-stats | B | 🟡 **进行中（2026-10-06 第八次更新）**：`project_core` 子域**已完成并提交**（`ff7fbd8` + `a8d742a`，Rust 64/64、0 告警）；剩余子域按上方进度表逐个迁移（入口见 `docs/handoffs/2026-10-06-tauri-migration-status.md` 第八次快照「下一子域接续入口」）。一域一仓；行为与 Electron 对照 |
-| **D** | llm 全部 + 3 个流事件（G5 性能实测） | C | generation-parameter-policy 复刻；finishReason 显式终态 |
+| **D** | llm 全部 + 3 个流事件（G5 性能实测） | C | generation-parameter-policy 复刻；finishReason 显式终态。**2026-10-07 拆分**：**D1 ✅** 模型管理 7 频道（零新增依赖）+ config 真实持久化；**D2 ⬜** 生成链 7 频道 + 3 事件（需 Ask first：`reqwest` / `tauri-plugin-http`） |
 | **E** | finalization(G1 补契约)、chapter-lifecycle、continuity、recovery-candidate、draft-import-finalized-batch | C, D | 定稿不可逆 + 删除生命周期（ADR 0003/0011）等量测试 |
 | **F** | kb 全部、plot-tree、narrative-thread、consistency-exemption | C | AppResult 错误码对齐；LanceDB 评估 |
 | **G** | import-run 全套（18 频道状态机）、dialog:select-novel-files、import-global-facts | C | 执行租约 `ImportRunExecutionLease`；断点恢复语义 |

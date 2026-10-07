@@ -7,20 +7,20 @@
 
 ---
 
-## 快照（最后更新：2026-10-07 · 第二十次）
+## 快照（最后更新：2026-10-07 · 第二十一次）
 
 | 项 | 值 |
 |---|---|
 | 仓库 | **`TanCan1998/Lorekeeper`**（原名 `AI-Novel-Writer`；仍为 `EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork） |
 | 分支 | `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm 包 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 当前阶段 | **批次 C 数据库层子域全部完成 ✅**：`project_core` / `characters` / `blueprints` / `drafts`（12/16）/ `revisions` / `reviews` / `post-process` / `llm 日志与摘要` / **`project 清理`**；剩余 `db:*` 频道全部归属批次 **E/F/G** |
-| 已注册命令 | **90**（骨架 1 + A 11 + B 22 + C 子域 56） |
-| GUI 冒烟 | ✅ **已做**（2026-10-07 两轮 `pnpm tauri dev`）：窗口标题 `Lorekeeper`、vite@5190、cargo 353/353、`lorekeeper.exe` **内存 42.6 MB**；第二轮闭环验证遗留项 12 修复 |
-| 自动化回归 | `cargo test --lib` **169/169**（含 3 个**磁盘级**端到端：真实 `.vela/lorekeeper.db` + WAL + 外键 + 跨重开持久化）；`pnpm run check:channels` 校验契约↔命令映射 |
-| 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后 |
+| 当前阶段 | **批次 C 数据库层子域全部完成 ✅** + **批次 D1（`llm:*` 模型管理 7 频道）完成 ✅**：`project_core` / `characters` / `blueprints` / `drafts`（12/16）/ `revisions` / `reviews` / `post-process` / `llm 日志与摘要` / `project 清理` / **D1 模型管理**；剩余 `db:*` 频道归属批次 **E/F/G**，`llm:*` 生成链（7 频道 + 3 事件）归属 **D2（需 Ask first）** |
+| 已注册命令 | **97**（骨架 1 + A 11 + B 22 + C 子域 56 + D1 7） |
+| GUI 冒烟 | ✅ **已做**（2026-10-07 三轮 `pnpm tauri dev`）：窗口标题 `Lorekeeper`、vite@5190、cargo 353/353、`lorekeeper.exe` **内存 42.6 MB**（首轮）/ **30.1 MB**（D1 轮）；第二轮闭环验证遗留项 12 修复，第三轮验证 D1 新频道在真机启动路径无报错 |
+| 自动化回归 | `cargo test --lib` **199/199**（含 3 个**磁盘级**端到端：真实 `.vela/lorekeeper.db` + WAL + 外键 + 跨重开持久化）；`pnpm run check:channels` 校验契约↔命令映射（未迁移 95 频道） |
+| 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后。D1 起 `~/.lorekeeper/{config.json,models.json,recent-projects.json}` 为**真实持久化**（此前 config 仅内存态） |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`） |
-| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **169/169** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 · ✅ `check:channels` orphan 空 |
+| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **199/199** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 · ✅ `check:channels` orphan 空 · ✅ D1 GUI 冒烟（启动路径无 `Command ... not found` / 无「尚未迁移」） |
 
 ---
 
@@ -549,6 +549,121 @@ cd tauri-app && pnpm tauri dev
 
 ---
 
+## 本次更新（第二十一次：批次 D1 — 全局 JSON 存储层 + `llm:*` 模型管理 7 频道）
+
+### 0. 为什么拆成 D1 / D2
+
+批次 D 的 14 个频道分两类，依赖面完全不同：
+
+| 子批次 | 频道 | 依赖 | 状态 |
+|---|---|---|---|
+| **D1** | `list-models` / `save-model` / `delete-model` / `get|set-default-model` / `get|set-default-embedding-model`（7） | 仅 JSON 文件读写（`config.json` / `models.json`） | ✅ 本轮完成，**零新增依赖** |
+| **D2** | `begin|close-execution-lease` / `generate` / `generate-stream` / `cancel` / `discover-models` / `test-connection`（7 + 3 事件） | HTTP 客户端 + SSE 流式（`reqwest` 或 `tauri-plugin-http`）+ 生成参数策略复刻 | ⬜ 需 **Ask first**（新增 Rust crate） |
+
+### 1. 着手前修掉的**真实缺口**：`config:get/set` 此前只是内存态
+
+批次 A 落地的 `ConfigStore` 是**内存 HashMap**（当时标注「骨架阶段」）。它是 D1 的硬前置：
+`llm:get-default-model` / `llm:set-default-model` / `llm:delete-model` 与它共用同一份
+`config.json`。因此本轮把配置改为**真实文件持久化**，并对齐基线语义：
+
+| 语义 | 基线 | 现在 |
+|---|---|---|
+| `config:get` 文件缺失 | `DEFAULT_GLOBAL_CONFIG` | ✅ 同 |
+| `config:get` 文件存在 | **原样返回，不合并默认值** | ✅ 同（此前是「默认值 + 内存」） |
+| `config:get` 文件损坏 | 告警 + 默认值，**不改写文件** | ✅ 同 |
+| `config:set` | 读旧值（损坏则拒覆盖）→ 浅合并 → 原子写 | ✅ 同，错误文案 `Error: 全局配置损坏，已拒绝覆盖` |
+| 首次 `config:set` | `{...DEFAULT_GLOBAL_CONFIG, ...updates}` 写出完整文件 | ✅ 同 |
+
+`AppState.config`（内存存储）已移除；`Default for AppState` 相应同步。
+
+### 2. 新增 `src-tauri/src/app_paths.rs`（全局数据根）
+
+把原先只存在于 `commands/project.rs` 的 `lorekeeper_home()` 提为**独立模块**（避免
+`json_store` → `commands` 的反向依赖），并补齐 `config.json` / `models.json` /
+`recent-projects.json` 路径与 `ensure_lorekeeper_home()`（对齐基线 `ensureVelaHome()`）。
+
+- **L1 隔离不可回退**：只认 `AI_NOVEL_LOREKEEPER_HOME`，缺省 `~/.lorekeeper`；不读
+  `AI_NOVEL_VELA_HOME`、不回退 `~/.vela`。
+- 路径解析拆为**注入式纯函数** `resolve_home(env_home, user_home)`，测试无需污染进程环境。
+- `lib.rs` 增加 `setup` 钩子调用 `ensure_lorekeeper_home()`：启动即建立
+  `~/.lorekeeper/{prompts,logs}`（失败不阻断启动，只告警）。**冒烟实测**：首轮启动后
+  `~/.lorekeeper/` 已含 `logs`、`prompts`。
+
+### 3. 新增 `src-tauri/src/json_store.rs`（迁移 `electron/utils/config-utils.ts`）
+
+| 函数 | 对齐基线 |
+|---|---|
+| `try_read_json_value` | `tryReadJsonFile` 三态（`Missing` / `Ok` / `Error`）；增量写入方在 `Error` 时必须拒绝覆盖 |
+| `read_json_value_or` / `read_json_file` | `readJsonFile`：失败告警 + 回落默认值（只读路径容忍损坏） |
+| `write_json_file` | `writeJsonFile`：同目录临时文件（独占创建 + `0600`）→ `write_all` + `sync_all` → `rename` 提交；Windows 占用类错误（5/32/33）按 `10/25/50/100/200ms` 重试；失败保持原文件不变并清理临时文件 |
+
+`commands/project.rs` 的最近项目读写改为复用该层（此前是裸 `fs::write`），
+`recent-projects.json` 由此获得与基线一致的原子写语义。
+
+### 4. 新增 `commands/llm.rs`（7 命令）
+
+| 频道 | 命令 | 关键行为 |
+|---|---|---|
+| `llm:list-models` | `llm_list_models` | 缺失/损坏/形状不符 → `[]` |
+| `llm:save-model` | `llm_save_model` | 按 `id` 就地替换否则追加；损坏拒绝覆盖；非对象条目拒绝 |
+| `llm:delete-model` | `llm_delete_model` | **先清引用再删对象**；第二步失败回滚配置；回滚也失败时给出组合文案 |
+| `llm:get-default-model` | `llm_get_default_model` | `defaultModelId`（`null`/缺键 → `null`） |
+| `llm:set-default-model` | `llm_set_default_model` | 写 `defaultModelId` |
+| `llm:get-default-embedding-model` | `llm_get_default_embedding_model` | `defaultEmbeddingModelId ?? null` |
+| `llm:set-default-embedding-model` | `llm_set_default_embedding_model` | 写 `defaultEmbeddingModelId` |
+
+- **模型条目原样透传 `serde_json::Value`**：`ModelProfile` 的字段集由渲染层契约定义
+  （`capabilities` / `reasoningOverride` / `embeddingOptions` 等可选字段），Rust 只解释
+  `id` —— 避免漏字段导致用户配置被静默裁剪（有专门测试断言未知字段不被丢弃）。
+- 身份比对 `same_model_identity` 复刻 `m.id === model.id` 的严格相等语义（两侧都缺 `id`
+  视为同一身份）。
+- `llm:delete-model` 的字段存在性逐条对齐基线：成功时 `defaultModelId`（缺键则整体缺省）
+  与 `defaultEmbeddingModelId ?? null`（恒存在）同时出现；失败时两者整体缺省 → 用
+  `Option<Value>` 区分「缺省」与「显式 null」。
+- 回滚失败文案逐字复刻基线的**双 `Error: ` 前缀**（`String(new Error(\`${String(e1)}；恢复默认模型配置失败：${String(e2)}\`))` 的链式结果），并单测锁定。
+
+### 5. 接线
+
+- `commands/mod.rs`：`mod llm;` + `pub use llm::*;`
+- `lib.rs`：`mod app_paths; mod json_store;` + `setup` 建目录 + 注册 7 命令（**90 → 97**）
+- `state.rs`：移除 `config: Mutex<ConfigStore>` 字段
+- `ipc-client.ts`：登记 4 个带参频道（`llm:save-model` → `model`；`llm:delete-model` /
+  `llm:set-default-model` / `llm:set-default-embedding-model` → `modelId`）
+- `pnpm run check:channels:emit` 重新生成 `src/shared/migrated-channels.ts`（**96** 个频道）
+- `test/channel-migration-coverage.test.ts`：负例改用未迁频道 `llm:generate`，并加断言
+  `llm:list-models` 已迁移
+
+### 6. 验证与测试
+
+新增 Rust 测试 **33 个**（app_paths 6 + json_store 6 + config 9 + llm 12；
+旧 config 的内存态测试 3 个被替换，故净 +30）：
+
+- **app_paths**：环境变量优先/去空白、空白回落用户主目录、路径派生、建目录幂等、不可用父路径报错；
+- **json_store**：三态判定、损坏回落且不改文件、按类型反序列化、建父目录 + pretty 格式（两空格/无尾随换行）、
+  覆盖已有文件、失败保持原文件且清理临时文件；
+- **config**：默认值逐字段对齐、缺文件/部分文件/损坏三种读取语义、浅合并保留未知键（`locale`）、
+  首次写入以默认值为基底、损坏拒绝覆盖（`Error: ` 前缀）；
+- **llm**：缺失/损坏/形状不符的空列表、未知字段透传、插入/就地更新、损坏与非对象拒绝、
+  删除同时清两个默认项、非目标默认项保留、失败时字段缺省、**models 写失败回滚 config**、
+  回滚失败文案、默认模型往返、损坏配置拒绝、**命令层端到端**（经 `AI_NOVEL_LOREKEEPER_HOME` 注入临时根调真实命令）。
+
+结果：`cargo check --all-targets` **0 告警** · `cargo test --lib` **199/199** ·
+`pnpm typecheck` exit 0 · `pnpm run lint` exit 0 · `pnpm run check:channels` orphan 空。
+
+### 7. GUI 实机冒烟（第三轮）
+
+`pnpm tauri dev`：vite `ready in 436 ms` @5190 → cargo 编译 `lorekeeper` →
+`Running target\debug\lorekeeper.exe`（**30.1 MB**）。
+
+- **关键验证**：启动即调用的 `llm:list-models` 不再报错 —— 日志里既无
+  `Unknown Error: Command llm_list_models not found`，也无「尚未迁移」提示；
+  唯一告警仍是阶段 3 既知项 `setZoomFactor 尚未在 Tauri 侧实现`。
+- 首次启动即创建了 `~/.lorekeeper/{logs,prompts}`（L1 隔离生效；`~/.vela` 未被 Tauri 触碰）。
+- 冒烟后已 `taskkill /T /F` 清理本次启动的进程树（端口 5190 释放，无 `lorekeeper.exe` 残留）。
+- `Cargo.toml` 未被 `tauri dev` 重写 ✅（遗留项 14 的注释规避写法继续有效）。
+
+---
+
 ## 批次 C 收口状态（2026-10-07）
 
 **已完成子域**（命令累计 **90**，其中 C 子域 56）：
@@ -577,11 +692,13 @@ cd tauri-app && pnpm tauri dev
 
 ## 建议的下一步
 
-1. **GUI 实机冒烟（强烈建议）**：批次 C 已连续交付 56 个命令却**尚未做过一次真实项目读写验证**。
-   用 `pnpm tauri dev` 打开一个真实小说目录，跑一遍：蓝图读写 → 草稿创建/改正文 → 修稿合并 →
-   审稿 → 后处理跑批 → LLM 统计 → 项目清理。
-2. **双栈同库行为对照**：同目录下 Electron 与 Tauri 各写各库（`vela.db` vs `lorekeeper.db`），
-   确认互不影响。
+1. **批次 D2（`llm:*` 生成链，7 频道 + 3 事件）— 需用户先批准新增依赖**：
+   `reqwest`（HTTP/SSE）或 `tauri-plugin-http`；同时要决定「Rust 重写 LLM 适配」还是
+   「Node sidecar」（`docs/agents/pi-development.md` §3 明确要求 Ask first）。
+   涉及：`generation-parameter-policy` 复刻、`finishReason` 显式终态、流式事件经 webview 桥
+   的性能实测（盘点缺口 G5）。
+2. **双栈同库行为对照**：同目录下 Electron（`vela.db`）与 Tauri（`lorekeeper.db`）各写各库，
+   确认互不影响；顺带对照 `~/.vela/config.json` 与 `~/.lorekeeper/config.json` 的读写形态差异。
 3. **`vitest` 全量超时定位**（遗留项 7）。
 4. 之后进入 **批次 E**（定稿不可逆 + 删除生命周期，ADR 0003/0011 等量测试）。
 
@@ -589,14 +706,21 @@ cd tauri-app && pnpm tauri dev
 
 ## 遗留项（沿用 2026-10-06 快照）
 
-- ✅ **批次 C GUI 实机验证（自动化部分已完成）**：两轮 `pnpm tauri dev` 冒烟通过；
+- ✅ **批次 C GUI 实机验证（自动化部分已完成）**：三轮 `pnpm tauri dev` 冒烟通过；
   核心读写链路已由 `disk_e2e.rs` 用真实 `.vela/lorekeeper.db` 断言覆盖。
   **仍未人工验证**：界面交互本身（按钮触发、表单回显、错误提示的 UI 形式）。
+- ✅ **遗留项 12 已修复**（`24c008f`）：未迁移频道给出统一友好提示 + 生成物一致性测试。
+- ✅ **config 持久化缺口已补齐**（第二十一次，批次 D1）：`config:get/set` 由内存态改为
+  `~/.lorekeeper/config.json` 真实持久化；`models.json` / `recent-projects.json` 同步走原子写。
+- ⚠️ **批次 D2 待用户批准依赖**：`reqwest`（或 `tauri-plugin-http`）+ LLM 生成链策略复刻。
 - 未验证：双栈同库行为对照、`vitest` 全量超时定位、`cargo fmt --check` 未纳入验收
   （`src-tauri/` 全域存在 rustfmt 差异，需单独提交）。
 - 押后：L3（`.vela` → `.lorekeeper`）、可见品牌（`brand.ts` / i18n 标题）。
-- ✅ **遗留项 12 已修复**（`24c008f`）：未迁移频道给出统一友好提示 + 生成物一致性测试。
 - 批次 G 需要的 `BlueprintRepository.getCommittedRangeOperation`（无 IPC 频道，被
   `import-run-repository.ts` 使用）尚未移植，随批次 G 一并落地。
 - 无 IPC 频道的基线辅助方法未移植：`post_process_repository.get_failed_step_labels`、
   `DraftRepository.clearAll`（后者功能已被 `project_clear` 覆盖）。
+- 已知取舍（D1）：`models.json` 内容非数组对象（如合法 JSON 对象）时，基线会把它当数组
+  误用并写出怪异结果，Rust 侧改为**拒绝覆盖**（更严格，语义差别只在文件被外部破坏时出现）；
+  `delete-model` 遇损坏文件时基线报 JS `SyntaxError` 原文，Rust 侧统一为
+  `Error: 模型配置损坏，已拒绝覆盖`。

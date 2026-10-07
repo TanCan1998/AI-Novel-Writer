@@ -1,6 +1,6 @@
 # Tauri 迁移进度快照（活文档）
 
-> **📌 最新进展看 [`2026-10-07-tauri-migration-status.md`](./2026-10-07-tauri-migration-status.md)（第十一次：blueprints S2-a 完成，48 命令、101/101）**。
+> **📌 最新进展看 [`2026-10-07-tauri-migration-status.md`](./2026-10-07-tauri-migration-status.md)（第二十一次：批次 D1 完成，97 命令、199/199）**。
 >
 > **用途**：AI/开发者接续 Tauri 迁移工作的入口文档。**每次迁移工作完成后必须更新本文件的快照区块**。channel 级细节见 [`docs/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md)。
 > 本文件为日期化交接快照（docs/README.md 治理规则）；后续大节点可另立日期文件，勿回写历史快照。
