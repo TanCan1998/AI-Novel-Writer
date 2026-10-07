@@ -138,6 +138,9 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'llm:delete-model': ['modelId'],
   'llm:set-default-model': ['modelId'],
   'llm:set-default-embedding-model': ['modelId'],
+  // 批次 D2：LLM 生成执行（租约 2 频道）
+  'llm:begin-execution-lease': ['modelId'],
+  'llm:close-execution-lease': ['leaseId'],
 }
 
 /** 频道 → Tauri 命令名（`channel:seg-name` → `channel_seg_name`）。 */

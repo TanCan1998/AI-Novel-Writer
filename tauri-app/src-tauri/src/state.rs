@@ -45,6 +45,8 @@ pub struct AppState {
     pub(crate) latest_open_token: Mutex<Option<String>>,
     /// 批次 B：项目文件操作串行锁（骨架阶段全局互斥，安全语义同基线 per-path 队列）
     pub(crate) fs_lock: Mutex<()>,
+    /// 批次 D2：模型执行租约注册表（进程内存态，重启即失效）
+    pub(crate) llm_leases: Mutex<crate::llm::lease::LlmLeaseStore>,
 }
 
 impl AppState {
@@ -59,6 +61,7 @@ impl AppState {
             project_db: Mutex::new(None),
             latest_open_token: Mutex::new(None),
             fs_lock: Mutex::new(()),
+            llm_leases: Mutex::new(crate::llm::lease::LlmLeaseStore::new()),
         }
     }
 
@@ -258,5 +261,11 @@ mod tests {
         state.set_latest_open_token("token-2").unwrap();
         assert!(state.is_latest_open_token("token-2"));
         assert!(!state.is_latest_open_token("token-1"), "旧令牌必须判为陈旧");
+    }
+
+    #[test]
+    fn new_state_has_no_live_model_leases_test() {
+        let state = AppState::new();
+        assert_eq!(state.llm_leases.lock().unwrap().live_lease_count(), 0);
     }
 }

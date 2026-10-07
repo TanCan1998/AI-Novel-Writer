@@ -36,6 +36,72 @@ function collectRegisteredCommands(): Set<string> {
 
 const commandName = (channel: string): string => channel.replace(/[:-]/g, '_')
 
+/**
+ * 从契约源码块中数出一个频道的 `args` 定位参数个数（支持多行数组与嵌套对象类型）。
+ *
+ * 先剔除泛型实参（`Record<string, unknown>` 这类 `<...>` 内的逗号不是参数分隔符），
+ * 再按括号深度统计顶层逗号。
+ */
+function argsArity(block: string): number {
+  const sanitized = block.replace(/<[^<>]*>/gu, '')
+  const start = sanitized.indexOf('args:')
+  if (start === -1) return 0
+  const open = sanitized.indexOf('[', start)
+  if (open === -1) return 0
+  let depth = 0
+  let commas = 0
+  let lastTopLevelComma = -1
+  let close = -1
+  for (let index = open; index < sanitized.length; index += 1) {
+    const character = sanitized[index]
+    if (character === '[' || character === '{' || character === '(') depth += 1
+    else if (character === ']' || character === '}' || character === ')') {
+      depth -= 1
+      if (depth === 0) { close = index; break }
+    } else if (character === ',' && depth === 1) {
+      commas += 1
+      lastTopLevelComma = index
+    }
+  }
+  if (close === -1) return 0
+  const inner = sanitized.slice(open + 1, close)
+  if (inner.trim() === '') return 0
+  // 多行元组类型常带尾逗号（`a: string,\n]`），尾逗号不构成额外参数。
+  const tail = lastTopLevelComma === -1 ? '' : inner.slice(lastTopLevelComma - open - 1)
+  const hasTrailingComma = lastTopLevelComma !== -1 && tail.replace(/^,/u, '').trim() === ''
+  return hasTrailingComma ? commas : commas + 1
+}
+
+/** 已迁移频道的契约参数个数（只统计 invoke 频道：事件频道不在 MIGRATED_CHANNELS 内）。 */
+function collectMigratedArgCounts(): Map<string, number> {
+  const source = readNormalizedSource('../src/shared/ipc-channels.ts')
+  const headers = [...source.matchAll(/^\s*'([a-z0-9-]+:[a-z0-9-]+)'\s*:\s*\{/gmu)]
+  const counts = new Map<string, number>()
+  headers.forEach((header, index) => {
+    const channel = header[1]
+    if (!MIGRATED_CHANNELS.has(channel)) return
+    const blockEnd = index + 1 < headers.length ? headers[index + 1].index ?? source.length : source.length
+    counts.set(channel, argsArity(source.slice(header.index ?? 0, blockEnd)))
+  })
+  return counts
+}
+
+/** `ipc-client.ts` 中 `CHANNEL_ARG_NAMES` 已登记的频道 → 参数名序列。 */
+function collectRegisteredArgNames(): Map<string, string[]> {
+  // 注意：此处是 Tauri 侧客户端（工作目录 = tauri-app/），与契约文件（仓库根 src/）不同源。
+  const source = readNormalizedSource('src/services/ipc-client.ts')
+  const registered = new Map<string, string[]>()
+  const pattern = /^\s*'([a-z0-9-]+:[a-z0-9-]+)'\s*:\s*\[([^\]]*)\]/gmu
+  for (const match of source.matchAll(pattern)) {
+    const names = match[2]
+      .split(',')
+      .map((entry) => entry.trim().replace(/^['"]|['"]$/gu, ''))
+      .filter(Boolean)
+    registered.set(match[1], names)
+  }
+  return registered
+}
+
 describe('channel migration coverage', () => {
   it('migrated-channels.ts 恰好等于 lib.rs 注册命令所覆盖的契约频道', () => {
     const registered = collectRegisteredCommands()
@@ -67,6 +133,44 @@ describe('channel migration coverage', () => {
     // 已迁频道不受影响
     expect(MIGRATED_CHANNELS.has('config:get')).toBe(true)
     expect(MIGRATED_CHANNELS.has('llm:list-models')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('llm:begin-execution-lease')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('llm:close-execution-lease')).toBe(true)
     expect(MIGRATED_CHANNELS.has('db:project-clear-generated-data')).toBe(true)
+  })
+
+  /**
+   * 回归防线：`ipc-client.ts` 的 `buildNamedArgs` 对「带参但未登记参数名」的频道会直接抛错，
+   * 这类漏登记只有落到真机点开对应功能时才会暴露。此测试把契约的参数个数与登记表机械比对，
+   * 使漏登记 / 多登记 / 参数个数不符在 `pnpm test` 阶段即失败。
+   */
+  it('已迁移且带参的频道都登记了正确数量的 invoke 参数名', () => {
+    const registered = collectRegisteredArgNames()
+    const problems: string[] = []
+    for (const [channel, arity] of collectMigratedArgCounts()) {
+      const names = registered.get(channel)
+      if (arity === 0) {
+        if (names) problems.push(`${channel}：无参频道不应登记（登记了 ${names.length} 个）`)
+        continue
+      }
+      if (!names) {
+        problems.push(`${channel}：带参 ${arity} 个但未在 CHANNEL_ARG_NAMES 登记`)
+        continue
+      }
+      if (names.length !== arity) {
+        problems.push(`${channel}：登记 ${names.length} 个，契约要求 ${arity} 个`)
+      }
+    }
+    expect(problems).toEqual([])
+  })
+
+  it('参数名登记表不得包含未迁移频道或非法参数名', () => {
+    const problems: string[] = []
+    for (const [channel, names] of collectRegisteredArgNames()) {
+      if (!MIGRATED_CHANNELS.has(channel)) problems.push(`${channel}：频道尚未迁移却已登记参数名`)
+      for (const name of names) {
+        if (!/^[a-z][a-zA-Z0-9]*$/u.test(name)) problems.push(`${channel}：参数名 ${name} 不是 lowerCamelCase`)
+      }
+    }
+    expect(problems).toEqual([])
   })
 })

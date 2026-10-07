@@ -79,6 +79,8 @@ export const MIGRATED_CHANNELS: ReadonlySet<string> = new Set([
   'fs:read-json',
   'fs:write-file',
   'fs:write-json',
+  'llm:begin-execution-lease',
+  'llm:close-execution-lease',
   'llm:delete-model',
   'llm:get-default-embedding-model',
   'llm:get-default-model',
