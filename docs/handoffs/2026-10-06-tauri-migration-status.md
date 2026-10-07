@@ -16,7 +16,7 @@
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（遵循 AGENTS.md 第 3 条规则）；crates 走 rsproxy 镜像；VS Build Tools 已装；**脚本内需显式设 RUSTUP_HOME/CARGO_HOME** |
 | 未提交变更 | ✅ **批次 B 已完成待提交**：4 个新 Rust 文件 + state/lib/mod/ipc-client 四处接线；`cargo test --lib` 28/28、`cargo check --all-targets` 0 告警、typecheck/lint/build 全绿 |
 | 残留死文件 | ✅ 已删除（上会话残留 `state/commands.rs`、`commands/config/internal_exports.rs`） |
-| 未验证事项 | ① `pnpm tauri dev` 窗口冒烟未做（GUI 需手动验证）；② 批次 B 与 Electron 版行为对照未做；③ vitest 全量超时未定位；④ `cargo fmt --check` 未达标（批次 A/B 均未过 rustfmt，未纳入验收） |
+| 未验证事项 | ① ~~`pnpm tauri dev` 窗口冒烟~~ → ✅ 已完成（第六次更新后期：窗口渲染正常、未迁频道仅报 `Command not found`）；② 批次 B 与 Electron 版行为对照未做；③ vitest 全量超时未定位；④ `cargo fmt --check` 未达标（批次 A/B 均未过 rustfmt，未纳入验收） |
 
 ### 结构重设计（2026-10-06 第二次更新，用户确认）
 
@@ -36,7 +36,7 @@
 | `pnpm test`（vitest 全量） | ⚠️ 25 分钟超时未定位，**批次验收遗留项**（setup-locale + source-contract 单文件 5/5 通过） |
 | `cargo test --lib` | ✅ **28/28 全绿**（2026-10-06 第六次更新验证：批次 A 17 + 批次 B 11，含 fs/security/project 契约用例） |
 | `cargo check --all-targets` | ✅ **0 告警**（第六次更新：消除 dead_code 告警 6 处） |
-| `pnpm tauri dev` | ⬜ 窗口冒烟待做（Rust 编译链已验证通过，风险低） |
+| `pnpm tauri dev` | ✅ **窗口冒烟通过**（2026-10-06 第六次更新后期）：vite 489ms ready @5190 → cargo 0.57s → 窗口 1440x900 无边框 + 自定义标题栏；WebView 渲染 125 节点（45 按钮/28 树/4 组）= 前端完整加载；批次 A 已迁频道无报错，未迁频道仅 `llm:list_models` 报 `Command not found`（属预期）；冒烟后已清理进程树（端口 5190 释放） |
 
 ### 批次 A 迁移完成详情（2026-10-06 第三次更新）
 
@@ -158,10 +158,10 @@
 
 ### 已知遗留项（下一会话处理）
 
-1. **提交批次 B**（第六次更新验收全绿，待提交）：`feat(tauri): migrate batch-b fs/project/grant`（4 新文件 + state/mod/lib/ipc-client 四处接线 + 快照更新）
+1. ~~提交批次 B~~ → ✅ 已完成（`3541630 feat(tauri): 迁移批次 B — fs/project/grant 22 命令接线与验证`，10 文件 +1345 行）
 2. **Ask first 待确认**：`tauri-plugin-dialog`（dialog 2 频道真实化）与 `rusqlite`（批次 C 前置），均需用户点头后再加
 3. **批次 B 验证**：与 Electron 版行为对照（recent-projects.json 双栈互通、错误文案、commitState 两态）
-4. **`pnpm tauri dev` 窗口冒烟**：批次 A+B 一起验证，预期未迁频道抛「尚未迁移」
+4. ~~`pnpm tauri dev` 窗口冒烟~~ → ✅ 已完成（第六次更新后期，结论与新发现见下方遗留项 12/13）
 5. **批次 C（数据库层）**：rusqlite 真实实现 + project:create/open/save/delete 租约签发启用（会话租约完整校验补入 security.rs 骨架处）
 6. **持续验证**：提交前 `cd tauri-app && pnpm typecheck && pnpm run lint`；改 Rust 追加 `cargo test --lib`；双栈并行（5180/5190）
 7. **vitest 全量超时定位**（上表 ⚠️）
@@ -169,6 +169,8 @@
 9. **@baseline 类型链风险**：上游改动 electron/repositories|services 类型文件时 tauri-app typecheck 会同步受影响 —— 属预期（类型单源），批次验收时留意
 10. **radix 按需清单**：package.json 仅含扫描到的 3 个 @radix-ui 包（dialog/slot/tooltip），其余（label/select/separator/tabs）在 vite build/typecheck 报缺时补装
 11. **rustfmt 未纳入验收**：`cargo fmt --check` 在 `src-tauri/` 全域有差异（批次 A/B 文件均未过 rustfmt）；如需统一，应单独提交 `chore(tauri): cargo fmt src-tauri`，勿混入功能批次
+12. **未迁频道错误文案不友好**（第六次更新冒烟发现）：未注册命令报 Tauri 原生 `Unknown Error: Command llm_list_models not found`，与预期的「尚未迁移（批次 X）」不一致。修复方向：ipc-client 维护「已迁移频道集合」，命中未迁名单时直接抛统一提示（保留 Rust 侧抛错兜底），便于逐批推进时快速定位。
+13. **dev 依赖预打包扫描警告**（第六次更新冒烟发现，不影响 `pnpm build` 产物）：vite `optimizeDeps` 扫描到 `electron/security/windows-safe-file-system.ts`（经测试文件 `__tests__/export-service-integration.test.ts` → `@baseline/controllers/external-file-grant-controller` → … 可达）内部 `import ... from 'electron'` 无法解析，导致本次预打包被跳过（首次 dev 变慢、真实依赖优化被掩盖）。修复方向：`vite.config.ts` 限定 `optimizeDeps.entries: ['index.html']` 或排除 `**/__tests__/**`。
 
 ---
 
@@ -178,7 +180,7 @@
 |---|---|---|
 | 0 | Tauri 脚手架（`tauri-app/` 迁移根 + AppState + invoke_handler 骨架 + tauri.conf.json 接 Vite） | ✅ **完成**（TS 全绿 + cargo test 待验证） |
 | 1 | IPC 契约盘点（198 频道清单、模式标注、批次规划） | ✅ 2026-10-06 完成 |
-| 2 | 按 controller 批次迁移（A→H，见盘点文档 §6） | 🟡 **批次 A 已提交；批次 B 验证全绿待提交** |
+| 2 | 按 controller 批次迁移（A→H，见盘点文档 §6） | 🟡 **批次 A/B 已提交，窗口冒烟通过**；下一步批次 C（需用户确认 rusqlite） |
 | 3 | 原生绑定收尾（窗口/菜单/通知/更新插件、zoom 替代、CI tauri-action） | ⬜ 未开始 |
 | 4 | 双栈并存验证 + 上游同步策略执行 | ⬜ 未开始 |
 
@@ -233,6 +235,8 @@
 3. **编译修复 8 类**（详见批次 B 章节清单）：async 命令返 `Result`、`From<GuardKind>`、错误映射类型、烟测 marker 写入目标、ISO8601 实现等。
 4. **契约校验强化**：源码级确认 Tauri 参数 key = `to_lower_camel_case`（含下划线前缀归并）、`Option<T>` 缺省安全；烟测回执对齐 `new Date().toISOString()` 与 `JSON.stringify` 形态，并补固定时间戳单测（含闰年）。
 5. **验证**：`cargo test --lib` 28/28 · `cargo check --all-targets` 0 告警 · `pnpm typecheck`/`lint`/`build` 均绿。
+6. **提交**：`3541630 feat(tauri): 迁移批次 B — fs/project/grant 22 命令接线与验证`（10 文件 +1345/-19）。
+7. **GUI 冒烟（附加）**：`cargo build` 主二进制 12.44s 成功 → `pnpm tauri dev` 启动成功，窗口 1440x900 无边框 + 自定义标题栏渲染、WebView 125 节点（45 按钮/28 树）确认前端完整加载；已迁频道无报错，未迁频道报 `Command not found`（预期）；冒烟后已终止进程树。发现 2 项遗留（未迁频道错误文案、vite dev 预打包扫描警告）。
 
 ### 关键发现摘要（接续前必读，详见盘点文档）
 
@@ -252,9 +256,7 @@
 
 3. ~~批次 B 迁移~~ → ✅ 已完成（2026-10-06 第六次：22 命令注册 + 接线 + 验证 28/28 + 前端登记 17 频道）；**下一步提交批次 B**
 
-4. **窗口冒烟**（需 GUI，建议用户手动验证）：
-   - 运行 `pnpm tauri dev`
-   - 预期：Tauri 窗口加载前端、批次 A 已迁频道可 invoke 成功、未迁频道抛「尚未迁移」、`fs:*` 因无活跃项目返回租约失效文案
+4. ~~窗口冒烟~~ → ✅ 已完成（2026-10-06 第六次更新后期）：`pnpm tauri dev` 启动成功（vite @5190 + Rust 壳），窗口 1440x900 无边框、自定义标题栏（最小/最大/关闭）均渲染；前端完整加载（125 节点）；已迁批次 A 命令无报错，未迁命令仅报 `Command not found`（属预期）。发现 2 项待优化：未迁频道错误文案（遗留项 12）、vite dev 预打包扫描警告（遗留项 13）。 **本项为终端命令侧自动化验证，暂未在真实 GUI 交互上验证业务操作**（如打开项目、写入文件）。
 
 5. ~~提交批次 A~~ → ✅ 已完成（两个 commit：Rust 后端 + ipc-client 适配；2 个残留死文件已删）
 
