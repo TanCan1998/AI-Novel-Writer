@@ -14,7 +14,8 @@
 | 当前阶段 | **批次 A 验证通过 + 前端 ipc-client 已切 Tauri 底层**（cargo test 17/17 全绿） |
 | 结构 | **独立迁移根 `tauri-app/`**（用户确认的方案 B），根目录三文件已还原上游原样 |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（遵循 AGENTS.md 第 3 条规则）；crates 走 rsproxy 镜像；VS Build Tools 已装；**脚本内需显式设 RUSTUP_HOME/CARGO_HOME** |
-| 未提交变更 | ⚠️ **批次 A Rust 代码 + ipc-client 适配暂存未 commit**；另有 2 个残留死文件待用户确认删除（`src/state/commands.rs`、`src/commands/config/internal_exports.rs`） |
+| 未提交变更 | ✅ 无 —— 批次 A 已提交（`e3d388f` Rust 后端 + `00e1b73` ipc-client 适配，均含契约对齐修复） |
+| 残留死文件 | ✅ 已删除（上会话残留 `state/commands.rs`、`commands/config/internal_exports.rs`） |
 | 未验证事项 | ① `pnpm tauri dev` 窗口冒烟未做（GUI 需手动验证）；② i18n 覆盖校验未在 tauri-app 配置；③ vitest 全量超时未定位 |
 
 ### 结构重设计（2026-10-06 第二次更新，用户确认）
@@ -97,10 +98,7 @@
 
 4. **窗口冒烟**：`pnpm tauri dev`（需 GUI，建议用户手动验证）
 
-5. **提交批次 A**（待人工核验）：
-   - `feat(tauri): migrate batch-a rust commands`
-   - `feat(tauri): adapt ipc-client to tauri invoke`
-   - 删除两个残留死文件（待用户同意）
+5. ~~提交批次 A~~ → ✅ 已完成（`e3d388f` Rust 后端 / `00e1b73` ipc-client 适配）
 
 #### 前端适配详情（第四次更新新增）
 
@@ -213,10 +211,7 @@
    - 运行 `pnpm tauri dev`
    - 预期：Tauri 窗口加载前端、批次 A 已迁频道可 invoke 成功、未迁频道抛「尚未迁移」
 
-5. **提交批次 A**（待人工核验）：
-   - `feat(tauri): migrate batch-a rust commands`
-   - `feat(tauri): adapt ipc-client to tauri invoke`
-   - 删除 2 个残留死文件（待用户同意：`src-tauri/src/state/commands.rs`、`src-tauri/src/commands/config/internal_exports.rs`）
+5. ~~提交批次 A~~ → ✅ 已完成（两个 commit：Rust 后端 + ipc-client 适配；2 个残留死文件已删）
 
 6. **持续验证**：
    - 每次提交前：`cd tauri-app && pnpm typecheck && pnpm run lint`；改 Rust 追加 `cargo test --lib`
