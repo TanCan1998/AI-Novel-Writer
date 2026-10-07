@@ -83,6 +83,19 @@ pub fn run() {
             commands::db_blueprint_character_sync_list_pending,
             commands::db_blueprint_character_sync_get,
             commands::db_blueprint_character_sync_complete,
+            // 批次 C：草稿（drafts 子域 S3-a）
+            commands::db_draft_create,
+            commands::db_draft_list,
+            commands::db_draft_list_all,
+            commands::db_draft_get_meta,
+            commands::db_draft_get_full,
+            commands::db_draft_get_latest,
+            commands::db_draft_get_finalized,
+            commands::db_draft_get_max_finalized_chapter,
+            commands::db_draft_next_version,
+            commands::db_draft_update_status,
+            commands::db_draft_update_content,
+            commands::db_draft_delete,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

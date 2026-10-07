@@ -83,6 +83,19 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'db:blueprint-character-sync-list-pending': ['expectedProjectPath'],
   'db:blueprint-character-sync-get': ['operationId', 'expectedProjectPath'],
   'db:blueprint-character-sync-complete': ['operationId', 'expectedProjectPath'],
+  // 批次 C：草稿（drafts 子域 S3-a）
+  'db:draft-create': ['params', 'expectedProjectPath'],
+  'db:draft-list': ['chapterNumber', 'expectedProjectPath'],
+  'db:draft-list-all': ['expectedProjectPath'],
+  'db:draft-get-meta': ['id', 'expectedProjectPath'],
+  'db:draft-get-full': ['id', 'expectedProjectPath'],
+  'db:draft-get-latest': ['chapterNumber', 'expectedProjectPath'],
+  'db:draft-get-finalized': ['chapterNumber', 'expectedProjectPath'],
+  'db:draft-get-max-finalized-chapter': ['expectedProjectPath'],
+  'db:draft-next-version': ['chapterNumber', 'expectedProjectPath'],
+  'db:draft-update-status': ['id', 'status', 'wordCount', 'expectedProjectPath'],
+  'db:draft-update-content': ['id', 'content', 'wordCount', 'expectedProjectPath'],
+  'db:draft-delete': ['id', 'expectedProjectPath'],
 }
 
 /** 频道 → Tauri 命令名（`channel:seg-name` → `channel_seg_name`）。 */

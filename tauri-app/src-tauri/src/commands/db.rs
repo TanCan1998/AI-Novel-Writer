@@ -16,6 +16,7 @@ use crate::commands::SimpleResult;
 use crate::repositories::blueprint_repository as blueprints;
 use crate::repositories::character_repository as characters;
 use crate::repositories::character_roster_repository as roster;
+use crate::repositories::draft_repository as drafts;
 use crate::repositories::project_core_repository as project_core;
 use crate::security::{
     assert_current_project_context, assert_required_expected_project_path, guard_message,
@@ -691,6 +692,408 @@ pub fn db_blueprint_character_sync_complete(
     )
 }
 
+// ===== 草稿（drafts 子域 S3-a，12 频道） =====
+
+/// `db:draft-create` 的 IPC 信封（对齐 `{ success, id?, error? }`）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftCreateResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// `db:draft-delete` 的 IPC 信封（对齐 `{ success, errorCode?, error? }`）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DraftDeleteResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+pub(crate) fn draft_create_inner(
+    state: &AppState,
+    params: &drafts::DraftCreateParams,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> DraftCreateResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| drafts::create(conn, params)));
+    match outcome {
+        Ok(id) => DraftCreateResult {
+            success: true,
+            id: Some(id),
+            error: None,
+        },
+        Err(error) => DraftCreateResult {
+            success: false,
+            id: None,
+            error: Some(mutating_error(error)),
+        },
+    }
+}
+
+pub(crate) fn draft_list_inner(
+    state: &AppState,
+    chapter_number: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Vec<drafts::DraftMeta>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| drafts::list_by_chapter(conn, chapter_number))
+}
+
+pub(crate) fn draft_list_all_inner(
+    state: &AppState,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Vec<drafts::DraftMeta>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(drafts::list_all)
+}
+
+pub(crate) fn draft_get_meta_inner(
+    state: &AppState,
+    id: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Option<drafts::DraftMeta>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| drafts::get_meta(conn, id))
+}
+
+pub(crate) fn draft_get_full_inner(
+    state: &AppState,
+    id: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Option<drafts::DraftFull>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| drafts::get_full(conn, id))
+}
+
+pub(crate) fn draft_get_latest_inner(
+    state: &AppState,
+    chapter_number: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Option<drafts::DraftMeta>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| drafts::get_latest_by_chapter(conn, chapter_number))
+}
+
+pub(crate) fn draft_get_finalized_inner(
+    state: &AppState,
+    chapter_number: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Option<drafts::DraftMeta>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| drafts::get_finalized_by_chapter(conn, chapter_number))
+}
+
+pub(crate) fn draft_get_max_finalized_chapter_inner(
+    state: &AppState,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<i64, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(drafts::get_max_finalized_chapter)
+}
+
+pub(crate) fn draft_next_version_inner(
+    state: &AppState,
+    chapter_number: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<i64, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| drafts::get_next_version(conn, chapter_number))
+}
+
+pub(crate) fn draft_update_status_inner(
+    state: &AppState,
+    id: i64,
+    status: &str,
+    word_count: Option<i64>,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> SimpleResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| drafts::update_status(conn, id, status, word_count)));
+    match outcome {
+        Ok(()) => SimpleResult {
+            success: true,
+            error: None,
+        },
+        Err(error) => SimpleResult {
+            success: false,
+            error: Some(mutating_error(error)),
+        },
+    }
+}
+
+/// `db:draft-update-content`：先复刻 controller 的前置检查（缺失/定稿只读文案），再写正文。
+pub(crate) fn draft_update_content_inner(
+    state: &AppState,
+    id: i64,
+    content: &str,
+    word_count: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> SimpleResult {
+    let outcome = guard_read(state, expected_project_path, session).and_then(|()| {
+        state.with_project_db(|conn| {
+            let Some(meta) = drafts::get_meta(conn, id)? else {
+                return Err(format!("草稿不存在：{id}"));
+            };
+            if meta.status == "finalized" {
+                return Err("已定稿正文为只读内容，不能再修改".to_string());
+            }
+            drafts::update_content(conn, id, content, word_count)
+        })
+    });
+    match outcome {
+        Ok(()) => SimpleResult {
+            success: true,
+            error: None,
+        },
+        Err(error) => SimpleResult {
+            success: false,
+            error: Some(mutating_error(error)),
+        },
+    }
+}
+
+pub(crate) fn draft_delete_inner(
+    state: &AppState,
+    id: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> DraftDeleteResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| drafts::delete(conn, id)));
+    match outcome {
+        Ok(()) => DraftDeleteResult {
+            success: true,
+            error_code: None,
+            error: None,
+        },
+        // 定稿删除入口：基线只回 `errorCode`，不带 `error` 文案
+        Err(message) if message == drafts::FINALIZED_DELETE_REQUIRED_MESSAGE => DraftDeleteResult {
+            success: false,
+            error_code: Some(drafts::FINALIZED_DELETE_REQUIRED_CODE.to_string()),
+            error: None,
+        },
+        Err(message) => DraftDeleteResult {
+            success: false,
+            error_code: None,
+            error: Some(mutating_error(message)),
+        },
+    }
+}
+
+/// `db:draft-create` —— 创建草稿（MUTATING）
+#[tauri::command]
+pub fn db_draft_create(
+    state: State<'_, AppState>,
+    params: drafts::DraftCreateParams,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> DraftCreateResult {
+    draft_create_inner(
+        state.inner(),
+        &params,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:draft-list` —— 列出章节草稿
+#[tauri::command]
+pub fn db_draft_list(
+    state: State<'_, AppState>,
+    chapter_number: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<drafts::DraftMeta>, String> {
+    draft_list_inner(
+        state.inner(),
+        chapter_number,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:draft-list-all` —— 列出全部草稿元数据
+#[tauri::command]
+pub fn db_draft_list_all(
+    state: State<'_, AppState>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<drafts::DraftMeta>, String> {
+    draft_list_all_inner(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:draft-get-meta` —— 读取草稿元数据
+#[tauri::command]
+pub fn db_draft_get_meta(
+    state: State<'_, AppState>,
+    id: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Option<drafts::DraftMeta>, String> {
+    draft_get_meta_inner(
+        state.inner(),
+        id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:draft-get-full` —— 读取草稿（含正文）
+#[tauri::command]
+pub fn db_draft_get_full(
+    state: State<'_, AppState>,
+    id: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Option<drafts::DraftFull>, String> {
+    draft_get_full_inner(
+        state.inner(),
+        id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:draft-get-latest` —— 读取章节最新草稿
+#[tauri::command]
+pub fn db_draft_get_latest(
+    state: State<'_, AppState>,
+    chapter_number: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Option<drafts::DraftMeta>, String> {
+    draft_get_latest_inner(
+        state.inner(),
+        chapter_number,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:draft-get-finalized` —— 读取章节定稿草稿
+#[tauri::command]
+pub fn db_draft_get_finalized(
+    state: State<'_, AppState>,
+    chapter_number: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Option<drafts::DraftMeta>, String> {
+    draft_get_finalized_inner(
+        state.inner(),
+        chapter_number,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:draft-get-max-finalized-chapter` —— 最大已定稿章节号（无则 0）
+#[tauri::command]
+pub fn db_draft_get_max_finalized_chapter(
+    state: State<'_, AppState>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<i64, String> {
+    draft_get_max_finalized_chapter_inner(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:draft-next-version` —— 下一个可用版本号
+#[tauri::command]
+pub fn db_draft_next_version(
+    state: State<'_, AppState>,
+    chapter_number: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<i64, String> {
+    draft_next_version_inner(
+        state.inner(),
+        chapter_number,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:draft-update-status` —— 更新草稿状态（MUTATING）
+#[tauri::command]
+pub fn db_draft_update_status(
+    state: State<'_, AppState>,
+    id: i64,
+    status: String,
+    word_count: Option<i64>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> SimpleResult {
+    draft_update_status_inner(
+        state.inner(),
+        id,
+        &status,
+        word_count,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:draft-update-content` —— 更新草稿正文（MUTATING）
+#[tauri::command]
+pub fn db_draft_update_content(
+    state: State<'_, AppState>,
+    id: i64,
+    content: String,
+    word_count: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> SimpleResult {
+    draft_update_content_inner(
+        state.inner(),
+        id,
+        &content,
+        word_count,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:draft-delete` —— 删除草稿（MUTATING，定稿需走定稿删除入口）
+#[tauri::command]
+pub fn db_draft_delete(
+    state: State<'_, AppState>,
+    id: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> DraftDeleteResult {
+    draft_delete_inner(
+        state.inner(),
+        id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1195,6 +1598,136 @@ mod tests {
         assert!(blueprint_character_sync_list_pending_inner(&state, &root, Some(&session))
             .unwrap()
             .is_empty());
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn draft_channels_test() {
+        let (state, root, session) = activated_state("draft");
+
+        // 读频道门禁
+        assert_eq!(
+            draft_list_all_inner(&state, &root, None).unwrap_err(),
+            "缺少项目会话上下文，已拒绝操作"
+        );
+        assert_eq!(
+            draft_list_all_inner(&state, "C:\\other", Some(&session)).unwrap_err(),
+            "检测到跨项目读写，已拒绝操作。"
+        );
+
+        let params = drafts::DraftCreateParams {
+            chapter_number: 1,
+            // 契约必传，但基线忽略入参 version、在事务内重新分配
+            version: Some(99),
+            source: "write".to_string(),
+            content: "第一章正文".to_string(),
+            word_count: 5,
+            source_dependencies: None,
+        };
+
+        // 写入门禁：缺会话 → MUTATING 包装
+        let denied = draft_create_inner(&state, &params, &root, None);
+        assert!(!denied.success);
+        assert_eq!(
+            denied.error.as_deref(),
+            Some("Error: 缺少项目会话上下文，已拒绝操作")
+        );
+
+        let created = draft_create_inner(&state, &params, &root, Some(&session));
+        assert!(created.success, "创建应成功：{:?}", created.error);
+        let id = created.id.expect("应返回草稿 ID");
+
+        let list = draft_list_inner(&state, 1, &root, Some(&session)).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].version, 1, "version 必须由事务分配，而非入参 99");
+        assert_eq!(
+            draft_next_version_inner(&state, 1, &root, Some(&session)).unwrap(),
+            2
+        );
+
+        let full = draft_get_full_inner(&state, id, &root, Some(&session))
+            .unwrap()
+            .expect("应读到草稿正文");
+        assert_eq!(full.content, "第一章正文");
+        assert_eq!(full.meta.id, id);
+        assert!(draft_get_meta_inner(&state, 9999, &root, Some(&session))
+            .unwrap()
+            .is_none());
+        assert!(draft_get_finalized_inner(&state, 1, &root, Some(&session))
+            .unwrap()
+            .is_none());
+
+        // 更新正文
+        let updated = draft_update_content_inner(&state, id, "改后正文", 4, &root, Some(&session));
+        assert!(updated.success, "更新应成功：{:?}", updated.error);
+        assert_eq!(
+            draft_get_full_inner(&state, id, &root, Some(&session))
+                .unwrap()
+                .unwrap()
+                .content,
+            "改后正文"
+        );
+
+        // 更新状态
+        assert!(draft_update_status_inner(&state, id, "revised", None, &root, Some(&session)).success);
+        assert_eq!(
+            draft_get_meta_inner(&state, id, &root, Some(&session))
+                .unwrap()
+                .unwrap()
+                .status,
+            "revised"
+        );
+
+        // 草稿不存在的前置文案（controller 层）
+        let missing = draft_update_content_inner(&state, 9999, "x", 1, &root, Some(&session));
+        assert!(!missing.success);
+        assert_eq!(missing.error.as_deref(), Some("Error: 草稿不存在：9999"));
+
+        assert_eq!(
+            draft_get_max_finalized_chapter_inner(&state, &root, Some(&session)).unwrap(),
+            0
+        );
+
+        // 删除普通草稿
+        let deleted = draft_delete_inner(&state, id, &root, Some(&session));
+        assert!(deleted.success, "删除应成功：{:?}", deleted.error);
+        assert!(deleted.error_code.is_none());
+        assert!(draft_list_all_inner(&state, &root, Some(&session)).unwrap().is_empty());
+
+        // 定稿草稿：删除→errorCode；正文→只读文案
+        let again = draft_create_inner(&state, &params, &root, Some(&session));
+        let finalized_id = again.id.expect("应返回草稿 ID");
+        state
+            .with_project_db(|conn| {
+                conn.execute(
+                    "UPDATE drafts SET status = 'finalized' WHERE id = ?1",
+                    [finalized_id],
+                )
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        assert_eq!(
+            draft_get_max_finalized_chapter_inner(&state, &root, Some(&session)).unwrap(),
+            1
+        );
+
+        let blocked = draft_delete_inner(&state, finalized_id, &root, Some(&session));
+        assert!(!blocked.success);
+        assert_eq!(
+            blocked.error_code.as_deref(),
+            Some("FINALIZED_DRAFT_DELETE_REQUIRED")
+        );
+        assert!(blocked.error.is_none(), "定稿删除入口只回 errorCode");
+
+        let read_only =
+            draft_update_content_inner(&state, finalized_id, "改", 1, &root, Some(&session));
+        assert!(!read_only.success);
+        assert_eq!(
+            read_only.error.as_deref(),
+            Some("Error: 已定稿正文为只读内容，不能再修改")
+        );
 
         cleanup(&root);
     }

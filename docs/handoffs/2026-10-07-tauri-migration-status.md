@@ -7,18 +7,18 @@
 
 ---
 
-## 快照（最后更新：2026-10-07 · 第十三次）
+## 快照（最后更新：2026-10-07 · 第十四次）
 
 | 项 | 值 |
 |---|---|
 | 仓库 | **`TanCan1998/Lorekeeper`**（原名 `AI-Novel-Writer`；仍为 `EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork） |
 | 分支 | `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm 包 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 当前阶段 | **批次 C 进行中**：`project_core` ✅、`characters/roster` ✅（`69fc50c`）、**`blueprints` 11 频道全部 ✅（S2-a/b/c）**；下一步 **批次 C 下一子域：`drafts`（16 频道）** |
-| 已注册命令 | **52**（骨架 1 + A 11 + B 22 + C project_core 4 + characters 3 + blueprints 11） |
+| 当前阶段 | **批次 C 进行中**：`project_core` ✅、`characters/roster` ✅（`69fc50c`）、`blueprints` 11 频道 ✅、**`drafts` 12/16 频道 ✅（S3-a；余 4 频道随批次 E）**；下一步 **`revisions`（9 频道）** |
+| 已注册命令 | **64**（骨架 1 + A 11 + B 22 + C project_core 4 + characters 3 + blueprints 11 + drafts 12） |
 | 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后 |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`） |
-| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **114/114** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 |
+| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **128/128** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 |
 
 ---
 
@@ -186,26 +186,70 @@
 
 ---
 
-## 下一步：批次 C 下一子域 `drafts`（16 频道）
+## 本次更新（第十四次：`drafts` S3-a — 草稿基础读写 12 频道）
 
-- 建 `src-tauri/src/repositories/draft_repository.rs`；`db/schema.rs` 已有 `contents` / `drafts` /
-  `finalization_outbox` 建表（drafts 子域迁移时不再重复建表）。
-- 逐条对照 `electron/repositories/draft-repository.ts`；注意：
-  - `db:draft-import-finalized-batch` / `db:draft-create` / `db:draft-update-status` /
-    `db:draft-update-content` / `db:draft-delete` 属 MUTATING；
-  - 依赖 `draft-source-guard.ts`（`SOURCE_DRAFT_CHANGED` 等错误码）与
-    `draft-source-dependency.ts` 的共享类型；
-  - 蓝图/角色同步所需 `finalization_outbox` 已在 schema 就位。
-- 每子域固定流程：仓储 + 命令 + `ipc-client` 登记 + `cargo check`（0 告警）+
-  `cargo test --lib` + `pnpm typecheck/lint` → 单独 commit。
+### 1. `repositories/content_repository.rs`（新）
+
+平移 `electron/repositories/content-repository.ts`：`create` / `get_body` / `update_body` / `delete`。
+删除受 `ON DELETE RESTRICT` 外键保护时失败（由调用方决定是否忽略，对齐基线）。
+
+### 2. `repositories/draft_repository.rs`（新，本子域核心）
+
+逐条对齐 `electron/repositories/draft-repository.ts`：
+
+| 内容 | 要点 |
+|---|---|
+| `DraftMeta` / `DraftFull` | `DraftFull` 用 `#[serde(flatten)]` 序列化为**扁平结构**（对齐 `DraftFull extends DraftMeta`） |
+| `DraftSourceDependency` | `kind` 可选（缺失 = 旧行候选依赖）；`chapterNumber` / `finalizationId` 按 kind 条件存在 |
+| `parse_dependencies` | 逐条复刻基线校验（hash 64-hex、安全整数、重复 ID、kind 与字段组合、≤500 项）；任一非法则**整体失效** |
+| `dependency_states` | BFS 分块（每批 500）拉取依赖状态，含 `authoritative_finalized`（`NOT EXISTS` 子查询）与 receipt 快照比对 |
+| `dependency_lineage_is_current` | **显式栈**实现的传递闭包校验（避免深链递归爆栈），逐分支对齐基线的 visiting/memo 语义 |
+| `DRAFT_META_SELECT` | `LEFT JOIN finalization_outbox`（仅定稿行取 `chapter_title`） |
+| `create` | 单事务：校验依赖 → 原子分配 version（**忽略入参 version**）→ 写 contents → 写 drafts |
+| `update_status` | 定稿不可逆：finalized→其它拒绝；非 finalized→finalized 拒绝（必须走原子定稿提交） |
+| `update_content` | 已定稿拒绝；其它更新 contents + word_count |
+| `delete` | 同事务内校验状态；定稿返回 `FINALIZED_DELETE_REQUIRED_MESSAGE`（命令层据它回 `errorCode`）；contents 清理失败静默忽略 |
+| 读 API | `list_by_chapter` / `list_all` / `get_meta` / `get_full` / `get_latest_by_chapter` / `get_finalized_by_chapter` / `get_next_version` / `get_max_finalized_chapter` |
+
+- 哈希复用 `character_roster_repository::hash_text`（`pub(crate)`）；**零新增依赖**。
+
+### 3. `commands/db.rs` / `lib.rs` / `ipc-client.ts`
+
+- 12 命令：`create`（MUTATING，信封 `{success,id?,error?}`）、6 读频道、
+  `get-max-finalized-chapter` / `next-version`、`update-status` / `update-content`（MUTATING）、
+  `delete`（MUTATING，信封 `{success,errorCode?,error?}`）。
+- `db:draft-update-content` 复刻 controller 的**前置检查顺序**（「草稿不存在：{id}」/「已定稿正文为只读内容，不能再修改」）。
+- `lib.rs` 注册（**52 → 64**）；`ipc-client.ts` 登记 12 个频道参数名。
+
+### 4. 验证与测试
+
+新增 Rust 测试 **14 个**（content 2 + draft 11 + 命令 1）：版本分配与读 API、非法/过期依赖拒绝、
+依赖变旧标记（含**传递闭包**）、定稿不可逆规则、正文只读、删除与定稿删除入口、
+最大定稿章节、`parse_dependencies` 规则、序列化形状、命令门禁端到端。
+
+结果：`cargo check --all-targets` **0 告警** · `cargo test --lib` **128/128** ·
+`pnpm typecheck` / `pnpm run lint` 均 exit 0。
+
+---
+
+## 下一步：`revisions`（9 频道）与 drafts 余项
+
+- **`drafts` 余 4 频道**（`db:draft-authority-sequence`、`db:draft-export-snapshot`、
+  `db:draft-export-authority-current`、`db:draft-import-finalized-batch`）依赖
+  `FinalizationRepository` / `FinalizedDraftImportRepository`，**随批次 E** 落地（盘点文档亦将其归入 E）。
+- **下一子域 `revisions`（9 频道）**：`db:revision-{create,replace-pending,list,get-pending,get-full,next-index,merge,mark-merged,mark-discarded}`；
+  `create`/`replace-pending` 支持 `expectedSource` 守卫（`errorCode: SOURCE_DRAFT_CHANGED`），
+  `merge` 返回幂等收据；需移植 `electron/repositories/draft-source-guard.ts` 的守门语义。
 
 ---
 
 ## 遗留项（沿用 2026-10-06 快照）
 
-- 未验证：批次 C **GUI 实机验证**（打开真实项目读写 project_core/角色/蓝图）、
+- 未验证：批次 C **GUI 实机验证**（打开真实项目读写 project_core/角色/蓝图/草稿）、
   双栈同库行为对照、`vitest` 全量超时定位、`cargo fmt --check` 未纳入验收。
 - 押后：L3（`.vela` → `.lorekeeper`）、可见品牌（`brand.ts` / i18n 标题）。
 - 未迁频道的错误文案友好化（遗留项 12）。
 - 批次 G 需要的 `BlueprintRepository.getCommittedRangeOperation`（无 IPC 频道，被
   `import-run-repository.ts` 使用）尚未移植，随批次 G 一并落地。
+- `DraftRepository.clearAll`（服务 `db:project-clear-generated-data`）尚未移植；依赖的
+  `revisions` / `reviews` / `post_process_*` / `summary_snapshots` 建表也待相应子域补充。
