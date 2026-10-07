@@ -1,10 +1,23 @@
 /**
- * 渲染进程的 IPC 客户端 — 类型安全的主进程通信封装
+ * 渲染进程的 IPC 客户端 — 类型安全的后端通信封装（Tauri 底层）
  *
  * 用法：
  *   import { ipc } from '@/services/ipc-client'
  *   const result = await ipc.invoke('project:create', { name: '...' })
+ *
+ * 迁移说明（docs/handoffs/2026-10-06-tauri-migration-status.md）：
+ * - 原 Electron 底层为 preload 注入的 `window.velaAPI.invoke(channel, ...args)`
+ *   （可变位置参数）；Tauri 2 的 `invoke(cmd, args)` 使用命名参数对象。
+ * - 频道 → 命令名映射为机械规则：`config:get` → `config_get`、
+ *   `official-homepage:open` → `official_homepage_open`（`:`/`-` → `_`）。
+ * - 位置参数 → 命名参数依赖 `CHANNEL_ARG_NAMES` 登记表（频道 → Rust 命令
+ *   参数名 camelCase 序列，与 `src/shared/ipc-channels.ts` 的 args 位置一一对应）。
+ *   批次迁移时在此登记；未登记的非空参频道立即抛错，防止静默错配。
+ * - 项目域频道沿用「尾部注入 projectSession」约定：Tauri 下作为命名参数
+ *   `projectSession` 传入，对应 Rust 命令尾参 `project_session`。
  */
+import { invoke as tauriInvoke } from '@tauri-apps/api/core'
+import { listen as tauriListen, once as tauriOnce } from '@tauri-apps/api/event'
 import type {
   AllInvokeChannels,
   AllEventChannels,
@@ -14,38 +27,59 @@ import type {
 import type { ProjectSessionContext } from '../shared/ipc-channels'
 import { getActiveProjectSessionContext } from '../shared/project-session-context'
 
-/** 从 preload 暴露的 velaAPI */
-interface VelaAPI {
-  invoke: (channel: string, ...args: unknown[]) => Promise<unknown>
-  on: (channel: string, callback: (...args: unknown[]) => void) => () => void
-  once: (channel: string, callback: (...args: unknown[]) => void) => void
-  send: (channel: string, ...args: unknown[]) => void
-  setZoomLevel: (level: number) => void
-  setZoomFactor: (factor: number) => void
-  getZoomLevel: () => number
+/**
+ * 频道 → invoke 命名参数名登记表（camelCase，与 Rust `#[tauri::command]`
+ * 参数名的 camelCase 形式对应）。
+ *
+ * - 批次 A：config / window / skin / official-homepage / model-provider-resource
+ * - 批次 B+ 迁移时在此追加登记；无参频道无需登记。
+ */
+const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
+  'config:set': ['config'],
+  'skin:execute': ['command'],
+  'window:resolve-close': ['requestId', 'decision'],
+  'model-provider-resource:open': ['resource'],
 }
 
-/** 获取 velaAPI（由 preload 注入到 window） */
-function getAPI(): VelaAPI {
-  const api = (window as unknown as { velaAPI: VelaAPI }).velaAPI
-  if (!api) {
-    // 浏览器模式下的降级处理（开发时直接浏览器打开的情况）
-    console.warn('[Vela IPC] velaAPI 未注入，可能不在 Electron 环境中运行')
-    return {
-      invoke: async () => { throw new Error('不在 Electron 环境中') },
-      on: () => () => {},
-      once: () => {},
-      send: () => {},
-      setZoomLevel: () => {},
-      setZoomFactor: () => {},
-      getZoomLevel: () => 0,
-    }
-  }
-  return api
+/** 频道 → Tauri 命令名（`channel:seg-name` → `channel_seg_name`）。 */
+function toCommandName(channel: string): string {
+  return channel.replace(/[:-]/g, '_')
+}
+
+/** 是否运行在 Tauri 环境（由 Tauri 注入的内部全局判定）。 */
+function isTauri(): boolean {
+  return typeof window !== 'undefined'
+    && !!(window as unknown as { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__
 }
 
 /**
- * 这些请求的授权来自用户选择后由主进程签发的 grant，或固定 app-data 边界；
+ * 把契约的定位参数数组转成 Tauri invoke 的命名参数对象，
+ * 并按会话租约约定（ADR 0001）附加 `projectSession` 尾参。
+ */
+function buildNamedArgs(
+  channel: string,
+  args: readonly unknown[],
+  projectSession?: ProjectSessionContext,
+): Record<string, unknown> {
+  const named: Record<string, unknown> = {}
+  if (args.length > 0) {
+    const names = CHANNEL_ARG_NAMES[channel]
+    if (!names) {
+      throw new Error(`[Tauri 适配] 频道 ${channel} 尚未迁移（参数名未登记），已拒绝调用`)
+    }
+    if (args.length > names.length) {
+      throw new Error(`[Tauri 适配] 频道 ${channel} 传参 ${args.length} 个，超过契约登记的 ${names.length} 个`)
+    }
+    args.forEach((value, index) => { named[names[index]] = value })
+  }
+  if (projectSession) {
+    named.projectSession = projectSession
+  }
+  return named
+}
+
+/**
+ * 这些请求的授权来自用户选择后由后端签发的 grant，或固定 app-data 边界；
  * 它们绝不能借用、也不需要当前项目会话。
  */
 function isCapabilityOrAppDataChannel(channel: string): boolean {
@@ -71,20 +105,21 @@ function invokeWithSession<C extends InvokeChannel>(
   args: AllInvokeChannels[C]['args'],
   context?: ProjectSessionContext,
 ): Promise<AllInvokeChannels[C]['return']> {
-  if (!isProjectScopedChannel(channel)) {
-    return getAPI().invoke(channel, ...args) as Promise<AllInvokeChannels[C]['return']>
+  let projectSession: ProjectSessionContext | undefined
+  if (isProjectScopedChannel(channel)) {
+    projectSession = context ?? getActiveProjectSessionContext() ?? undefined
+    if (!projectSession) {
+      throw new Error('缺少当前项目会话，已拒绝项目数据访问')
+    }
   }
-  const projectSession = context ?? getActiveProjectSessionContext()
-  if (!projectSession) {
-    throw new Error('缺少当前项目会话，已拒绝项目数据访问')
-  }
-  return getAPI().invoke(channel, ...args, projectSession) as Promise<AllInvokeChannels[C]['return']>
+  const named = buildNamedArgs(channel, args, projectSession)
+  return tauriInvoke(toCommandName(channel), named) as Promise<AllInvokeChannels[C]['return']>
 }
 
 /** 类型安全的 IPC 客户端 */
 export const ipc = {
   /**
-   * 调用主进程并等待返回值（类型安全）
+   * 调用后端命令并等待返回值（类型安全）
    *
    * @example
    * const result = await ipc.invoke('project:create', { name: '我的小说', path: '/path', genre: '玄幻', targetAudience: '男频' })
@@ -112,7 +147,7 @@ export const ipc = {
   },
 
   /**
-   * 监听主进程推送的事件（返回取消订阅函数）
+   * 监听后端推送的事件（返回取消订阅函数）
    *
    * @example
    * const unsub = ipc.on('llm:stream-chunk', (data) => console.log(data.chunk))
@@ -123,7 +158,20 @@ export const ipc = {
     channel: C,
     callback: (data: AllEventChannels[C]) => void,
   ): (() => void) => {
-    return getAPI().on(channel, callback as (...args: unknown[]) => void)
+    const unlisten = tauriListen(channel, (event) => {
+      callback(event.payload as AllEventChannels[C])
+    })
+    // Tauri listen 是异步注册；返回同步取消函数，与 Electron 版语义对齐
+    let cancelled = false
+    let actualUnlisten: (() => void) | null = null
+    unlisten.then((fn) => {
+      if (cancelled) fn()
+      else actualUnlisten = fn
+    })
+    return () => {
+      if (actualUnlisten) actualUnlisten()
+      else cancelled = true
+    }
   },
 
   /** 一次性监听 */
@@ -131,32 +179,41 @@ export const ipc = {
     channel: C,
     callback: (data: AllEventChannels[C]) => void,
   ) => {
-    getAPI().once(channel, callback as (...args: unknown[]) => void)
+    tauriOnce(channel, (event) => {
+      callback(event.payload as AllEventChannels[C])
+    }).catch((error) => {
+      console.error('[ipc-client.once] 事件监听注册失败:', channel, error)
+    })
   },
 
-  /** 单向发送（无返回值） */
+  /** 单向发送（无返回值，fire-and-forget） */
   send: (channel: string, ...args: unknown[]) => {
-    getAPI().send(channel, ...args)
+    tauriInvoke(toCommandName(channel), buildNamedArgs(channel, args))
+      .catch((error) => {
+        console.error('[ipc-client.send] 单向发送失败:', channel, error)
+      })
   },
 
-  /** 是否在 Electron 环境中 */
+  /** 是否有可用的 IPC 后端（Tauri 2；保留原属性名以对齐基线调用面） */
   get isElectron(): boolean {
-    return typeof window !== 'undefined'
-      && !!(window as unknown as { velaAPI: VelaAPI }).velaAPI
+    return isTauri()
   },
 
-  /** 设置窗口缩放级别 */
+  /** 设置窗口缩放级别（阶段 3 迁移项：Tauri webview zoom 绑定待接） */
   setZoomLevel: (level: number) => {
-    getAPI().setZoomLevel(level)
+    void level
+    console.warn('[ipc-client] setZoomLevel 尚未在 Tauri 侧实现（阶段 3 迁移项）')
   },
 
-  /** 设置绝对缩放比例 */
+  /** 设置绝对缩放比例（阶段 3 迁移项） */
   setZoomFactor: (factor: number) => {
-    getAPI().setZoomFactor(factor)
+    void factor
+    console.warn('[ipc-client] setZoomFactor 尚未在 Tauri 侧实现（阶段 3 迁移项）')
   },
 
-  /** 获取当前缩放级别 */
+  /** 获取当前缩放级别（阶段 3 迁移项） */
   getZoomLevel: () => {
-    return getAPI().getZoomLevel()
+    console.warn('[ipc-client] getZoomLevel 尚未在 Tauri 侧实现（阶段 3 迁移项）')
+    return 0
   }
 }
