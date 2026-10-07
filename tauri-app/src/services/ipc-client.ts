@@ -78,6 +78,7 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'db:blueprint-update-notes': ['chapterNumber', 'notes', 'expectedProjectPath'],
   'db:blueprint-delete': ['chapterNumber', 'expectedProjectPath'],
   'db:blueprint-clear-all': ['expectedProjectPath'],
+  'db:blueprint-commit-range': ['request', 'expectedProjectPath'],
 }
 
 /** 频道 → Tauri 命令名（`channel:seg-name` → `channel_seg_name`）。 */

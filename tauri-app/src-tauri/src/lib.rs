@@ -78,6 +78,7 @@ pub fn run() {
             commands::db_blueprint_update_notes,
             commands::db_blueprint_delete,
             commands::db_blueprint_clear_all,
+            commands::db_blueprint_commit_range,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

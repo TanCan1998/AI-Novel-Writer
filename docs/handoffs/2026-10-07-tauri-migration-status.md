@@ -7,18 +7,18 @@
 
 ---
 
-## 快照（最后更新：2026-10-07 · 第十一次）
+## 快照（最后更新：2026-10-07 · 第十二次）
 
 | 项 | 值 |
 |---|---|
 | 仓库 | **`TanCan1998/Lorekeeper`**（原名 `AI-Novel-Writer`；仍为 `EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork） |
 | 分支 | `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm 包 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 当前阶段 | **批次 C 进行中**：`project_core` ✅、`characters/roster` ✅（`69fc50c`）、**`blueprints` S2-a ✅ 完成**（本轮）；下一步 **S2-b**（`db:blueprint-commit-range`） |
-| 已注册命令 | **48**（骨架 1 + A 11 + B 22 + C project_core 4 + characters 3 + blueprints S2-a 7） |
+| 当前阶段 | **批次 C 进行中**：`project_core` ✅、`characters/roster` ✅（`69fc50c`）、**`blueprints` S2-a ✅ + S2-b ✅（本轮）**；下一步 **S2-c**（`db:blueprint-character-sync-*` 3 频道） |
+| 已注册命令 | **49**（骨架 1 + A 11 + B 22 + C project_core 4 + characters 3 + blueprints 8） |
 | 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后 |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`） |
-| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **101/101** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 |
+| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **109/109** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 |
 
 ---
 
@@ -95,19 +95,68 @@
 
 ---
 
-## 下一步：S2-b（1 频道）
+## 本次更新（第十二次：`blueprints` S2-b — 范围提交 1 频道）
 
-`db:blueprint-commit-range` —— 需实现（基线与 Rust 两侧对照）：
+### 1. `repositories/blueprint_repository.rs`（S2-b）
 
-- `canonicalize` / `commit_payload_hash`（SHA-256，键序规范化；可复用 `sha2` crate，
-  已在 `Cargo.lock`，无需新增下载）
-- `assert_exact_range` / `read_exact_range`（范围完整且唯一，`full` 模式必须从第 1 章起）
-- 幂等提交事务 + 回读校验（`same_persisted_blueprint`）+ `blueprint_commit_operations` 落库
-  + 同步创建 `blueprint-sync-<op>` 待处理操作
-- 返回 `{ success, receipt?, error? }`，receipt 含 `characterSyncInput` / `characterSyncOperation`
+新增（逐条对齐 `electron/repositories/blueprint-repository.ts` 的 `commitRange` 链）：
 
-随后 **S2-c**（3 频道）：`db:blueprint-character-sync-{list-pending,get,complete}`，
-依赖 `CharacterRosterRepository` 回读与事实校验。
+| 函数 | 对齐基线 |
+|---|---|
+| `canonicalize_value` / `canonical_json` | `canonicalize`（对象按键排序、数组递归） |
+| `commit_payload_hash` | `commitPayloadHash`（SHA-256；复用 `character_roster_repository::hash_text`，已提为 `pub(crate)`） |
+| `assert_exact_range` | `assertExactRange`（5 类错误文案逐字一致，含 en dash 范围文案） |
+| `read_exact_range` | `readExactRange`（读回后用快照重跑范围断言） |
+| `snapshot_with_character_sync_facts` | 同名（叠加冻结的 `relationshipHints` / `newCharacterCandidates`） |
+| `same_persisted_blueprint` | 同名（10 个持久化字段，关系载荷不参与） |
+| `read_character_sync_operation` / `row_to_character_sync_operation` / `parse_completion_receipt` | 同名（含 pending/completed 与回执的一致性判定） |
+| `authoritative_character_sync_completion_receipt` | 同名（roster 状态 + 事实校验 + 操作证据 + 64-hex 校验） |
+| `assert_authoritative_character_sync_completion` | 同名（规范 JSON 比对） |
+| `blueprint_character_sync_fact_error` + `relationship_facts` / `relationship_satisfied` / `relationship_endpoint` | 对齐 `src/shared/blueprint-character-sync-evidence.ts`（含 `from ?? source` / `to ?? target` 语义、`相关` 缺省、legacy 文本跳过） |
+| `commit_range` | `commitRange`（幂等分支 + 新提交分支，单事务，回读一致性校验） |
+| `character_sync_operation_id` | 同名（`blueprint-sync-<op>`） |
+
+- **零新增依赖**（SHA-256 走已有 `sha2`，时间戳全部由 SQLite `datetime('now')` 产生）。
+- 新回执类型：`BlueprintCommitRangeReceipt` / `BlueprintCharacterSyncOperation` /
+  `BlueprintCharacterSyncCompletionReceipt` / `BlueprintCharacterSyncCompletionRosterReceipt`。
+
+### 2. 范围调整说明（相对第十次拆解）
+
+原拆解把 `snapshot_with_character_sync_facts` / `same_persisted_blueprint` /
+`read_character_sync_operation` / authoritative 校验归入 S2-c。但 `commit-range` 的**回执构造**与
+**幂等读回路径**都直接依赖它们（`assert_authoritative_character_sync_completion` 在
+`receipt_from_existing_operation` 中被调用），拆到 S2-c 会造成跨 commit 的行为真空。
+故**提前到 S2-b 落地**；S2-c 相应缩为「3 个命令的接线 + `list_pending` 查询 +
+`complete` 的 UPDATE 事务」。
+
+### 3. `commands/db.rs` / `lib.rs` / `ipc-client.ts`
+
+- 新增命令 `db:blueprint-commit-range`（MUTATING，失败走 `mutating_error`），
+  信封 `BlueprintCommitRangeResult { success, receipt?, error? }`。
+- `lib.rs` 注册（**48 → 49**）；`ipc-client.ts` 登记
+  `'db:blueprint-commit-range': ['request', 'expectedProjectPath']`。
+
+### 4. 验证与测试
+
+新增 Rust 测试 **8 个**（仓储 7 + 命令 1）：canonical 哈希字段敏感性 / 范围断言 5 类 /
+提交-幂等-冲突 / 两种模式的裁剪语义 / 回执冻结非表列字段 / 同步事实错误文案（含 legacy 跳过）/
+同步操作状态一致性 / 命令门禁与端到端提交。
+
+结果：`cargo check --all-targets` **0 告警** · `cargo test --lib` **109/109** ·
+`pnpm typecheck` / `pnpm run lint` 均 exit 0。
+
+---
+
+## 下一步：S2-c（3 频道）
+
+| 频道 | 参数 | 行为 |
+|---|---|---|
+| `db:blueprint-character-sync-list-pending` | `expectedProjectPath` | `listPendingCharacterSyncOperations`（`status='pending'`，按 `created_at, operation_id` 升序） |
+| `db:blueprint-character-sync-get` | `operationId` | 读单个操作 + `assert_authoritative_character_sync_completion` |
+| `db:blueprint-character-sync-complete` | `operationId` | MUTATING：`authoritative_*_receipt` → UPDATE 为 completed + 回执 + 回读校验 |
+
+复用 S2-b 已落地的 `read_character_sync_operation` 与 authoritative 校验（需把它们从 private
+提为模块内可见）；预期命令注册 49 → **52**。
 
 ---
 
@@ -117,3 +166,5 @@
   双栈同库行为对照、`vitest` 全量超时定位、`cargo fmt --check` 未纳入验收。
 - 押后：L3（`.vela` → `.lorekeeper`）、可见品牌（`brand.ts` / i18n 标题）。
 - 未迁频道的错误文案友好化（遗留项 12）。
+- 批次 G 需要的 `BlueprintRepository.getCommittedRangeOperation`（无 IPC 频道，被
+  `import-run-repository.ts` 使用）尚未移植，随批次 G 一并落地。

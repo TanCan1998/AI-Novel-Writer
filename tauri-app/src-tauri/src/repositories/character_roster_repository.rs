@@ -108,8 +108,8 @@ pub fn identity_key(name: &str) -> String {
     name.trim().to_lowercase()
 }
 
-/// 规范 JSON 的 SHA-256 小写 hex
-fn hash_text(value: &str) -> String {
+/// 规范 JSON 的 SHA-256 小写 hex（供角色名单与蓝图提交共享）
+pub(crate) fn hash_text(value: &str) -> String {
     let digest = Sha256::digest(value.as_bytes());
     let mut out = String::with_capacity(digest.len() * 2);
     for byte in digest {

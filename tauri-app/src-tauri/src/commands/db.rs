@@ -543,6 +543,55 @@ pub fn db_blueprint_clear_all(
     )
 }
 
+/// `db:blueprint-commit-range` 的 IPC 信封（对齐 `{ success, receipt?, error? }`）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlueprintCommitRangeResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt: Option<blueprints::BlueprintCommitRangeReceipt>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+pub(crate) fn blueprint_commit_range_inner(
+    state: &AppState,
+    request: &blueprints::BlueprintCommitRangeRequest,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> BlueprintCommitRangeResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| blueprints::commit_range(conn, request)));
+    match outcome {
+        Ok(receipt) => BlueprintCommitRangeResult {
+            success: true,
+            receipt: Some(receipt),
+            error: None,
+        },
+        Err(error) => BlueprintCommitRangeResult {
+            success: false,
+            receipt: None,
+            error: Some(mutating_error(error)),
+        },
+    }
+}
+
+/// `db:blueprint-commit-range` —— 逻辑范围只提交一次（MUTATING）
+#[tauri::command]
+pub fn db_blueprint_commit_range(
+    state: State<'_, AppState>,
+    request: blueprints::BlueprintCommitRangeRequest,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> BlueprintCommitRangeResult {
+    blueprint_commit_range_inner(
+        state.inner(),
+        &request,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -873,6 +922,119 @@ mod tests {
         assert_eq!(blueprint_get_all_inner(&state, &root, Some(&session)).unwrap().len(), 2);
         assert!(blueprint_clear_all_inner(&state, &root, Some(&session)).success);
         assert!(blueprint_get_all_inner(&state, &root, Some(&session)).unwrap().is_empty());
+
+        cleanup(&root);
+    }
+
+    fn commit_request(
+        mode: &str,
+        operation_id: &str,
+        start_chapter: i64,
+        end_chapter: i64,
+        chapters: &[i64],
+    ) -> blueprints::BlueprintCommitRangeRequest {
+        blueprints::BlueprintCommitRangeRequest {
+            mode: mode.to_string(),
+            operation_id: operation_id.to_string(),
+            start_chapter,
+            end_chapter,
+            blueprints: chapters.iter().map(|chapter| sample_blueprint(*chapter)).collect(),
+        }
+    }
+
+    #[test]
+    fn blueprint_commit_range_channels_test() {
+        let (state, root, session) = activated_state("commit-range");
+        let request = commit_request("full", "op-1", 1, 2, &[1, 2]);
+
+        // 门禁：缺会话 → MUTATING 包装
+        let denied = blueprint_commit_range_inner(&state, &request, &root, None);
+        assert!(!denied.success);
+        assert_eq!(
+            denied.error.as_deref(),
+            Some("Error: 缺少项目会话上下文，已拒绝操作")
+        );
+
+        // 范围不完整
+        let incomplete = blueprint_commit_range_inner(
+            &state,
+            &commit_request("full", "op-x", 1, 2, &[1]),
+            &root,
+            Some(&session),
+        );
+        assert!(!incomplete.success);
+        assert_eq!(
+            incomplete.error.as_deref(),
+            Some("Error: 蓝图提交必须完整且唯一地覆盖第 1–2 章")
+        );
+
+        // full 模式必须从第 1 章开始
+        let not_from_one = blueprint_commit_range_inner(
+            &state,
+            &commit_request("full", "op-y", 2, 2, &[2]),
+            &root,
+            Some(&session),
+        );
+        assert!(!not_from_one.success);
+        assert_eq!(
+            not_from_one.error.as_deref(),
+            Some("Error: 全量蓝图提交必须从第 1 章开始")
+        );
+
+        // 首次提交
+        let first = blueprint_commit_range_inner(&state, &request, &root, Some(&session));
+        assert!(first.success, "提交应成功：{:?}", first.error);
+        let receipt = first.receipt.expect("应返回回执");
+        assert!(!receipt.idempotent);
+        assert_eq!(receipt.mode, "full");
+        assert_eq!(receipt.chapter_numbers, vec![1, 2]);
+        assert_eq!(receipt.snapshot.len(), 2);
+        assert_eq!(receipt.character_sync_input.len(), 2);
+        assert_eq!(receipt.character_sync_operation.status, "pending");
+        assert_eq!(
+            receipt.character_sync_operation.operation_id,
+            "blueprint-sync-op-1"
+        );
+        assert!(receipt.character_sync_operation.completion_receipt.is_none());
+
+        // 幂等重放：同操作 ID + 同负载 → 回读回执
+        let replay = blueprint_commit_range_inner(&state, &request, &root, Some(&session));
+        assert!(replay.success, "重放应成功：{:?}", replay.error);
+        let replay_receipt = replay.receipt.expect("重放应返回回执");
+        assert!(replay_receipt.idempotent);
+        assert_eq!(replay_receipt.payload_hash, receipt.payload_hash);
+        assert_eq!(replay_receipt.chapter_numbers, vec![1, 2]);
+
+        // 同操作 ID + 不同负载 → 拒绝覆盖
+        let mut conflicting = request.clone();
+        conflicting.blueprints[1].title = "被篡改的标题".to_string();
+        let conflict = blueprint_commit_range_inner(&state, &conflicting, &root, Some(&session));
+        assert!(!conflict.success);
+        assert_eq!(
+            conflict.error.as_deref(),
+            Some("Error: 操作 ID 已被用于不同的蓝图提交，已拒绝覆盖")
+        );
+
+        // replace-range：仅覆盖第 2 章范围，保留范围外章节
+        let replaced = blueprint_commit_range_inner(
+            &state,
+            &commit_request("replace-range", "op-2", 2, 2, &[2]),
+            &root,
+            Some(&session),
+        );
+        assert!(replaced.success, "区间提交应成功：{:?}", replaced.error);
+        let all = blueprint_get_all_inner(&state, &root, Some(&session)).unwrap();
+        assert_eq!(all.len(), 2, "区间模式不得删除范围外章节");
+
+        // full 模式反向裁剪范围外章节
+        let shrunk = blueprint_commit_range_inner(
+            &state,
+            &commit_request("full", "op-3", 1, 1, &[1]),
+            &root,
+            Some(&session),
+        );
+        assert!(shrunk.success, "全量裁剪应成功：{:?}", shrunk.error);
+        assert_eq!(blueprint_get_all_inner(&state, &root, Some(&session)).unwrap().len(), 1);
 
         cleanup(&root);
     }

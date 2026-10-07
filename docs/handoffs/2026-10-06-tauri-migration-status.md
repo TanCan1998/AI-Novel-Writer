@@ -15,11 +15,11 @@
 | 分支 | `master`（与 `origin/master` 同步） |
 | 基准 SHA | `a0fd2f4`（阶段 0 锚点提交；后续批次 A–H 以此为起点） |
 | 产品身份 | **Lorekeeper（中文副名「设定司」）**；`identifier = com.tancan1998.lorekeeper`；npm 包名 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib`（原 `com.ai-novel-writer.app` 与 Electron **完全相同**，已消除） |
-| 当前阶段 | **批次 C 进行中**：`project_core` ✅、`characters/roster` ✅（`69fc50c`）、**`blueprints` S2-a ✅（2026-10-07，见 [07 快照](./2026-10-07-tauri-migration-status.md)）**；下一步 **S2-b**（`db:blueprint-commit-range`） |
+| 当前阶段 | **批次 C 进行中**：`project_core` ✅、`characters/roster` ✅（`69fc50c`）、**`blueprints` S2-a + S2-b ✅（2026-10-07，见 [07 快照](./2026-10-07-tauri-migration-status.md)）**；下一步 **S2-c**（`db:blueprint-character-sync-*`） |
 | 结构 | **独立迁移根 `tauri-app/`**（用户确认的方案 B），根目录三文件已还原上游原样 |
 | 双栈隔离 | ① 安装标识独立；② 全局数据根 = `AI_NOVEL_LOREKEEPER_HOME` 或 `~/.lorekeeper`（基线 `AI_NOVEL_VELA_HOME`/`~/.vela`，**不回退**）；③ 项目库 = `<root>/.vela/lorekeeper.db`（基线 `.vela/vela.db`）；④ `.vela` 目录本身仍共享（L3 押后） |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（遵循 AGENTS.md 第 3 条规则）；crates 走 rsproxy 镜像；VS Build Tools 已装；**脚本内需显式设 RUSTUP_HOME/CARGO_HOME** |
-| 已注册命令 | **48**（骨架 1 + A 11 + B 22 + C project_core 4 + C characters 3 + C blueprints S2-a 7） |
+| 已注册命令 | **49**（骨架 1 + A 11 + B 22 + C project_core 4 + C characters 3 + C blueprints 8） |
 | 未提交变更 | 无（本会话 4 个 commit 已全部推送：`69fc50c` characters/roster、`0d0e597` Lorekeeper 身份与隔离、`3c81ad1` 官方主页改指 fork、最后一个为仓库改名同步） |
 | 残留死文件 | ✅ 已删除（上会话残留 `state/commands.rs`、`commands/config/internal_exports.rs`） |
 | 未验证事项 | ① ~~`pnpm tauri dev` 窗口冒烟~~ → ✅ 已完成；② ~~批次 C `cargo check/test`~~ → ✅ **0 告警 + 94/94**；③ 批次 B/C 与 Electron 版行为对照未做；④ vitest 全量超时未定位；⑤ `cargo fmt --check` 未达标（未纳入验收）；⑥ **批次 C 未做 GUI 实机验证**（打开真实项目、读写 project_core/角色名单）；⑦ ~~隔离改造后未重跑 dev 冒烟~~ → ✅ **已完成（第九次）**：进程 `lorekeeper`、窗口标题 `Lorekeeper`、exe `target/debug/lorekeeper.exe`、vite@5190 正常，仅预期报错 `llm_list_models not found`（批次 D）；**注**：`~/.lorekeeper` 只在首次打开/创建/移除项目时才生成，本次冒烟未触发 |
