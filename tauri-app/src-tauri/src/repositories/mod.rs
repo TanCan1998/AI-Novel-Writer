@@ -2,4 +2,6 @@
 //!
 //! 约定：仓储只接收 `&Connection`，不持有全局状态；命令层负责会话门禁与错误形状。
 
+pub mod character_repository;
+pub mod character_roster_repository;
 pub mod project_core_repository;

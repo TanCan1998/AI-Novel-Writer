@@ -5,13 +5,16 @@
 //! 2. `expectedProjectPath` 必须与当前已打开项目一致（路径从不单独构成授权）；
 //! 3. 写频道失败返回 `{ success: false, error }`，读频道失败直接拒绝（invoke reject）。
 //!
-//! 本批次落地的子域：`db:close` + `project_core`（get / update / synopsis-commit）。
+//! 本批次落地的子域：`db:close` + `project_core`（get / update / synopsis-commit）
+//! + `characters`（get-all / roster-read / roster-commit）。
 //! 其余 `db:*` 子域（blueprint / draft / revision / import-run / llm 等）按批次 C 后续
 //! 子域逐个迁移。
 
 use tauri::State;
 
 use crate::commands::SimpleResult;
+use crate::repositories::character_repository as characters;
+use crate::repositories::character_roster_repository as roster;
 use crate::repositories::project_core_repository as project_core;
 use crate::security::{
     assert_current_project_context, assert_required_expected_project_path, guard_message,
@@ -50,6 +53,13 @@ fn guard_read(
     assert_project_path(state, expected_project_path)
 }
 
+/// 基线对 MUTATING 频道的失败统一走 `String(error)`，JS 的 `Error` 会带上 `"Error: "`
+/// 前缀（如「Error: 角色名单 revision 已过期，已拒绝覆盖」）。复刻该格式，避免前端
+/// 展示文案与 Electron 版出现差异。
+pub(crate) fn mutating_error(error: String) -> String {
+    format!("Error: {error}")
+}
+
 pub(crate) fn close_inner(
     state: &AppState,
     expected_project_path: &str,
@@ -60,7 +70,7 @@ pub(crate) fn close_inner(
     if let Err(error) = outcome {
         return SimpleResult {
             success: false,
-            error: Some(error),
+            error: Some(mutating_error(error)),
         };
     }
     state.close_project_database();
@@ -97,7 +107,7 @@ pub(crate) fn project_core_update_inner(
             eprintln!("[db:project-core-update] 失败: {error}");
             SimpleResult {
                 success: false,
-                error: Some(error),
+                error: Some(mutating_error(error)),
             }
         }
     }
@@ -109,19 +119,21 @@ pub(crate) fn project_core_synopsis_commit_inner(
     expected_project_path: &str,
     session: Option<&ProjectSessionContext>,
 ) -> SimpleResult {
-    let outcome = guard_read(state, expected_project_path, session).and_then(|()| {
-        state.with_project_db(|conn| project_core::commit_synopsis(conn, request))?
-            .then_some(())
-            .ok_or_else(|| project_core::SYNOPSIS_CONFLICT_MESSAGE.to_string())
-    });
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| project_core::commit_synopsis(conn, request)));
     match outcome {
-        Ok(()) => SimpleResult {
+        // 快照冲突是基线**显式返回**的裸文案（不经过 `String(err)` 包装）
+        Ok(false) => SimpleResult {
+            success: false,
+            error: Some(project_core::SYNOPSIS_CONFLICT_MESSAGE.to_string()),
+        },
+        Ok(true) => SimpleResult {
             success: true,
             error: None,
         },
         Err(error) => SimpleResult {
             success: false,
-            error: Some(error),
+            error: Some(mutating_error(error)),
         },
     }
 }
@@ -179,6 +191,105 @@ pub fn db_project_core_synopsis_commit(
     project_session: Option<ProjectSessionContext>,
 ) -> SimpleResult {
     project_core_synopsis_commit_inner(
+        state.inner(),
+        &request,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+// ===== 角色与角色名单（characters 子域） =====
+
+/// `db:character-roster-commit` 的 IPC 信封（对齐基线 `{ success, receipt?, error? }`）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CharacterRosterCommitResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt: Option<roster::CharacterRosterCommitReceipt>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+pub(crate) fn character_get_all_inner(
+    state: &AppState,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Vec<characters::CharacterData>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(characters::get_all)
+}
+
+pub(crate) fn character_roster_read_inner(
+    state: &AppState,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<roster::CharacterRosterSnapshot, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(roster::read)
+}
+
+/// 请求保持 `serde_json::Value`：校验与错误文案由 [`roster::normalize_request`] 收口，
+/// 与基线 `normalizeRequest` 逐条对齐。
+pub(crate) fn character_roster_commit_inner(
+    state: &AppState,
+    request: &serde_json::Value,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> CharacterRosterCommitResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| roster::commit(conn, request)));
+    match outcome {
+        Ok(receipt) => CharacterRosterCommitResult {
+            success: true,
+            receipt: Some(receipt),
+            error: None,
+        },
+        Err(error) => CharacterRosterCommitResult {
+            success: false,
+            receipt: None,
+            error: Some(mutating_error(error)),
+        },
+    }
+}
+
+/// `db:character-get-all` —— 读取全部角色卡（按定位排序）
+#[tauri::command]
+pub fn db_character_get_all(
+    state: State<'_, AppState>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<characters::CharacterData>, String> {
+    character_get_all_inner(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:character-roster-read` —— 读取结构化角色名单快照
+#[tauri::command]
+pub fn db_character_roster_read(
+    state: State<'_, AppState>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<roster::CharacterRosterSnapshot, String> {
+    character_roster_read_inner(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:character-roster-commit` —— 角色名单唯一提交 seam（MUTATING）
+#[tauri::command]
+pub fn db_character_roster_commit(
+    state: State<'_, AppState>,
+    request: serde_json::Value,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> CharacterRosterCommitResult {
+    character_roster_commit_inner(
         state.inner(),
         &request,
         &expected_project_path,
@@ -278,10 +389,8 @@ mod tests {
 
         let result = project_core_update_inner(&state, &data, &root, Some(&session));
         assert!(!result.success);
-        assert_eq!(
-            result.error.as_deref(),
-            Some(project_core::CHARACTERS_ARCH_READONLY_MESSAGE)
-        );
+        let expected = format!("Error: {}", project_core::CHARACTERS_ARCH_READONLY_MESSAGE);
+        assert_eq!(result.error.as_deref(), Some(expected.as_str()));
 
         cleanup(&root);
     }
@@ -357,6 +466,81 @@ mod tests {
             }),
         );
         assert!(!result.success);
-        assert_eq!(result.error.as_deref(), Some("项目租约已失效，已拒绝操作。"));
+        assert_eq!(
+            result.error.as_deref(),
+            Some("Error: 项目租约已失效，已拒绝操作。")
+        );
+    }
+
+    #[test]
+    fn character_roster_channels_guard_and_commit_test() {
+        let (state, root, session) = activated_state("roster");
+        let payload = serde_json::json!({
+            "operationId": "op-1",
+            "expectedRevision": 0,
+            "schemaVersion": 1,
+            "intent": "initialize",
+            "entries": [{
+                "name": "林清玄",
+                "role": "protagonist",
+                "gender": "",
+                "age": "",
+                "appearance": "",
+                "personality": "",
+                "background": "",
+                "abilities": "",
+                "motivation": "",
+                "relationships": [],
+                "arc": "",
+                "notes": ""
+            }],
+        });
+
+        let missing_session = character_roster_commit_inner(&state, &payload, &root, None);
+        assert!(!missing_session.success);
+        assert_eq!(
+            missing_session.error.as_deref(),
+            Some("Error: 缺少项目会话上下文，已拒绝操作")
+        );
+
+        let wrong_path =
+            character_roster_commit_inner(&state, &payload, "C:\\other", Some(&session));
+        assert!(!wrong_path.success);
+        assert_eq!(
+            wrong_path.error.as_deref(),
+            Some("Error: 检测到跨项目读写，已拒绝操作。")
+        );
+
+        let result = character_roster_commit_inner(&state, &payload, &root, Some(&session));
+        assert!(result.success, "提交应成功：{:?}", result.error);
+        let receipt = result.receipt.expect("应返回回执");
+        assert_eq!(receipt.revision, 1);
+        assert!(!receipt.idempotent);
+
+        // 校验失败同样走 MUTATING 包装
+        let invalid =
+            character_roster_commit_inner(&state, &serde_json::json!([1, 2, 3]), &root, Some(&session));
+        assert!(!invalid.success);
+        assert_eq!(
+            invalid.error.as_deref(),
+            Some("Error: 角色名单提交请求格式无效")
+        );
+
+        let characters = character_get_all_inner(&state, &root, Some(&session)).unwrap();
+        assert_eq!(characters.len(), 1);
+        assert_eq!(characters[0].name, "林清玄");
+
+        let snapshot = character_roster_read_inner(&state, &root, Some(&session)).unwrap();
+        assert_eq!(snapshot.revision, 1);
+        assert_eq!(
+            snapshot.migration_state,
+            roster::CharacterRosterMigrationState::Ready
+        );
+
+        // 读频道缺会话 → 直接拒绝（不包装）
+        let denied = character_get_all_inner(&state, &root, None).unwrap_err();
+        assert_eq!(denied, "缺少项目会话上下文，已拒绝操作");
+
+        cleanup(&root);
     }
 }

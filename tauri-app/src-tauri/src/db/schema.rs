@@ -8,7 +8,7 @@
 //!
 //! 批次 C 按子域推进：本文件只含 project_core 域，后续子域建表陆续追加。
 
-use rusqlite::{Connection, Result as SqlResult};
+use rusqlite::{Connection, OptionalExtension, Result as SqlResult};
 use std::collections::HashSet;
 
 /// project_core —— 项目主台账（NovelConfig + 架构四大件），恒为单行（`id = 'main'`）
@@ -48,10 +48,147 @@ CREATE TABLE IF NOT EXISTS project_core (
 );
 "#;
 
+/// blueprints —— 章节蓝图（`characters` 列表为 JSON 数组，角色改名需同步维护）
+pub const CREATE_BLUEPRINTS: &str = r#"
+CREATE TABLE IF NOT EXISTS blueprints (
+  chapter_number INTEGER PRIMARY KEY,
+  title TEXT NOT NULL DEFAULT '',
+  role TEXT DEFAULT '',
+  purpose TEXT DEFAULT '',
+  key_events TEXT DEFAULT '',
+  characters TEXT DEFAULT '[]',
+  suspense_hook TEXT DEFAULT '',
+  user_guidance TEXT DEFAULT '',
+  notes TEXT DEFAULT '',
+  notes_updated_at TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+"#;
+
+/// characters —— 角色卡（`currentState` 拍平为 `cs_*` 列，杜绝 JSON 大字段）
+pub const CREATE_CHARACTERS: &str = r#"
+CREATE TABLE IF NOT EXISTS characters (
+  name TEXT PRIMARY KEY,
+  role TEXT DEFAULT 'supporting',
+  gender TEXT DEFAULT '',
+  age TEXT DEFAULT '',
+  appearance TEXT DEFAULT '',
+  personality TEXT DEFAULT '',
+  background TEXT DEFAULT '',
+  abilities TEXT DEFAULT '',
+  motivation TEXT DEFAULT '',
+  relationships TEXT DEFAULT '',
+  arc TEXT DEFAULT '',
+  notes TEXT DEFAULT '',
+  cs_location TEXT DEFAULT '',
+  cs_power_level TEXT DEFAULT '',
+  cs_physical_state TEXT DEFAULT '',
+  cs_mental_state TEXT DEFAULT '',
+  cs_key_items TEXT DEFAULT '',
+  cs_recent_events TEXT DEFAULT '',
+  cs_updated_at_chapter INTEGER DEFAULT NULL,
+  cs_provenance TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+"#;
+
+/// contents —— 文本内容池（正文与元数据分离）
+pub const CREATE_CONTENTS: &str = r#"
+CREATE TABLE IF NOT EXISTS contents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  body TEXT NOT NULL DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+"#;
+
+/// drafts —— 草稿主线（`finalized` 即定稿）
+///
+/// 本子域只建表：角色名单的 `chapter_progress` 来源校验需要读 `drafts` 与
+/// `finalization_outbox`（对齐基线 `assertCurrentFinalizedSource`）。drafts 子域
+/// 迁移时不再重复建表，只补仓储与命令。
+pub const CREATE_DRAFTS: &str = r#"
+CREATE TABLE IF NOT EXISTS drafts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  chapter_number INTEGER NOT NULL,
+  version INTEGER NOT NULL,
+  status TEXT DEFAULT 'draft',
+  source TEXT DEFAULT 'write',
+  content_id INTEGER NOT NULL,
+  word_count INTEGER DEFAULT 0,
+  source_dependencies TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (content_id) REFERENCES contents(id) ON DELETE RESTRICT
+);
+CREATE INDEX IF NOT EXISTS idx_drafts_chapter ON drafts(chapter_number);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_drafts_chapter_version ON drafts(chapter_number, version);
+"#;
+
+/// finalization_outbox —— 定稿实体稿发布投影（SQLite 事实先提交，根目录实体稿异步发布）
+pub const CREATE_FINALIZATION_OUTBOX: &str = r#"
+CREATE TABLE IF NOT EXISTS finalization_outbox (
+  finalization_id TEXT PRIMARY KEY,
+  draft_id INTEGER NOT NULL UNIQUE,
+  chapter_number INTEGER NOT NULL,
+  chapter_title TEXT NOT NULL DEFAULT '',
+  content_hash TEXT NOT NULL,
+  content_revision INTEGER NOT NULL,
+  content_snapshot TEXT NOT NULL DEFAULT '',
+  target_file_name TEXT NOT NULL,
+  knowledge_document_id TEXT NOT NULL DEFAULT '',
+  publication_status TEXT NOT NULL DEFAULT 'pending',
+  last_error TEXT NOT NULL DEFAULT '',
+  published_at TEXT DEFAULT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (draft_id) REFERENCES drafts(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_finalization_outbox_status ON finalization_outbox(publication_status);
+"#;
+
+/// character_roster —— 结构化角色名单的并发控制/迁移/投影元数据
+///
+/// 角色条目本体始终留在 `characters` 表，这里绝不建并列 JSON 事实源。
+pub const CREATE_CHARACTER_ROSTER: &str = r#"
+CREATE TABLE IF NOT EXISTS character_roster_meta (
+  id TEXT PRIMARY KEY CHECK (id = 'main'),
+  schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+  revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
+  migration_state TEXT NOT NULL CHECK (
+    migration_state IN (
+      'empty',
+      'legacy_cards_preserved',
+      'legacy_markdown_pending',
+      'ready'
+    )
+  ),
+  legacy_markdown TEXT NOT NULL DEFAULT '',
+  projection_hash TEXT NOT NULL DEFAULT '',
+  fact_hash TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS character_roster_operations (
+  operation_id TEXT PRIMARY KEY,
+  payload_hash TEXT NOT NULL,
+  committed_revision INTEGER NOT NULL,
+  projection_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"#;
+
 /// 建表入口（幂等）：所有分批 DDL 在此汇总执行后再跑迁移
 pub fn create_tables(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(CREATE_PROJECT_CORE)?;
+    conn.execute_batch(CREATE_BLUEPRINTS)?;
+    conn.execute_batch(CREATE_CHARACTERS)?;
+    conn.execute_batch(CREATE_CONTENTS)?;
+    conn.execute_batch(CREATE_DRAFTS)?;
+    conn.execute_batch(CREATE_FINALIZATION_OUTBOX)?;
     migrate_project_core_legacy_columns(conn)?;
+    migrate_character_roster_schema(conn)?;
     Ok(())
 }
 
@@ -117,6 +254,65 @@ fn migrate_project_core_legacy_columns(conn: &Connection) -> SqlResult<()> {
         conn.execute_batch(statement)?;
         columns.insert(column.to_string());
     }
+
+    Ok(())
+}
+
+/// 角色名单 schema 收敛（逐条对齐 `character-roster-schema.ts: ensureCharacterRosterSchema`）
+///
+/// `read` / `commit` 每次都会调用（与基线一致），因此列补齐与首次建档必须幂等：
+/// 1. 建 `character_roster_meta` / `character_roster_operations`；
+/// 2. 为旧库补 `characters.cs_provenance` 与 `character_roster_meta.fact_hash`；
+/// 3. 首次建档时按「已有角色卡 → 旧图谱原文 → 空」判定迁移状态，原文只归档不解析。
+pub fn migrate_character_roster_schema(conn: &Connection) -> SqlResult<()> {
+    conn.execute_batch(CREATE_CHARACTER_ROSTER)?;
+
+    let character_columns = table_columns(conn, "characters")?;
+    if !character_columns.contains("cs_provenance") {
+        conn.execute_batch(
+            "ALTER TABLE characters ADD COLUMN cs_provenance TEXT NOT NULL DEFAULT '{}'",
+        )?;
+    }
+
+    let meta_columns = table_columns(conn, "character_roster_meta")?;
+    if !meta_columns.contains("fact_hash") {
+        conn.execute_batch(
+            "ALTER TABLE character_roster_meta ADD COLUMN fact_hash TEXT NOT NULL DEFAULT ''",
+        )?;
+    }
+
+    let has_meta: Option<i64> = conn
+        .query_row("SELECT 1 FROM character_roster_meta WHERE id = 'main'", [], |row| {
+            row.get(0)
+        })
+        .optional()?;
+    if has_meta.is_some() {
+        return Ok(());
+    }
+
+    let character_count: i64 =
+        conn.query_row("SELECT COUNT(*) FROM characters", [], |row| row.get(0))?;
+    let legacy_markdown: String = conn
+        .query_row(
+            "SELECT COALESCE(characters_arch, '') FROM project_core WHERE id = 'main'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()?
+        .unwrap_or_default();
+
+    let migration_state = if character_count > 0 {
+        "legacy_cards_preserved"
+    } else if !legacy_markdown.trim().is_empty() {
+        "legacy_markdown_pending"
+    } else {
+        "empty"
+    };
+
+    conn.execute(
+        "INSERT INTO character_roster_meta (id, schema_version, revision, migration_state, legacy_markdown, projection_hash, fact_hash) VALUES ('main', 1, 0, ?1, ?2, '', '')",
+        rusqlite::params![migration_state, legacy_markdown],
+    )?;
 
     Ok(())
 }
@@ -192,7 +388,8 @@ mod tests {
               id TEXT PRIMARY KEY DEFAULT 'main',
               project_name TEXT NOT NULL DEFAULT '',
               synopsis TEXT DEFAULT '',
-              worldbuilding TEXT DEFAULT ''
+              worldbuilding TEXT DEFAULT '',
+              characters_arch TEXT DEFAULT ''
             );
             INSERT INTO project_core (id, project_name, synopsis, worldbuilding)
             VALUES ('main', '旧项目', '旧大纲', '旧世界观');
@@ -234,5 +431,124 @@ mod tests {
         assert_eq!(protagonist_profile, "");
         assert_eq!(writing_language, "zh-CN");
         assert_eq!(threshold, 3);
+    }
+
+    #[test]
+    fn character_domain_tables_exist_test() {
+        let conn = memory_db();
+        create_tables(&conn).unwrap();
+        for table in [
+            "blueprints",
+            "characters",
+            "contents",
+            "drafts",
+            "finalization_outbox",
+            "character_roster_meta",
+            "character_roster_operations",
+        ] {
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                    [table],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1, "缺少表: {table}");
+        }
+    }
+
+    #[test]
+    fn character_roster_meta_first_build_state_test() {
+        // 空项目 → empty
+        let empty = memory_db();
+        create_tables(&empty).unwrap();
+        let state: String = empty
+            .query_row(
+                "SELECT migration_state FROM character_roster_meta WHERE id = 'main'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(state, "empty");
+
+        // 旧图谱原文非空 → legacy_markdown_pending，且原文只归档不解析
+        let legacy = memory_db();
+        legacy.execute_batch(CREATE_PROJECT_CORE).unwrap();
+        legacy
+            .execute_batch(
+                "INSERT INTO project_core (id, characters_arch) VALUES ('main', '# 旧角色图谱');",
+            )
+            .unwrap();
+        create_tables(&legacy).unwrap();
+        let (state, markdown): (String, String) = legacy
+            .query_row(
+                "SELECT migration_state, legacy_markdown FROM character_roster_meta WHERE id = 'main'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(state, "legacy_markdown_pending");
+        assert_eq!(markdown, "# 旧角色图谱");
+
+        // 已有结构化角色卡 → legacy_cards_preserved
+        let cards = memory_db();
+        cards.execute_batch(CREATE_PROJECT_CORE).unwrap();
+        cards.execute_batch(CREATE_CHARACTERS).unwrap();
+        cards
+            .execute("INSERT INTO characters (name) VALUES ('林清玄')", [])
+            .unwrap();
+        create_tables(&cards).unwrap();
+        let state: String = cards
+            .query_row(
+                "SELECT migration_state FROM character_roster_meta WHERE id = 'main'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(state, "legacy_cards_preserved");
+    }
+
+    #[test]
+    fn legacy_roster_gains_columns_without_resetting_meta_test() {
+        let conn = memory_db();
+        // 模拟第一版 roster 元数据：characters 无 cs_provenance，meta 无 fact_hash
+        conn.execute_batch(
+            r#"
+            CREATE TABLE characters (
+              name TEXT PRIMARY KEY,
+              role TEXT DEFAULT 'supporting'
+            );
+            CREATE TABLE character_roster_meta (
+              id TEXT PRIMARY KEY CHECK (id = 'main'),
+              schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+              revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
+              migration_state TEXT NOT NULL CHECK (
+                migration_state IN ('empty','legacy_cards_preserved','legacy_markdown_pending','ready')
+              ),
+              legacy_markdown TEXT NOT NULL DEFAULT '',
+              projection_hash TEXT NOT NULL DEFAULT '',
+              updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            INSERT INTO character_roster_meta (id, schema_version, revision, migration_state)
+            VALUES ('main', 1, 7, 'ready');
+            "#,
+        )
+        .unwrap();
+
+        create_tables(&conn).unwrap();
+
+        assert!(table_columns(&conn, "characters").unwrap().contains("cs_provenance"));
+        assert!(table_columns(&conn, "character_roster_meta").unwrap().contains("fact_hash"));
+        let (revision, state, fact_hash): (i64, String, String) = conn
+            .query_row(
+                "SELECT revision, migration_state, fact_hash FROM character_roster_meta WHERE id = 'main'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .unwrap();
+        // 既有元数据不被重置，只补列
+        assert_eq!(revision, 7);
+        assert_eq!(state, "ready");
+        assert_eq!(fact_hash, "");
     }
 }

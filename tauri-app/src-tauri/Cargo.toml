@@ -20,6 +20,9 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
+# 角色名单/蓝图/定稿的规范 JSON 哈希（SHA-256 小写 hex）。
+# 已随 tauri 依赖树存在于 Cargo.lock（0.10.9），声明为直接依赖不产生任何新下载。
+sha2 = "0.10"
 
 # 按需引入（不提前加，避免无用编译）：
 # - rusqlite（bundled feature，避免依赖系统 sqlite）→ 批次 C 数据库层

@@ -5,6 +5,7 @@
 //! - 项目域命令预留尾参 `project_session`（渲染层 ipc-client.ts 自动注入）并校验租约（ADR 0001）；
 //! - 仅新增，不改 Electron 代码；每批次迁移配 Rust 单元测试并通过 `cargo test`。
 
+mod character_role;
 mod commands;
 mod db;
 mod project_access;
@@ -66,6 +67,10 @@ pub fn run() {
             commands::db_project_core_get,
             commands::db_project_core_update,
             commands::db_project_core_synopsis_commit,
+            // 批次 C：角色与角色名单（characters 子域）
+            commands::db_character_get_all,
+            commands::db_character_roster_read,
+            commands::db_character_roster_commit,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");
