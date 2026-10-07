@@ -119,6 +119,12 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'db:post-process-mark-step-ok': ['runId', 'stepKey', 'expectedProjectPath'],
   'db:post-process-mark-step-failed': ['runId', 'stepKey', 'errorMsg', 'expectedProjectPath'],
   'db:post-process-is-all-passed': ['sourceType', 'sourceId', 'expectedProjectPath'],
+  // 批次 C：LLM 日志与摘要
+  'db:log-llm-call': ['call', 'expectedProjectPath'],
+  'db:get-llm-stats': ['expectedProjectPath'],
+  'db:get-llm-history': ['limit', 'expectedProjectPath'],
+  'db:save-summary-snapshot': ['chapterNumber', 'characterStates', 'expectedProjectPath'],
+  'db:get-latest-summary': ['expectedProjectPath'],
 }
 
 /** 频道 → Tauri 命令名（`channel:seg-name` → `channel_seg_name`）。 */

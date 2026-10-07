@@ -120,6 +120,12 @@ pub fn run() {
             commands::db_post_process_mark_step_ok,
             commands::db_post_process_mark_step_failed,
             commands::db_post_process_is_all_passed,
+            // 批次 C：LLM 日志与摘要
+            commands::db_log_llm_call,
+            commands::db_get_llm_stats,
+            commands::db_get_llm_history,
+            commands::db_save_summary_snapshot,
+            commands::db_get_latest_summary,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

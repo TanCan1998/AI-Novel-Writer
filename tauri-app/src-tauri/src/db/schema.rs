@@ -295,6 +295,46 @@ CREATE TABLE IF NOT EXISTS post_process_steps (
 );
 "#;
 
+/// llm_calls —— LLM 调用日志（统计与历史面板的事实源）
+pub const CREATE_LLM_CALLS: &str = r#"
+CREATE TABLE IF NOT EXISTS llm_calls (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  model_id TEXT NOT NULL,
+  model_name TEXT DEFAULT '',
+  purpose TEXT DEFAULT '',
+  prompt_tokens INTEGER DEFAULT 0,
+  completion_tokens INTEGER DEFAULT 0,
+  total_tokens INTEGER DEFAULT 0,
+  duration_ms INTEGER DEFAULT 0,
+  success INTEGER DEFAULT 1,
+  error_message TEXT DEFAULT '',
+  created_at TEXT DEFAULT (datetime('now'))
+);
+"#;
+
+/// summary_snapshots —— 跨用表：角色状态快照（含定稿连续性投影列）
+///
+/// `draft_id IS NULL` 的行是旧式快照（`getLatestSnapshot` 只看这些行）；
+/// 绑定定稿的行由连续性投影写入（批次 E）。
+pub const CREATE_SUMMARY_SNAPSHOTS: &str = r#"
+CREATE TABLE IF NOT EXISTS summary_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  draft_id INTEGER DEFAULT NULL,
+  chapter_number INTEGER NOT NULL,
+  character_states TEXT DEFAULT '',
+  chapter_notes TEXT NOT NULL DEFAULT '',
+  continuity_facts TEXT NOT NULL DEFAULT '[]',
+  character_state_candidates TEXT NOT NULL DEFAULT '[]',
+  source_finalization_id TEXT NOT NULL DEFAULT '',
+  source_content_hash TEXT NOT NULL DEFAULT '',
+  projection_generation INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (draft_id) REFERENCES drafts(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_summary_snapshots_draft
+  ON summary_snapshots(draft_id) WHERE draft_id IS NOT NULL;
+"#;
+
 /// character_roster —— 结构化角色名单的并发控制/迁移/投影元数据
 ///
 /// 角色条目本体始终留在 `characters` 表，这里绝不建并列 JSON 事实源。
@@ -337,6 +377,8 @@ pub fn create_tables(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(CREATE_REVISIONS)?;
     conn.execute_batch(CREATE_REVIEWS)?;
     conn.execute_batch(CREATE_POST_PROCESS)?;
+    conn.execute_batch(CREATE_LLM_CALLS)?;
+    conn.execute_batch(CREATE_SUMMARY_SNAPSHOTS)?;
     conn.execute_batch(CREATE_FINALIZATION_OUTBOX)?;
     migrate_project_core_legacy_columns(conn)?;
     migrate_character_roster_schema(conn)?;

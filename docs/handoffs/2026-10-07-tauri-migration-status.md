@@ -7,18 +7,18 @@
 
 ---
 
-## 快照（最后更新：2026-10-07 · 第十七次）
+## 快照（最后更新：2026-10-07 · 第十八次）
 
 | 项 | 值 |
 |---|---|
 | 仓库 | **`TanCan1998/Lorekeeper`**（原名 `AI-Novel-Writer`；仍为 `EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork） |
 | 分支 | `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm 包 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 当前阶段 | **批次 C 进行中**：`project_core` ✅、`characters/roster` ✅（`69fc50c`）、`blueprints` 11 ✅、`drafts` 12/16 ✅、`revisions` 9 ✅、`reviews` 5 ✅、**`post-process` 6 频道 ✅（2026-10-07）**；下一步 **`llm 日志/摘要`（5 频道）** |
-| 已注册命令 | **84**（骨架 1 + A 11 + B 22 + C：project_core 4 + characters 3 + blueprints 11 + drafts 12 + revisions 9 + reviews 5 + post-process 6） |
+| 当前阶段 | **批次 C 进行中**：`project_core` ✅、`characters/roster` ✅（`69fc50c`）、`blueprints` 11 ✅、`drafts` 12/16 ✅、`revisions` 9 ✅、`reviews` 5 ✅、`post-process` 6 ✅、**`llm 日志/摘要` 5 频道 ✅（2026-10-07）**；下一步 **`project 清理`（2 频道）** |
+| 已注册命令 | **89**（骨架 1 + A 11 + B 22 + C：project_core 4 + characters 3 + blueprints 11 + drafts 12 + revisions 9 + reviews 5 + post-process 6 + llm/摘要 5） |
 | 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后 |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`） |
-| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **152/152** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 |
+| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **160/160** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 |
 
 ---
 
@@ -350,15 +350,52 @@ MUTATING 命令复用。
 
 ---
 
-## 下一步：`llm 日志 / 摘要`（5 频道）
+## 本次更新（第十八次：`llm 日志/摘要` — 5 频道）
 
-`db:log-llm-call` / `db:get-llm-stats` / `db:save-summary-snapshot`（及 summary 读取侧）
-（`electron/repositories/llm-repository.ts` / `summary-repository.ts`）：
+### 1. `db/schema.rs`：新增 `CREATE_LLM_CALLS` 与 `CREATE_SUMMARY_SNAPSHOTS`
 
-- 需在 `db/schema.rs` 补 `llm_call_logs`（或实际表名）与 `summary_snapshots` 建表；
-- `db:get-llm-stats` 返回聚合统计（totalCalls/successfulCalls/…），需对照基线字段集；
-- `db:save-summary-snapshot` 为 MUTATING。
-- 之后仅剩 `project 清理`（2 频道，其中 `db:import-global-facts-commit` 依赖批次 G）。
+- `llm_calls`（表名是 `llm_calls`，非 `llm_call_logs`）；
+- `summary_snapshots` 按**最终列集**建表（含 `draft_id`/`chapter_notes`/`continuity_facts`/
+  `character_state_candidates`/`source_finalization_id`/`source_content_hash`/`projection_generation`）
+  + `idx_summary_snapshots_draft` 部分唯一索引。`continuity_projection_meta` / `consistency_exemptions`
+  属连续性/一致性豁免子域，留给批次 E。
+
+### 2. `repositories/llm_repository.rs`（新）
+
+| 内容 | 要点 |
+|---|---|
+| `log_call` | 入参保持 `serde_json::Value`（基线是 `Record<string, unknown>`）；`modelId` 非字符串即拒（对齐 NOT NULL 约束）；`success` 按 **JS 真值语义**转 0/1；数字字段非数字 → NULL |
+| `get_stats` | `COUNT` 恒非空；三个 SUM 用 `COALESCE(..., 0)`；**token 三项保留 `Option`**（全无用量时为 `null` 而非 0） |
+| `get_history` | 按 `id DESC LIMIT ?`；`finishReason` 由 `error_message` 的 CASE 推导（成功恒 `stop`） |
+| `save_summary_snapshot` / `get_latest_summary_snapshot` | 后者只读 `draft_id IS NULL` 的行（旧式快照），定稿绑定行不可见 |
+
+### 3. 接线
+
+- 5 命令：`db:log-llm-call`（MUTATING）、`db:get-llm-stats`、`db:get-llm-history`
+  （`limit` 可缺省，默认 **50**）、`db:save-summary-snapshot`（MUTATING）、`db:get-latest-summary`。
+- `lib.rs` 注册（**84 → 89**）；`ipc-client.ts` 登记 5 个频道参数名。
+
+### 4. 验证与测试
+
+新增 Rust 测试 **8 个**（仓储 7 + 命令 1）：空库 token 为 null、写入与聚合统计、
+`finishReason` 映射矩阵（7 用例）、`modelId` 必填、JS 真值语义、`limit` 生效、
+旧式快照忽略 `draft_id` 非空行、命令层端到端。
+
+结果：`cargo check --all-targets` **0 告警** · `cargo test --lib` **160/160** ·
+`pnpm typecheck` / `pnpm run lint` 均 exit 0。
+
+---
+
+## 下一步：`project 清理`（2 频道）—— 批次 C 收口
+
+| 频道 | 依赖 | 可否现在迁 |
+|---|---|---|
+| `db:project-clear-generated-data` | `ProjectClearRepository.clearGeneratedData(options)`（`creativeFields` / `blueprints` / `generatedText`） | ✅ 可（各子域 clear 已就位） |
+| `db:import-global-facts-commit` | `ImportGlobalFactsRepository.commit(request)` | ⬜ 依赖批次 G |
+
+- 该频道为 MUTATING（信封 `{ success, ...result, error? }`，基线带 try/catch）；
+- 需对照 `electron/repositories/project-clear-repository.ts` 的选项组合与事务边界；
+- 完成后 **批次 C 基本收口**（仅余依赖批次 G/E 的少数频道）。
 
 ---
 
@@ -370,8 +407,8 @@ MUTATING 命令复用。
 - 未迁频道的错误文案友好化（遗留项 12）。
 - 批次 G 需要的 `BlueprintRepository.getCommittedRangeOperation`（无 IPC 频道，被
   `import-run-repository.ts` 使用）尚未移植，随批次 G 一并落地。
-- `DraftRepository.clearAll`（服务 `db:project-clear-generated-data`）尚未移植；
-  `post_process_*` / `summary_snapshots` 建表已就位。
+- `DraftRepository.clearAll`（服务 `db:project-clear-generated-data`）**尚未移植但已进队列**：
+  本库中它要删的 `reviews` / `revisions` / `post_process_*` / `summary_snapshots` 建表已全部就位。
 - `drafts` 余 4 频道（`authority-sequence` / `export-snapshot` / `export-authority-current` /
   `import-finalized-batch`）依赖 finalization 仓储，随批次 E 落地。
-- `post_process_repository` 的 `get_failed_step_labels`（基线有但无 IPC 频道）未移植。
+- `post_process_repository` 的 `get_failed_step_labels`、`llm` 侧无频道的辅助方法未移植。

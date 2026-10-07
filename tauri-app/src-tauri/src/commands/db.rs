@@ -17,6 +17,7 @@ use crate::repositories::blueprint_repository as blueprints;
 use crate::repositories::character_repository as characters;
 use crate::repositories::character_roster_repository as roster;
 use crate::repositories::draft_repository as drafts;
+use crate::repositories::llm_repository as llm;
 use crate::repositories::post_process_repository as post_process;
 use crate::repositories::project_core_repository as project_core;
 use crate::repositories::review_repository as reviews;
@@ -1805,6 +1806,144 @@ pub fn db_post_process_is_all_passed(
     )
 }
 
+// ===== LLM 日志与摘要（5 频道） =====
+
+/// `db:log-llm-call` —— 记录一次 LLM 调用（MUTATING）
+///
+/// 契约只声明 `{ success: boolean }`；本地统一走 MUTATING 信封（失败时额外带 `error`），
+/// 比基线的内部 catch 多保留了错误信息。
+pub(crate) fn log_llm_call_inner(
+    state: &AppState,
+    call: &serde_json::Value,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> SimpleResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| llm::log_call(conn, call)));
+    simple_mutating_result(outcome)
+}
+
+pub(crate) fn get_llm_stats_inner(
+    state: &AppState,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<llm::LlmCallStats, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(llm::get_stats)
+}
+
+pub(crate) fn get_llm_history_inner(
+    state: &AppState,
+    limit: Option<i64>,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Vec<llm::LlmCallHistoryEntry>, String> {
+    guard_read(state, expected_project_path, session)?;
+    // 契约允许缺省 limit；基线默认 50
+    let effective_limit = limit.unwrap_or(50);
+    state.with_project_db(|conn| llm::get_history(conn, effective_limit))
+}
+
+pub(crate) fn save_summary_snapshot_inner(
+    state: &AppState,
+    chapter_number: i64,
+    character_states: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> SimpleResult {
+    let outcome = guard_read(state, expected_project_path, session).and_then(|()| {
+        state.with_project_db(|conn| llm::save_summary_snapshot(conn, chapter_number, character_states))
+    });
+    simple_mutating_result(outcome)
+}
+
+pub(crate) fn get_latest_summary_inner(
+    state: &AppState,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Option<llm::SummarySnapshot>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(llm::get_latest_summary_snapshot)
+}
+
+/// `db:log-llm-call` —— 记录一次 LLM 调用（MUTATING）
+#[tauri::command]
+pub fn db_log_llm_call(
+    state: State<'_, AppState>,
+    call: serde_json::Value,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> SimpleResult {
+    log_llm_call_inner(
+        state.inner(),
+        &call,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:get-llm-stats` —— LLM 调用聚合统计
+#[tauri::command]
+pub fn db_get_llm_stats(
+    state: State<'_, AppState>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<llm::LlmCallStats, String> {
+    get_llm_stats_inner(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:get-llm-history` —— 最近 LLM 调用记录
+#[tauri::command]
+pub fn db_get_llm_history(
+    state: State<'_, AppState>,
+    limit: Option<i64>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<llm::LlmCallHistoryEntry>, String> {
+    get_llm_history_inner(
+        state.inner(),
+        limit,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:save-summary-snapshot` —— 保存旧式角色状态快照（MUTATING）
+#[tauri::command]
+pub fn db_save_summary_snapshot(
+    state: State<'_, AppState>,
+    chapter_number: i64,
+    character_states: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> SimpleResult {
+    save_summary_snapshot_inner(
+        state.inner(),
+        chapter_number,
+        &character_states,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:get-latest-summary` —— 读取最新旧式快照
+#[tauri::command]
+pub fn db_get_latest_summary(
+    state: State<'_, AppState>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Option<llm::SummarySnapshot>, String> {
+    get_latest_summary_inner(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2807,6 +2946,104 @@ mod tests {
             missing.error.as_deref(),
             Some("Error: 后处理步骤不存在或已失效")
         );
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn llm_and_summary_channels_test() {
+        let (state, root, session) = activated_state("llm-summary");
+
+        // 读频道门禁
+        assert_eq!(
+            get_llm_stats_inner(&state, &root, None).unwrap_err(),
+            "缺少项目会话上下文，已拒绝操作"
+        );
+        assert_eq!(
+            get_llm_stats_inner(&state, "C:\\other", Some(&session)).unwrap_err(),
+            "检测到跨项目读写，已拒绝操作。"
+        );
+
+        // 空库统计：token 三项为 null
+        let empty = get_llm_stats_inner(&state, &root, Some(&session)).unwrap();
+        assert_eq!(empty.total_calls, 0);
+        assert_eq!(empty.total_tokens, None);
+
+        // 写入门禁：缺会话 → MUTATING 包装
+        let denied = log_llm_call_inner(
+            &state,
+            &serde_json::json!({ "modelId": "m", "success": true }),
+            &root,
+            None,
+        );
+        assert!(!denied.success);
+        assert_eq!(
+            denied.error.as_deref(),
+            Some("Error: 缺少项目会话上下文，已拒绝操作")
+        );
+
+        // 记录两次调用
+        assert!(log_llm_call_inner(
+            &state,
+            &serde_json::json!({
+                "modelId": "deepseek-chat",
+                "modelName": "DeepSeek Chat",
+                "purpose": "write",
+                "promptTokens": 10,
+                "completionTokens": 20,
+                "totalTokens": 30,
+                "durationMs": 500,
+                "success": true
+            }),
+            &root,
+            Some(&session)
+        )
+        .success);
+        assert!(log_llm_call_inner(
+            &state,
+            &serde_json::json!({
+                "modelId": "deepseek-chat",
+                "purpose": "review",
+                "success": false,
+                "errorMessage": "finish:content_filter"
+            }),
+            &root,
+            Some(&session)
+        )
+        .success);
+
+        let stats = get_llm_stats_inner(&state, &root, Some(&session)).unwrap();
+        assert_eq!(stats.total_calls, 2);
+        assert_eq!(stats.successful_calls, 1);
+        assert_eq!(stats.failed_calls, 1);
+        assert_eq!(stats.known_usage_calls, 1);
+        assert_eq!(stats.total_tokens, Some(30));
+
+        // 缺省 limit → 50
+        let history = get_llm_history_inner(&state, None, &root, Some(&session)).unwrap();
+        assert_eq!(history.len(), 2);
+        assert_eq!(
+            history[0].finish_reason.as_deref(),
+            Some("content_filter"),
+            "历史按 ID 降序，首条为失败调用"
+        );
+        assert!(history[1].success);
+        // 显式 limit 生效
+        assert_eq!(
+            get_llm_history_inner(&state, Some(1), &root, Some(&session))
+                .unwrap()
+                .len(),
+            1
+        );
+
+        // 摘要快照（MUTATING）
+        let saved = save_summary_snapshot_inner(&state, 2, "{\"林清玄\":{}}", &root, Some(&session));
+        assert!(saved.success, "保存快照应成功：{:?}", saved.error);
+        let latest = get_latest_summary_inner(&state, &root, Some(&session))
+            .unwrap()
+            .expect("应读到快照");
+        assert_eq!(latest.chapter_number, 2);
+        assert_eq!(latest.character_states, "{\"林清玄\":{}}");
 
         cleanup(&root);
     }
