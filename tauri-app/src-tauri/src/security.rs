@@ -1,12 +1,12 @@
 //! 项目文件系统安全边界 —— 迁移自 `electron/utils/project-context.ts` +
-//! `electron/services/project-access.ts`（骨架部分）。
+//! `electron/services/project-access.ts`。
 //!
 //! 纪律（ADR 0001 会话租约 / ADR 0002 外部文件授权）：
 //! - 每次触碰文件系统前都以调用时冻结的完整会话重新认证，不能只比较路径；
 //! - 路径边界三层：expectedProjectPath 匹配 → 词法包含检查 → realpath 防
 //!   symlink/junction 指向项目外部；
-//! - 完整租约签发/失效依赖数据库层（批次 C），当前骨架校验活跃项目路径一致性
-//!   并拒绝一切无有效租约语义的会话。
+//! - 租约校验已接入真实会话（批次 C）：`projectId`、`leaseId`、`projectPath`
+//!   三字段必须同时匹配活跃项目，否则一律拒绝。
 
 use std::path::{Component, Path, PathBuf};
 
@@ -24,22 +24,22 @@ pub struct ProjectSessionContext {
 /// 骨架阶段直接输出中文，TODO i18n 随批次 E 收口）。
 ///
 /// `MissingSessionContext` 在当前命令签名下由 Tauri 必填参数解析先行拦下，
-/// 保留该态供批次 C 内部调用链使用（骨架阶段无构造点，暂抑制死代码警告）。
-#[allow(dead_code)]
+/// 保留该态供内部调用链使用。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GuardKind {
     /// 缺少项目会话上下文（渲染层未注入 `projectSession`）。
+    /// Tauri 必填参数解析先行拦下缺失会话，仅在 `Option` 尾参为空时手工构造；
+    /// 保留该态以对齐基线文案，暂抑制死代码警告。
+    #[allow(dead_code)]
     MissingSessionContext,
     /// 目标超出当前项目范围（词法或 realpath 检查失败）。
     OutsideProject,
     /// 跨项目读写（expectedProjectPath 与活跃项目不一致）。
     CrossProject,
-    /// 租约失效（骨架：无活跃项目或会话字段不完整）。
+    /// 租约失效（无活跃项目、会话字段不完整，或租约与活跃会话不符）。
     LeaseInvalid,
 }
 
-/// 骨架阶段保留的类型别名（批次 C 内部调用链启用），暂抑制死代码警告。
-#[allow(dead_code)]
 pub type GuardResult = Result<(), GuardKind>;
 
 /// 对齐 `projectFilesystemFailure` 的 accessMessage 文案（中文基线）。
@@ -145,27 +145,28 @@ pub fn assert_project_file_path(
     Ok(target_canonical)
 }
 
-/// 会话租约骨架校验（完整租约签发/失效校验待批次 C 数据库层接入）。
-/// 语义：会话三字段非空 + 会话项目路径与活跃项目一致。
-/// TODO(批次 C)：接入 ProjectAccess 完整租约冻结/失效校验（旧请求必须在
-/// mutex 中失败，同路径重开项目会得到新 lease）。
+/// 会话租约校验（批次 C 已接入真实租约）：
+///
+/// 会话三字段非空 + `projectId`/`leaseId` 与活跃会话完全一致 + 会话项目路径
+/// 与活跃项目根一致。路径从不单独构成授权。
 pub fn assert_current_project_context(
     context: &ProjectSessionContext,
-    active_root: Option<&str>,
-) -> Result<(), GuardKind> {
+    active: Option<&crate::state::ActiveProject>,
+) -> GuardResult {
     if context.project_id.trim().is_empty()
         || context.lease_id.trim().is_empty()
         || context.project_path.trim().is_empty()
     {
         return Err(GuardKind::LeaseInvalid);
     }
-    match active_root {
-        None => Err(GuardKind::LeaseInvalid),
-        Some(root) if normalized_project_path(root) == normalized_project_path(&context.project_path) => {
-            Ok(())
-        }
-        Some(_) => Err(GuardKind::CrossProject),
+    let active = active.ok_or(GuardKind::LeaseInvalid)?;
+    if active.project_id != context.project_id || active.lease_id != context.lease_id {
+        return Err(GuardKind::LeaseInvalid);
     }
+    if normalized_project_path(&active.root_path) != normalized_project_path(&context.project_path) {
+        return Err(GuardKind::CrossProject);
+    }
+    Ok(())
 }
 
 /// expectedProjectPath 匹配守卫（可选版）：expected 为空则跳过。

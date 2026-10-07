@@ -62,6 +62,11 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'project:recent-remove': ['projectPath'],
   'project:delete': ['projectPath', 'projectId', 'sessionLease'],
   'project:smoke-open-confirm': ['projectPath'],
+  // 批次 C：项目数据库（project_core 子域 4 频道）
+  'db:close': ['expectedProjectPath'],
+  'db:project-core-get': ['expectedProjectPath'],
+  'db:project-core-update': ['data', 'expectedProjectPath'],
+  'db:project-core-synopsis-commit': ['request', 'expectedProjectPath'],
 }
 
 /** 频道 → Tauri 命令名（`channel:seg-name` → `channel_seg_name`）。 */

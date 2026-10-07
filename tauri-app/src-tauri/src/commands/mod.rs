@@ -20,10 +20,12 @@ mod model_provider_resource; // 批次 A：模型资源
 mod fs; // 批次 B：项目文件系统
 mod project; // 批次 B：项目生命周期
 mod external_file_grant; // 批次 B：外部文件授权
+mod db; // 批次 C：项目数据库
 
 /// 再导出各批次模块的全部公开项（含 Tauri 命令宏 `__cmd__*`），
 /// 供 `lib.rs` 的 `generate_handler![commands::xxx]` 与 `state.rs` 引用。
 pub use config::*;
+pub use db::*;
 pub use external_file_grant::*;
 pub use fs::*;
 pub use model_provider_resource::*;

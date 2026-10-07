@@ -119,14 +119,12 @@ fn assert_project_file_operation(
     expected_project_path: &str,
     mode: PathCheckMode,
 ) -> FsOutcome<()> {
-    let active_root: Option<String> = {
-        let active = state.active_project.lock().expect("active_project 锁中毒");
-        active.as_ref().map(|p| p.root_path.clone())
-    };
-    assert_current_project_context(context, active_root.as_deref())?;
-    crate::security::assert_required_expected_project_path(active_root.as_deref(), Some(expected_project_path))
+    let active = state.active_project_snapshot();
+    let active_root = active.as_ref().map(|project| project.root_path.as_str());
+    assert_current_project_context(context, active.as_ref())?;
+    crate::security::assert_required_expected_project_path(active_root, Some(expected_project_path))
         .map_err(FsError::Guard)?;
-    assert_project_file_path(target_path, active_root.as_deref().unwrap_or_default(), mode)
+    assert_project_file_path(target_path, active_root.unwrap_or_default(), mode)
         .map_err(FsError::Guard)?;
     Ok(())
 }

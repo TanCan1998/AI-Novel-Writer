@@ -6,6 +6,9 @@
 //! - 仅新增，不改 Electron 代码；每批次迁移配 Rust 单元测试并通过 `cargo test`。
 
 mod commands;
+mod db;
+mod project_access;
+mod repositories;
 mod security;
 mod state;
 
@@ -58,6 +61,11 @@ pub fn run() {
             commands::fs_grant_read_file,
             commands::fs_grant_write_file,
             commands::fs_grant_mkdir,
+            // 批次 C：项目数据库（project_core 子域）
+            commands::db_close,
+            commands::db_project_core_get,
+            commands::db_project_core_update,
+            commands::db_project_core_synopsis_commit,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");
