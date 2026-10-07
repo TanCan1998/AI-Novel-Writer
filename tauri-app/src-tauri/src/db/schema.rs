@@ -242,6 +242,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_revisions_draft_index
   ON revisions(base_draft_id, revision_index);
 "#;
 
+/// reviews —— 审稿（对某版草稿的评审反馈报告；无状态流转）
+///
+/// 审稿时也冻结源稿快照（章号/版本/状态/正文），保证报告可追溯到当时的稿本。
+pub const CREATE_REVIEWS: &str = r#"
+CREATE TABLE IF NOT EXISTS reviews (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  base_draft_id INTEGER NOT NULL,
+  review_index INTEGER NOT NULL,
+  source_draft_chapter_number INTEGER,
+  source_draft_version INTEGER,
+  source_draft_status TEXT,
+  source_content TEXT,
+  content_id INTEGER NOT NULL,
+  created_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (base_draft_id) REFERENCES drafts(id) ON DELETE CASCADE,
+  FOREIGN KEY (content_id) REFERENCES contents(id) ON DELETE RESTRICT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_draft_index
+  ON reviews(base_draft_id, review_index);
+"#;
+
 /// character_roster —— 结构化角色名单的并发控制/迁移/投影元数据
 ///
 /// 角色条目本体始终留在 `characters` 表，这里绝不建并列 JSON 事实源。
@@ -282,6 +303,7 @@ pub fn create_tables(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(CREATE_CONTENTS)?;
     conn.execute_batch(CREATE_DRAFTS)?;
     conn.execute_batch(CREATE_REVISIONS)?;
+    conn.execute_batch(CREATE_REVIEWS)?;
     conn.execute_batch(CREATE_FINALIZATION_OUTBOX)?;
     migrate_project_core_legacy_columns(conn)?;
     migrate_character_roster_schema(conn)?;

@@ -107,6 +107,12 @@ pub fn run() {
             commands::db_revision_merge,
             commands::db_revision_mark_merged,
             commands::db_revision_mark_discarded,
+            // 批次 C：审稿（reviews 子域 S3-c）
+            commands::db_review_create,
+            commands::db_review_list,
+            commands::db_review_get_latest,
+            commands::db_review_get_full,
+            commands::db_review_next_index,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

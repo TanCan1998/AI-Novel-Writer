@@ -8,4 +8,5 @@ pub mod character_roster_repository;
 pub mod content_repository;
 pub mod draft_repository;
 pub mod project_core_repository;
+pub mod review_repository;
 pub mod revision_repository;

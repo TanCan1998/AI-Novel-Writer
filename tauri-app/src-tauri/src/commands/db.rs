@@ -18,6 +18,7 @@ use crate::repositories::character_repository as characters;
 use crate::repositories::character_roster_repository as roster;
 use crate::repositories::draft_repository as drafts;
 use crate::repositories::project_core_repository as project_core;
+use crate::repositories::review_repository as reviews;
 use crate::repositories::revision_repository as revisions;
 use crate::security::{
     assert_current_project_context, assert_required_expected_project_path, guard_message,
@@ -1420,6 +1421,174 @@ pub fn db_revision_mark_discarded(
     )
 }
 
+// ===== 审稿（reviews 子域 S3-c，5 频道） =====
+
+/// `db:review-create` 的 IPC 信封（对齐 `{ success, id?, reviewIndex?, errorCode?, error? }`）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewCreateResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub review_index: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// 创建审稿：源稿守卫失败时额外回填 `errorCode`
+pub(crate) fn review_create_inner(
+    state: &AppState,
+    params: &reviews::ReviewCreateParams,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> ReviewCreateResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| reviews::create(conn, params)));
+    match outcome {
+        Ok(created) => ReviewCreateResult {
+            success: true,
+            id: Some(created.id),
+            review_index: Some(created.review_index),
+            error_code: None,
+            error: None,
+        },
+        Err(message) => {
+            let error_code = (message == crate::draft_source_guard::SOURCE_DRAFT_CHANGED_MESSAGE)
+                .then(|| crate::draft_source_guard::SOURCE_DRAFT_CHANGED.to_string());
+            ReviewCreateResult {
+                success: false,
+                id: None,
+                review_index: None,
+                error_code,
+                error: Some(mutating_error(message)),
+            }
+        }
+    }
+}
+
+pub(crate) fn review_list_inner(
+    state: &AppState,
+    base_draft_id: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Vec<reviews::ReviewMeta>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| reviews::list_by_draft(conn, base_draft_id))
+}
+
+pub(crate) fn review_get_latest_inner(
+    state: &AppState,
+    base_draft_id: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Option<reviews::ReviewFull>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| reviews::get_latest_by_draft(conn, base_draft_id))
+}
+
+pub(crate) fn review_get_full_inner(
+    state: &AppState,
+    id: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Option<reviews::ReviewFull>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| reviews::get_full(conn, id))
+}
+
+pub(crate) fn review_next_index_inner(
+    state: &AppState,
+    base_draft_id: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<i64, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| reviews::get_next_index(conn, base_draft_id))
+}
+
+/// `db:review-create` —— 创建审稿（MUTATING）
+#[tauri::command]
+pub fn db_review_create(
+    state: State<'_, AppState>,
+    params: reviews::ReviewCreateParams,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> ReviewCreateResult {
+    review_create_inner(
+        state.inner(),
+        &params,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:review-list` —— 列出草稿的全部审稿
+#[tauri::command]
+pub fn db_review_list(
+    state: State<'_, AppState>,
+    base_draft_id: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<reviews::ReviewMeta>, String> {
+    review_list_inner(
+        state.inner(),
+        base_draft_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:review-get-latest` —— 读取草稿最新审稿
+#[tauri::command]
+pub fn db_review_get_latest(
+    state: State<'_, AppState>,
+    base_draft_id: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Option<reviews::ReviewFull>, String> {
+    review_get_latest_inner(
+        state.inner(),
+        base_draft_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:review-get-full` —— 读取审稿（含报告正文）
+#[tauri::command]
+pub fn db_review_get_full(
+    state: State<'_, AppState>,
+    id: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Option<reviews::ReviewFull>, String> {
+    review_get_full_inner(
+        state.inner(),
+        id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:review-next-index` —— 下一个审稿序号
+#[tauri::command]
+pub fn db_review_next_index(
+    state: State<'_, AppState>,
+    base_draft_id: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<i64, String> {
+    review_next_index_inner(
+        state.inner(),
+        base_draft_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2217,6 +2386,93 @@ mod tests {
         assert!(revision_get_pending_inner(&state, draft_id, &root, Some(&session))
             .unwrap()
             .is_empty());
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn review_channels_test() {
+        use crate::draft_source_guard::ExpectedDraftSource;
+
+        let (state, root, session) = activated_state("review");
+
+        // 读频道门禁
+        assert_eq!(
+            review_list_inner(&state, 1, &root, None).unwrap_err(),
+            "缺少项目会话上下文，已拒绝操作"
+        );
+
+        let draft = draft_create_inner(
+            &state,
+            &drafts::DraftCreateParams {
+                chapter_number: 1,
+                version: None,
+                source: "write".to_string(),
+                content: "基础正文".to_string(),
+                word_count: 4,
+                source_dependencies: None,
+            },
+            &root,
+            Some(&session),
+        );
+        let draft_id = draft.id.expect("应返回草稿 ID");
+        let source = ExpectedDraftSource {
+            id: draft_id,
+            chapter_number: 1,
+            version: 1,
+            status: "draft".to_string(),
+            content: "基础正文".to_string(),
+        };
+        let params = reviews::ReviewCreateParams {
+            base_draft_id: draft_id,
+            review_index: Some(99),
+            content: "审稿报告".to_string(),
+            expected_source: Some(source.clone()),
+        };
+
+        // create（MUTATING）
+        let created = review_create_inner(&state, &params, &root, Some(&session));
+        assert!(created.success, "创建审稿应成功：{:?}", created.error);
+        let review_id = created.id.expect("应返回审稿 ID");
+        assert_eq!(created.review_index, Some(1), "序号必须由事务分配");
+
+        // 源守卫失败 → 同时带 errorCode 与 error
+        let mut missing_source = params.clone();
+        missing_source.expected_source = None;
+        let denied = review_create_inner(&state, &missing_source, &root, Some(&session));
+        assert!(!denied.success);
+        assert_eq!(denied.error_code.as_deref(), Some("SOURCE_DRAFT_CHANGED"));
+        assert_eq!(denied.error.as_deref(), Some("Error: SOURCE_DRAFT_CHANGED"));
+
+        // 缺会话同样走 MUTATING 包装
+        let unauthenticated = review_create_inner(&state, &params, &root, None);
+        assert!(!unauthenticated.success);
+        assert_eq!(
+            unauthenticated.error.as_deref(),
+            Some("Error: 缺少项目会话上下文，已拒绝操作")
+        );
+
+        // 读频道
+        let list = review_list_inner(&state, draft_id, &root, Some(&session)).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(review_next_index_inner(&state, draft_id, &root, Some(&session)).unwrap(), 2);
+        let full = review_get_full_inner(&state, review_id, &root, Some(&session))
+            .unwrap()
+            .expect("应读到审稿");
+        assert_eq!(full.content, "审稿报告");
+        assert_eq!(full.source_draft.as_ref().unwrap().id, draft_id);
+
+        // 最新审稿 = 序号最大者
+        let second = review_create_inner(&state, &params, &root, Some(&session));
+        let second_id = second.id.expect("应返回审稿 ID");
+        assert_eq!(second.review_index, Some(2));
+        let latest = review_get_latest_inner(&state, draft_id, &root, Some(&session))
+            .unwrap()
+            .expect("应读到最新审稿");
+        assert_eq!(latest.meta.id, second_id);
+        assert!(review_get_full_inner(&state, 9999, &root, Some(&session))
+            .unwrap()
+            .is_none());
 
         cleanup(&root);
     }

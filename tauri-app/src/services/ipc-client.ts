@@ -106,6 +106,12 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'db:revision-merge': ['request', 'expectedProjectPath'],
   'db:revision-mark-merged': ['id', 'mergedToDraftId', 'expectedProjectPath'],
   'db:revision-mark-discarded': ['id', 'expectedProjectPath'],
+  // 批次 C：审稿（reviews 子域 S3-c）
+  'db:review-create': ['params', 'expectedProjectPath'],
+  'db:review-list': ['baseDraftId', 'expectedProjectPath'],
+  'db:review-get-latest': ['baseDraftId', 'expectedProjectPath'],
+  'db:review-get-full': ['id', 'expectedProjectPath'],
+  'db:review-next-index': ['baseDraftId', 'expectedProjectPath'],
 }
 
 /** 频道 → Tauri 命令名（`channel:seg-name` → `channel_seg_name`）。 */
