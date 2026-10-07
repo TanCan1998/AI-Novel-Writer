@@ -170,7 +170,8 @@
 10. **radix 按需清单**：package.json 仅含扫描到的 3 个 @radix-ui 包（dialog/slot/tooltip），其余（label/select/separator/tabs）在 vite build/typecheck 报缺时补装
 11. **rustfmt 未纳入验收**：`cargo fmt --check` 在 `src-tauri/` 全域有差异（批次 A/B 文件均未过 rustfmt）；如需统一，应单独提交 `chore(tauri): cargo fmt src-tauri`，勿混入功能批次
 12. **未迁频道错误文案不友好**（第六次更新冒烟发现）：未注册命令报 Tauri 原生 `Unknown Error: Command llm_list_models not found`，与预期的「尚未迁移（批次 X）」不一致。修复方向：ipc-client 维护「已迁移频道集合」，命中未迁名单时直接抛统一提示（保留 Rust 侧抛错兜底），便于逐批推进时快速定位。
-13. **dev 依赖预打包扫描警告**（第六次更新冒烟发现，不影响 `pnpm build` 产物）：vite `optimizeDeps` 扫描到 `electron/security/windows-safe-file-system.ts`（经测试文件 `__tests__/export-service-integration.test.ts` → `@baseline/controllers/external-file-grant-controller` → … 可达）内部 `import ... from 'electron'` 无法解析，导致本次预打包被跳过（首次 dev 变慢、真实依赖优化被掩盖）。修复方向：`vite.config.ts` 限定 `optimizeDeps.entries: ['index.html']` 或排除 `**/__tests__/**`。
+13. **dev 依赖预打包扫描警告**（第六次更新冒烟发现，不影响 `pnpm build` 产物）：vite `optimizeDeps` 扫描到 `electron/security/windows-safe-file-system.ts`（经测试文件 `__tests__/export-service-integration.test.ts` → `@baseline/controllers/external-file-grant-controller` → … 可达）内部 `import ... from 'electron'` 无法解析，导致预打包被跳过（首次 dev 变慢、真实依赖优化被掩盖）。→ ✅ **已修复**（commit `8dda8b7`：`optimizeDeps.entries: ['index.html']`，dev 启动无该警告，build 仍通过）。
+14. **`pnpm tauri dev` 会规范化 `Cargo.toml`**（第六次更新后期实测发现）：注释中若写 `features=["bundled"]` 这类 TOML 片段，dev 启动后会被重写为 `features= ["bundled"]`（tauri CLI 内部 toml 格式化），造成每次 dev 后工作区无故脏。→ ✅ **已规避**：注释改写为不含 TOML 片段形式的等价表述；**后续在 `Cargo.toml` 注释中写示例配置时，请直接用已带空格的规范写法，避免反复产生噪声 diff**。
 
 ---
 

@@ -21,7 +21,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # 按需引入（不提前加，避免无用编译）：
-# - rusqlite (features=["bundled"])        → 批次 C 数据库层
+# - rusqlite（bundled feature，避免依赖系统 sqlite）→ 批次 C 数据库层
 # - reqwest                                 → 批次 D LLM 适配
 # - tauri-plugin-{fs,updater,shell,notification} → 批次 B/H 按频道批准
 
