@@ -6,6 +6,7 @@
 //! - 仅新增，不改 Electron 代码；每批次迁移配 Rust 单元测试并通过 `cargo test`。
 
 mod commands;
+mod security;
 mod state;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -31,6 +32,32 @@ pub fn run() {
             commands::official_homepage_open,
             // 批次 A：模型资源
             commands::model_provider_resource_open,
+            // 批次 B：项目文件系统（fs 基础 7 频道）
+            commands::fs_read_file,
+            commands::fs_write_file,
+            commands::fs_list_dir,
+            commands::fs_mkdir,
+            commands::fs_check_exists,
+            commands::fs_read_json,
+            commands::fs_write_json,
+            // 批次 B：项目生命周期（project 10 频道）
+            commands::project_get_runtime_context,
+            commands::project_create,
+            commands::project_open,
+            commands::project_save,
+            commands::project_update_config,
+            commands::project_recent_list,
+            commands::project_recent_remove,
+            commands::project_delete,
+            commands::project_smoke_open_request,
+            commands::project_smoke_open_confirm,
+            // 批次 B：目录选择（骨架：插件接入前返回取消语义）
+            commands::dialog_select_folder,
+            commands::dialog_select_export_directory,
+            // 批次 B：外部文件授权（骨架：等 tauri-plugin-dialog）
+            commands::fs_grant_read_file,
+            commands::fs_grant_write_file,
+            commands::fs_grant_mkdir,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

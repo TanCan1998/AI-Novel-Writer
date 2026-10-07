@@ -5,18 +5,18 @@
 
 ---
 
-## 快照（最后更新：2026-10-06 · 第四次）
+## 快照（最后更新：2026-10-06 · 第六次）
 
 | 项 | 值 |
 |---|---|
 | 分支 | `master` |
 | 基准 SHA | `a0fd2f4`（阶段 0 锚点提交；后续批次 A–H 以此为起点） |
-| 当前阶段 | **批次 A 验证通过 + 前端 ipc-client 已切 Tauri 底层**（cargo test 17/17 全绿） |
+| 当前阶段 | **批次 B 完成（接线 + 验证全绿）**；批次 A 已提交 |
 | 结构 | **独立迁移根 `tauri-app/`**（用户确认的方案 B），根目录三文件已还原上游原样 |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（遵循 AGENTS.md 第 3 条规则）；crates 走 rsproxy 镜像；VS Build Tools 已装；**脚本内需显式设 RUSTUP_HOME/CARGO_HOME** |
-| 未提交变更 | ✅ 无 —— 批次 A 已提交（`e3d388f` Rust 后端 + `00e1b73` ipc-client 适配，均含契约对齐修复） |
+| 未提交变更 | ✅ **批次 B 已完成待提交**：4 个新 Rust 文件 + state/lib/mod/ipc-client 四处接线；`cargo test --lib` 28/28、`cargo check --all-targets` 0 告警、typecheck/lint/build 全绿 |
 | 残留死文件 | ✅ 已删除（上会话残留 `state/commands.rs`、`commands/config/internal_exports.rs`） |
-| 未验证事项 | ① `pnpm tauri dev` 窗口冒烟未做（GUI 需手动验证）；② i18n 覆盖校验未在 tauri-app 配置；③ vitest 全量超时未定位 |
+| 未验证事项 | ① `pnpm tauri dev` 窗口冒烟未做（GUI 需手动验证）；② 批次 B 与 Electron 版行为对照未做；③ vitest 全量超时未定位；④ `cargo fmt --check` 未达标（批次 A/B 均未过 rustfmt，未纳入验收） |
 
 ### 结构重设计（2026-10-06 第二次更新，用户确认）
 
@@ -34,7 +34,8 @@
 | `pnpm run lint` | ✅ 零告警（适配后复验） |
 | `pnpm build`（→ tauri-app/dist/） | ✅ 2.11s（适配后复验） |
 | `pnpm test`（vitest 全量） | ⚠️ 25 分钟超时未定位，**批次验收遗留项**（setup-locale + source-contract 单文件 5/5 通过） |
-| `cargo test --lib` | ✅ **17/17 全绿**（2026-10-06 第四次更新验证，含批次 A 全部命令编译 + serde 契约对齐测试） |
+| `cargo test --lib` | ✅ **28/28 全绿**（2026-10-06 第六次更新验证：批次 A 17 + 批次 B 11，含 fs/security/project 契约用例） |
+| `cargo check --all-targets` | ✅ **0 告警**（第六次更新：消除 dead_code 告警 6 处） |
 | `pnpm tauri dev` | ⬜ 窗口冒烟待做（Rust 编译链已验证通过，风险低） |
 
 ### 批次 A 迁移完成详情（2026-10-06 第三次更新）
@@ -126,15 +127,48 @@
 | `skin:read-custom-asset` 失败形状 | `Result` reject → 契约判别联合（`SkinReadCustomAssetResponse`：Success 展开 asset 字段 / Failure 带 state+error） |
 | 测试 | 新增 kebab-tag 反序列化、lowercase decision 反序列化用例（共 17 测试） |
 
+### 批次 B 完成（2026-10-06 第六次更新）
+
+批次 B = 项目/文件/授权 22 频道（`fs:read/write/list/mkdir/check-exists/read-json/write-json` 7 + `project:*` 10 + `dialog:select-folder` 1 + `fs:grant-*` 3 + `dialog:select-export-directory` 1）。**第六次更新已完成接线、编译验证与前端参数登记**：
+
+- **已创建（4 文件，已编译验证）**：
+  - `src-tauri/src/security.rs` —— 路径安全边界（迁移 `electron/utils/project-context.ts` + `project-session-context.ts`）：`ProjectSessionContext`（serde camelCase 三字段）、`GuardKind`（缺会话/越界/跨项目/租约失效，中文文案对齐基线）、`lexically_normalize`（消 `.`/`..`/统一分隔符）、`lexically_contained`、`canonical_writable_target`（存在祖先 realpath + 拼回缺失段）、`assert_project_file_path`（词法→realpath 双重检查防 symlink/junction 越界）、`assert_current_project_context` 骨架租约校验（活跃项目路径一致；完整租约签发/失效校验待批次 C）+ 6 单元测试；**已写入并字节级验证**。
+  - `src-tauri/src/commands/fs.rs` —— fs 基础 7 命令真实实现：统一守卫链（会话→expectedProjectPath→路径边界）+ 全局文件锁骨架（基线为 per-path mutex 队列，安全语义不变，并发优化批次 C 后评估）+ 原子写（同目录临时文件 + rename，`commitState` 两态，`unknown` 结构保留）+ `FileNode` 递归列目录（过滤 `.` 开头、目录优先）+ 错误文案对齐（read-file ENOENT 特例文案含 read_architecture 引导）；async 命令内同步 IO（不阻塞 UI 线程）；附带 2 个单元测试（原子写/列目录）。
+  - `src-tauri/src/commands/project.rs` —— 真实实现 5：`project:get-runtime-context`（读 AppState.active_project，db_ready 恒 false 诚实反映未迁）、`project:recent-list` / `project:recent-remove`（`~/.vela/recent-projects.json`，词法归一删除，对齐 `readJsonFile(path, [])` 缺省空）、`project:smoke-open-request` / `project:smoke-open-confirm`（烟测 env 校验 + marker 写入）；骨架 5：`project:create/open/save/update-config/delete` 返回契约形状完整结构化失败（`SKELETON_DB_MESSAGE`）；`dialog:select-folder` 返回 null。**⚠️ 写入时出现重复定义污染已手工清理（RuntimeContext/ProjectDeleteResult 末尾重复块已删），仍需 cargo 编译确认**。
+  - `src-tauri/src/commands/external_file_grant.rs` —— grant 域骨架：`fs:grant-read-file/write-file/mkdir` 返回契约形状失败 + `dialog:select-export-directory` 返回 None（取消语义）；`ExternalDirectoryGrant { grantId, displayName }` 契约结构已就位；等 tauri-plugin-dialog（新插件依赖，AGENTS.md Ask first）接入；附 1 个单元测试。
+- **接线已完成（第六次更新，四处）**：
+  1. ✅ `state.rs`：新增 `ActiveProject { root_path }` + `active_project: Mutex<Option<ActiveProject>>` + `fs_lock: Mutex<()>`
+  2. ✅ `commands/mod.rs`：声明 `mod fs; mod project; mod external_file_grant;` + `pub use`；新增共享 `SimpleResult`（fs/project 两模块共用，避免 glob 再导出同名歧义）
+  3. ✅ `lib.rs`：声明 `mod security;` + `generate_handler!` 注册批次 B 22 命令（共 34 命令）
+  4. ✅ `ipc-client.ts`：`CHANNEL_ARG_NAMES` 登记 **17 个**带参频道（fs 7 + grant 3 + project 7：create/open/save/update-config/recent-remove/delete/smoke-confirm；第五次快照预估的 15 个漏计了 `project:save`/`update-config`）
+- **验证结果（第六次更新 全绿）**：`cargo test --lib` **28/28**（批次 A 17 + 批次 B 11）、`cargo check --all-targets` **0 告警**、`pnpm typecheck` ✅、`pnpm run lint` ✅（零告警）、`pnpm build` ✅（1.40s）
+- **编译期修复清单（本次）**：
+  1. `project.rs` 重复 `RuntimeContext` 定义（写入污染残留）→ 删除第二处
+  2. `epoch_millis_to_string` 未定义 → 改为 `iso8601_utc_from_millis(ms)`（对齐基线 `new Date().toISOString()`，手写 civil_from_days，不引入 chrono）+ `epoch_millis_now()`
+  3. 烟测回执写入目标错误：原写 `project_path`（会把 marker 写到项目目录）→ 按基线改为写 `markerPath`，回执体改 `to_string`（对齐 `JSON.stringify` 单行）
+  4. 缺 `dialog:select-folder` 命令 → 在 `project.rs` 补 `dialog_select_folder() -> Option<String>`（None 取消语义）
+  5. `fs.rs` 五处 `async` 命令返回非 `Result`（Tauri 报 `AsyncCommandMustReturnResult`）→ 改 `Result<T, String>`，结构化失败用 `Ok(...)` 包裹
+  6. `FsError` 缺 `From<GuardKind>` → 补 impl（或 `fs_error_message` 映射）；`guard_message(kind)` 误接 `FsError` 的两处改 `fs_error_message`
+  7. 测试断言错误 2 处：`lexically_contained` 测试须先 `lexically_normalize`；`read_dir_recursive` 过滤后应为 2 项（目录优先）
+  8. dead_code 告警 6 处（骨架预留态：`FileWriteCommitState::Unknown`、`FsError::Io` 字段、`GrantFailureCommitState::Unknown`、`GuardKind::MissingSessionContext`、`GuardResult`、`OFFICIAL_HOMEPAGE_URL`）→ 加 `#[allow(dead_code)]` + 注释说明启用批次
+- **Tauri 参数名规则已核实（源码级）**：`tauri-macros 2.7.1` 对每个参数 key 做 `to_lower_camel_case()`（`wrapper.rs:501`），故 Rust `expected_project_path` 与 `_expected_project_path` 均对应前端 `expectedProjectPath`；`Option<T>` 参数在 key 缺失时 `visit_none()`（`tauri-2.12.1/src/ipc/command.rs:146-156`），故 `fs:grant-read-file` 的 `relativePath` 可省略。
+- **骨架行为（诚实反映未迁能力）**：`project:create/open/save/update-config/delete` 返回契约形状结构化失败（`SKELETON_DB_MESSAGE`，不 reject）；`fs:*` 因无活跃项目（`project:open` 未真实化）一律返回「项目租约已失效，已拒绝操作」（属预期，批次 C 接数据库后解开）。
+- **两个 Ask first 决策点仍待用户确认**：① `tauri-plugin-dialog`（`dialog:select-folder`/`select-export-directory` 真实目录选择，新增插件依赖）；② `rusqlite`（批次 C 数据库层，Rust crate 依赖）——均需用户点头后再加。
+- **写入污染教训**：长文件 `write` 易产生重复定义/残缺片段（本批次出现 `RuntimeContext` 重定义、缺失函数引用、字段名悬空）。**每写完一个长文件先跑顶层声明去重 + 括号配平扫描（`ctx_execute` 脚本）再接线**，本次已在接线前发现并清理 2 处。
+
 ### 已知遗留项（下一会话处理）
 
-1. **`cargo test --lib` 验证失败风险**：当前 Rust 环境不可用，需手动在拥有环境的机器上验证所有命令编译通过。
-2. **`pnpm tauri dev` 窗口冒烟**：编译链已通；预期 Tauri 窗口加载前端、IPC 调用因后端未迁而失败，属预期。可与批次 A 一起验证。
-3. **vitest 全量超时定位**（上表 ⚠️）。
-4. **i18n 校验**：根目录 `check:i18n` 脚本未在 tauri-app 配置，批次 A 前补。
-5. **@baseline 类型链风险**：上游改动 electron/repositories|services 类型文件时 tauri-app typecheck 会同步受影响 —— 属预期（类型单源），批次验收时留意。
-6. **radix 按需清单**：package.json 仅含扫描到的 3 个 @radix-ui 包（dialog/slot/tooltip），其余（label/select/separator/tabs）在 vite build/typecheck 报缺时补装。
-7. **代码暂存未提交**：批次 A Rust 代码暂存未 commit，需在验证后提交为 `feat(tauri): migrate batch-a` 系列 commits。
+1. **提交批次 B**（第六次更新验收全绿，待提交）：`feat(tauri): migrate batch-b fs/project/grant`（4 新文件 + state/mod/lib/ipc-client 四处接线 + 快照更新）
+2. **Ask first 待确认**：`tauri-plugin-dialog`（dialog 2 频道真实化）与 `rusqlite`（批次 C 前置），均需用户点头后再加
+3. **批次 B 验证**：与 Electron 版行为对照（recent-projects.json 双栈互通、错误文案、commitState 两态）
+4. **`pnpm tauri dev` 窗口冒烟**：批次 A+B 一起验证，预期未迁频道抛「尚未迁移」
+5. **批次 C（数据库层）**：rusqlite 真实实现 + project:create/open/save/delete 租约签发启用（会话租约完整校验补入 security.rs 骨架处）
+6. **持续验证**：提交前 `cd tauri-app && pnpm typecheck && pnpm run lint`；改 Rust 追加 `cargo test --lib`；双栈并行（5180/5190）
+7. **vitest 全量超时定位**（上表 ⚠️）
+8. **i18n 校验**：`check:i18n` 未在 tauri-app 配置，批次 E 收口前补
+9. **@baseline 类型链风险**：上游改动 electron/repositories|services 类型文件时 tauri-app typecheck 会同步受影响 —— 属预期（类型单源），批次验收时留意
+10. **radix 按需清单**：package.json 仅含扫描到的 3 个 @radix-ui 包（dialog/slot/tooltip），其余（label/select/separator/tabs）在 vite build/typecheck 报缺时补装
+11. **rustfmt 未纳入验收**：`cargo fmt --check` 在 `src-tauri/` 全域有差异（批次 A/B 文件均未过 rustfmt）；如需统一，应单独提交 `chore(tauri): cargo fmt src-tauri`，勿混入功能批次
 
 ---
 
@@ -144,7 +178,7 @@
 |---|---|---|
 | 0 | Tauri 脚手架（`tauri-app/` 迁移根 + AppState + invoke_handler 骨架 + tauri.conf.json 接 Vite） | ✅ **完成**（TS 全绿 + cargo test 待验证） |
 | 1 | IPC 契约盘点（198 频道清单、模式标注、批次规划） | ✅ 2026-10-06 完成 |
-| 2 | 按 controller 批次迁移（A→H，见盘点文档 §6） | 🟡 **批次 A Rust 验证通过 + 前端 ipc-client 已切 Tauri，待提交** |
+| 2 | 按 controller 批次迁移（A→H，见盘点文档 §6） | 🟡 **批次 A 已提交；批次 B 验证全绿待提交** |
 | 3 | 原生绑定收尾（窗口/菜单/通知/更新插件、zoom 替代、CI tauri-action） | ⬜ 未开始 |
 | 4 | 双栈并存验证 + 上游同步策略执行 | ⬜ 未开始 |
 
@@ -187,6 +221,19 @@
 4. **契约对齐修复 6 项**（config:set 参数名、config 扁平存储+默认值、resource 参数名、SkinCommand kebab tag、decision 小写字面量、skin 资产读取判别联合），见快照区「契约对齐修复」表。
 5. **验证状态**：cargo test 17/17 + typecheck 0 错误 + lint 零告警 + build 2.11s + vitest 相关单文件 5/5。
 
+### 2026-10-06 第五次更新（批次 B 开工，未完成）
+
+- 创建 `security.rs`（路径安全边界 + 6 测试）、`commands/fs.rs`（fs 基础 7 命令真实实现）、`commands/project.rs`（真实 5 + 骨架 5）、`commands/external_file_grant.rs`（grant 骨架 4）；均已写入但**未接线未编译**（state/mod/lib/ipc-client 四处接线未做，详见批次 B 章节）。
+- 长文件写入多次出现重复定义污染，已手工清理 project.rs 末尾重复块；教训与检查脚本已写入快照。
+
+### 2026-10-06 第六次更新（批次 B 完成）
+
+1. **接线四处落地**：`state.rs`（`ActiveProject` + `active_project` + `fs_lock`）、`commands/mod.rs`（3 模块 + 共享 `SimpleResult`）、`lib.rs`（`mod security;` + 22 命令注册）、`ipc-client.ts`（17 带参频道登记）。
+2. **先扫描后接线**：接线前用 `ctx_execute` 脚本扫 4 新文件的顶层重复定义与括号配平，发现 `project.rs` `RuntimeContext` 重定义、`epoch_millis_to_string` 缺失、`dialog_select_folder` 缺失三处硬伤，先清后接。
+3. **编译修复 8 类**（详见批次 B 章节清单）：async 命令返 `Result`、`From<GuardKind>`、错误映射类型、烟测 marker 写入目标、ISO8601 实现等。
+4. **契约校验强化**：源码级确认 Tauri 参数 key = `to_lower_camel_case`（含下划线前缀归并）、`Option<T>` 缺省安全；烟测回执对齐 `new Date().toISOString()` 与 `JSON.stringify` 形态，并补固定时间戳单测（含闰年）。
+5. **验证**：`cargo test --lib` 28/28 · `cargo check --all-targets` 0 告警 · `pnpm typecheck`/`lint`/`build` 均绿。
+
 ### 关键发现摘要（接续前必读，详见盘点文档）
 
 - **★ 会话注入约定**：ipc-client 对项目域频道（`db:/kb:/chapter:/fs:/project:save|update-config|delete`）自动在 args 尾部追加 `projectSession`（契约未声明）—— Rust 命令签名必须预留尾参并校验租约。
@@ -203,15 +250,17 @@
 
 2. ~~前端适配~~ → ✅ 已完成（ipc-client.ts 已切 Tauri invoke；契约对齐修复 6 项，见上方适配详情）
 
-3. **批次 B 迁移**（下一步）：
-   - 阅读批次 B 盘点清单（docs/plans/tauri-migration-channel-inventory.md）
-   - 创建新命令模块 + 在 ipc-client `CHANNEL_ARG_NAMES` 登记参数名
+3. ~~批次 B 迁移~~ → ✅ 已完成（2026-10-06 第六次：22 命令注册 + 接线 + 验证 28/28 + 前端登记 17 频道）；**下一步提交批次 B**
 
 4. **窗口冒烟**（需 GUI，建议用户手动验证）：
    - 运行 `pnpm tauri dev`
-   - 预期：Tauri 窗口加载前端、批次 A 已迁频道可 invoke 成功、未迁频道抛「尚未迁移」
+   - 预期：Tauri 窗口加载前端、批次 A 已迁频道可 invoke 成功、未迁频道抛「尚未迁移」、`fs:*` 因无活跃项目返回租约失效文案
 
 5. ~~提交批次 A~~ → ✅ 已完成（两个 commit：Rust 后端 + ipc-client 适配；2 个残留死文件已删）
+
+6. **批次 C（数据库层）**：需用户先确认 `rusqlite` 依赖（Ask first）；接入后启用 `project:create/open/save/update-config/delete` 真实实现 + 租约签发，法兰 `security.rs` 的 `assert_current_project_context` 完整校验
+
+7. **批次 B 双栈行为对照**：recent-projects.json 双栈互通、错误文案、`commitState` 两态（与 Electron 5180 并行验证）
 
 6. **持续验证**：
    - 每次提交前：`cd tauri-app && pnpm typecheck && pnpm run lint`；改 Rust 追加 `cargo test --lib`

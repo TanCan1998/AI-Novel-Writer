@@ -29,9 +29,12 @@ import { getActiveProjectSessionContext } from '../shared/project-session-contex
 
 /**
  * 频道 → invoke 命名参数名登记表（camelCase，与 Rust `#[tauri::command]`
- * 参数名的 camelCase 形式对应）。
+ * 参数名的 camelCase 形式对应；Tauri 对每个参数 key 做 lowerCamelCase 归一，
+ * 故 Rust 侧 `expected_project_path` / `_expected_project_path` 均对应
+ * `expectedProjectPath`）。
  *
  * - 批次 A：config / window / skin / official-homepage / model-provider-resource
+ * - 批次 B：fs（7）/ grant（3）/ project 带参频道（7）
  * - 批次 B+ 迁移时在此追加登记；无参频道无需登记。
  */
 const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
@@ -39,6 +42,26 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'skin:execute': ['command'],
   'window:resolve-close': ['requestId', 'decision'],
   'model-provider-resource:open': ['resource'],
+  // 批次 B：项目文件系统（fs 基础 7 频道）
+  'fs:read-file': ['filePath', 'expectedProjectPath'],
+  'fs:write-file': ['filePath', 'content', 'expectedProjectPath'],
+  'fs:list-dir': ['dirPath', 'expectedProjectPath'],
+  'fs:mkdir': ['dirPath', 'expectedProjectPath'],
+  'fs:check-exists': ['filePath', 'expectedProjectPath'],
+  'fs:read-json': ['filePath', 'expectedProjectPath'],
+  'fs:write-json': ['filePath', 'data', 'expectedProjectPath'],
+  // 批次 B：外部文件授权（grant 3 频道）
+  'fs:grant-read-file': ['grantId', 'relativePath'],
+  'fs:grant-write-file': ['grantId', 'relativePath', 'content'],
+  'fs:grant-mkdir': ['grantId', 'relativePath'],
+  // 批次 B：项目生命周期（带参频道）
+  'project:create': ['config', 'requestToken', 'rendererProjectPath'],
+  'project:open': ['projectPath', 'requestToken', 'rendererProjectPath'],
+  'project:save': ['projectId', 'data', 'expectedProjectPath'],
+  'project:update-config': ['projectId', 'data', 'expectedProjectPath'],
+  'project:recent-remove': ['projectPath'],
+  'project:delete': ['projectPath', 'projectId', 'sessionLease'],
+  'project:smoke-open-confirm': ['projectPath'],
 }
 
 /** 频道 → Tauri 命令名（`channel:seg-name` → `channel_seg_name`）。 */

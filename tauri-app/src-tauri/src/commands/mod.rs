@@ -17,14 +17,30 @@ mod window; // 批次 A：窗口管理
 mod skin; // 批次 A：皮肤管理
 mod official_homepage; // 批次 A：官方主页
 mod model_provider_resource; // 批次 A：模型资源
+mod fs; // 批次 B：项目文件系统
+mod project; // 批次 B：项目生命周期
+mod external_file_grant; // 批次 B：外部文件授权
 
 /// 再导出各批次模块的全部公开项（含 Tauri 命令宏 `__cmd__*`），
 /// 供 `lib.rs` 的 `generate_handler![commands::xxx]` 与 `state.rs` 引用。
 pub use config::*;
+pub use external_file_grant::*;
+pub use fs::*;
 pub use model_provider_resource::*;
 pub use official_homepage::*;
+pub use project::*;
 pub use skin::*;
 pub use window::*;
+
+/// 通用「成功/失败」返回 —— 对齐契约 `{ success: boolean; error?: string }`。
+/// 批次 B 的 fs / project 两模块共用，避免 glob 再导出同名歧义。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SimpleResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
 
 /// 阶段 0 骨架健康检查报告。
 /// 不对应任何 Electron IPC 频道，仅供 Tauri 联调验证 invoke 链路。

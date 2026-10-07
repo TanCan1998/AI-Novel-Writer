@@ -6,7 +6,9 @@
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
-/// 官方主页 URL（固定）
+/// 官方主页 URL（固定）。待 tauri-plugin-opener 接入后由命令实际使用
+/// （当前为骨架：不打开外部链接），暂抑制死代码警告。
+#[allow(dead_code)]
 const OFFICIAL_HOMEPAGE_URL: &str = "https://github.com/EthanYoQ/AI-Novel-Writer";
 
 /// Official Homepage:open 命令
