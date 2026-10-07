@@ -7,18 +7,18 @@
 
 ---
 
-## 快照（最后更新：2026-10-07 · 第十八次）
+## 快照（最后更新：2026-10-07 · 第十九次）
 
 | 项 | 值 |
 |---|---|
 | 仓库 | **`TanCan1998/Lorekeeper`**（原名 `AI-Novel-Writer`；仍为 `EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork） |
 | 分支 | `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm 包 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 当前阶段 | **批次 C 进行中**：`project_core` ✅、`characters/roster` ✅（`69fc50c`）、`blueprints` 11 ✅、`drafts` 12/16 ✅、`revisions` 9 ✅、`reviews` 5 ✅、`post-process` 6 ✅、**`llm 日志/摘要` 5 频道 ✅（2026-10-07）**；下一步 **`project 清理`（2 频道）** |
-| 已注册命令 | **89**（骨架 1 + A 11 + B 22 + C：project_core 4 + characters 3 + blueprints 11 + drafts 12 + revisions 9 + reviews 5 + post-process 6 + llm/摘要 5） |
+| 当前阶段 | **批次 C 数据库层子域全部完成 ✅**：`project_core` / `characters` / `blueprints` / `drafts`（12/16）/ `revisions` / `reviews` / `post-process` / `llm 日志与摘要` / **`project 清理`（2026-10-07）**；剩余 `db:*` 频道全部归属批次 **E/F/G** |
+| 已注册命令 | **90**（骨架 1 + A 11 + B 22 + C 子域 56） |
 | 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后 |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`） |
-| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **160/160** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 |
+| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **166/166** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 |
 
 ---
 
@@ -386,29 +386,89 @@ MUTATING 命令复用。
 
 ---
 
-## 下一步：`project 清理`（2 频道）—— 批次 C 收口
+## 本次更新（第十九次：`project 清理` — 批次 C 数据库层收口）
 
-| 频道 | 依赖 | 可否现在迁 |
+### 1. `db/schema.rs`：新增 `CREATE_IMPORT_OPERATIONS`
+
+补 `finalized_draft_import_operations` / `import_global_fact_operations` 两张幂等日志表
+（本子域只需前者：`generatedText` 清理要删它；仓储与命令仍随批次 E / G）。
+
+### 2. `repositories/project_clear_repository.rs`（新）
+
+| 内容 | 要点 |
+|---|---|
+| `ProjectClearScope` / `ProjectClearOptions` / `ProjectClearResult` | camelCase；三个开关均可缺省（`Option<bool>`，缺省 = false） |
+| `is_finalized_chapter_file`（private） | 手工实现基线 `^第\d+章(?: .*)?\.txt$`（**不引入 regex 依赖**），覆盖 `第1章.txt` / `第12章 标题.txt` / `第3章 .txt` |
+| `move_generated_files_to_trash` | 事务**之前**把根目录成稿移入 `.vela/trash/clear-<ISO 时间戳>/`（时间戳复用 `commands::project::{epoch_millis_now, iso8601_utc_from_millis}`）；失败即按逆序回滚已移动文件 |
+| `clear_generated_data` | 单事务：`generatedText`（8 张表）→ `blueprints`（复用 `clear_blueprint_facts_within_transaction`）→ `creativeFields`（先 `migrate_character_roster_schema` 再删三张表 + `project_core` 九个字段）；成功后才删除回收子目录，失败则回滚文件移动 |
+
+### 3. 可见性调整
+
+`commands/mod.rs` 的 `mod project;` → `pub mod project;`（crate 内可见），
+使时间戳 helper 可被仓储层复用，避免重复实现 ISO8601。
+
+### 4. 接线
+
+- 1 命令：`db:project-clear-generated-data`（MUTATING，信封
+  `{ success, cleared?, physicalFilesDeleted?, error? }`）；项目路径取自活跃租约而非入参。
+- `lib.rs` 注册（**89 → 90**）；`ipc-client.ts` 登记该频道参数名。
+
+### 5. 验证与测试
+
+新增 Rust 测试 **6 个**（仓储 5 + 命令 1）：文件名模式矩阵（3 接受 / 5 拒绝）、
+`generatedText` 清空 + 物理文件移动 + 非成稿文件保留、缺项目路径拒绝、
+`blueprints`+`creativeFields` 组合与顺序、序列化/解析形状、命令层端到端。
+
+结果：`cargo check --all-targets` **0 告警** · `cargo test --lib` **166/166** ·
+`pnpm typecheck` / `pnpm run lint` 均 exit 0。
+
+---
+
+## 批次 C 收口状态（2026-10-07）
+
+**已完成子域**（命令累计 **90**，其中 C 子域 56）：
+
+| 子域 | 频道 | 最新 commit |
 |---|---|---|
-| `db:project-clear-generated-data` | `ProjectClearRepository.clearGeneratedData(options)`（`creativeFields` / `blueprints` / `generatedText`） | ✅ 可（各子域 clear 已就位） |
-| `db:import-global-facts-commit` | `ImportGlobalFactsRepository.commit(request)` | ⬜ 依赖批次 G |
+| project_core | 4 | `ff7fbd8` `a8d742a` |
+| characters / roster | 3 | `69fc50c` |
+| blueprints | 11 | `50c0fe8` `1332216` `84a3100` |
+| drafts | 12/16 | `6351b2d` |
+| revisions | 9 | `5e79ea7` |
+| reviews | 5 | `fa07875` |
+| post-process | 6 | `39ee0c2` |
+| llm 日志 / 摘要 | 5 | `e0e1004` |
+| project 清理 | 1/2 | 本轮 |
+| **合计** | **56** | |
 
-- 该频道为 MUTATING（信封 `{ success, ...result, error? }`，基线带 try/catch）；
-- 需对照 `electron/repositories/project-clear-repository.ts` 的选项组合与事务边界；
-- 完成后 **批次 C 基本收口**（仅余依赖批次 G/E 的少数频道）。
+**剩余 `db:*` 频道全部归属后续批次**（不是 C 的欠账）：
+
+- **批次 E**：continuity（4）、finalization-link（1）、drafts 余 4
+  （`authority-sequence` / `export-snapshot` / `export-authority-current` / `import-finalized-batch`）；
+- **批次 F**：一致性豁免（3）、叙事线程（6）、派生树（3）、恢复候选（3）；
+- **批次 G**：import-run（18）、`db:import-global-facts-commit`。
+
+---
+
+## 建议的下一步
+
+1. **GUI 实机冒烟（强烈建议）**：批次 C 已连续交付 56 个命令却**尚未做过一次真实项目读写验证**。
+   用 `pnpm tauri dev` 打开一个真实小说目录，跑一遍：蓝图读写 → 草稿创建/改正文 → 修稿合并 →
+   审稿 → 后处理跑批 → LLM 统计 → 项目清理。
+2. **双栈同库行为对照**：同目录下 Electron 与 Tauri 各写各库（`vela.db` vs `lorekeeper.db`），
+   确认互不影响。
+3. **`vitest` 全量超时定位**（遗留项 7）。
+4. 之后进入 **批次 E**（定稿不可逆 + 删除生命周期，ADR 0003/0011 等量测试）。
 
 ---
 
 ## 遗留项（沿用 2026-10-06 快照）
 
-- 未验证：批次 C **GUI 实机验证**（打开真实项目读写全部已迁子域）、
-  双栈同库行为对照、`vitest` 全量超时定位、`cargo fmt --check` 未纳入验收。
+- 未验证：批次 C **GUI 实机验证**、双栈同库行为对照、`vitest` 全量超时定位、
+  `cargo fmt --check` 未纳入验收（`src-tauri/` 全域存在 rustfmt 差异，需单独提交）。
 - 押后：L3（`.vela` → `.lorekeeper`）、可见品牌（`brand.ts` / i18n 标题）。
 - 未迁频道的错误文案友好化（遗留项 12）。
 - 批次 G 需要的 `BlueprintRepository.getCommittedRangeOperation`（无 IPC 频道，被
   `import-run-repository.ts` 使用）尚未移植，随批次 G 一并落地。
-- `DraftRepository.clearAll`（服务 `db:project-clear-generated-data`）**尚未移植但已进队列**：
-  本库中它要删的 `reviews` / `revisions` / `post_process_*` / `summary_snapshots` 建表已全部就位。
-- `drafts` 余 4 频道（`authority-sequence` / `export-snapshot` / `export-authority-current` /
-  `import-finalized-batch`）依赖 finalization 仓储，随批次 E 落地。
-- `post_process_repository` 的 `get_failed_step_labels`、`llm` 侧无频道的辅助方法未移植。
+- 无 IPC 频道的基线辅助方法未移植：`post_process_repository.get_failed_step_labels`、
+  `DraftRepository.clearAll`（后者功能已被 `project_clear` 覆盖）。

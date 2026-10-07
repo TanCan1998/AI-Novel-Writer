@@ -335,6 +335,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_summary_snapshots_draft
   ON summary_snapshots(draft_id) WHERE draft_id IS NOT NULL;
 "#;
 
+/// finalized_draft_import_operations / import_global_fact_operations —— 导入幂等日志
+///
+/// 本子域只建表：`db:project-clear-generated-data` 的 `generatedText` 清理需要删除前者；
+/// 仓储与命令随批次 E / G 落地。
+pub const CREATE_IMPORT_OPERATIONS: &str = r#"
+CREATE TABLE IF NOT EXISTS finalized_draft_import_operations (
+  operation_id TEXT PRIMARY KEY,
+  payload_hash TEXT NOT NULL,
+  receipt_json TEXT NOT NULL,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS import_global_fact_operations (
+  operation_id TEXT PRIMARY KEY,
+  payload_hash TEXT NOT NULL,
+  receipt_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"#;
+
 /// character_roster —— 结构化角色名单的并发控制/迁移/投影元数据
 ///
 /// 角色条目本体始终留在 `characters` 表，这里绝不建并列 JSON 事实源。
@@ -379,6 +399,7 @@ pub fn create_tables(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(CREATE_POST_PROCESS)?;
     conn.execute_batch(CREATE_LLM_CALLS)?;
     conn.execute_batch(CREATE_SUMMARY_SNAPSHOTS)?;
+    conn.execute_batch(CREATE_IMPORT_OPERATIONS)?;
     conn.execute_batch(CREATE_FINALIZATION_OUTBOX)?;
     migrate_project_core_legacy_columns(conn)?;
     migrate_character_roster_schema(conn)?;

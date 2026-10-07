@@ -125,6 +125,8 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'db:get-llm-history': ['limit', 'expectedProjectPath'],
   'db:save-summary-snapshot': ['chapterNumber', 'characterStates', 'expectedProjectPath'],
   'db:get-latest-summary': ['expectedProjectPath'],
+  // 批次 C：项目生成数据清理
+  'db:project-clear-generated-data': ['options', 'expectedProjectPath'],
 }
 
 /** 频道 → Tauri 命令名（`channel:seg-name` → `channel_seg_name`）。 */

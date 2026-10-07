@@ -9,6 +9,7 @@ pub mod content_repository;
 pub mod draft_repository;
 pub mod llm_repository;
 pub mod post_process_repository;
+pub mod project_clear_repository;
 pub mod project_core_repository;
 pub mod review_repository;
 pub mod revision_repository;

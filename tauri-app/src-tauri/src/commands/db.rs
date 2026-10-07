@@ -11,6 +11,7 @@
 //! 子域逐个迁移。
 
 use tauri::State;
+use std::path::Path;
 
 use crate::commands::SimpleResult;
 use crate::repositories::blueprint_repository as blueprints;
@@ -19,6 +20,7 @@ use crate::repositories::character_roster_repository as roster;
 use crate::repositories::draft_repository as drafts;
 use crate::repositories::llm_repository as llm;
 use crate::repositories::post_process_repository as post_process;
+use crate::repositories::project_clear_repository as project_clear;
 use crate::repositories::project_core_repository as project_core;
 use crate::repositories::review_repository as reviews;
 use crate::repositories::revision_repository as revisions;
@@ -1944,6 +1946,72 @@ pub fn db_get_latest_summary(
     )
 }
 
+/// `db:project-clear-generated-data` 的 IPC 信封
+///（对齐 `{ success, cleared?, physicalFilesDeleted?, error? }`）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectClearGeneratedDataResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cleared: Option<Vec<project_clear::ProjectClearScope>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub physical_files_deleted: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+pub(crate) fn project_clear_generated_data_inner(
+    state: &AppState,
+    options: &project_clear::ProjectClearOptions,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> ProjectClearGeneratedDataResult {
+    let outcome = guard_read(state, expected_project_path, session).and_then(|()| {
+        // 项目路径来自活跃租约（不从入参拼装），用于定位根目录成稿实体稿
+        let project_path = state.current_project_path();
+        state.with_project_db(|conn| {
+            project_clear::clear_generated_data(
+                conn,
+                project_path.as_deref().map(Path::new),
+                options,
+            )
+        })
+    });
+    match outcome {
+        Ok(result) => ProjectClearGeneratedDataResult {
+            success: true,
+            cleared: Some(result.cleared),
+            physical_files_deleted: Some(result.physical_files_deleted),
+            error: None,
+        },
+        Err(error) => {
+            eprintln!("[db:project-clear-generated-data] 失败: {error}");
+            ProjectClearGeneratedDataResult {
+                success: false,
+                cleared: None,
+                physical_files_deleted: None,
+                error: Some(mutating_error(error)),
+            }
+        }
+    }
+}
+
+/// `db:project-clear-generated-data` —— 清空选定范围的生成数据（MUTATING）
+#[tauri::command]
+pub fn db_project_clear_generated_data(
+    state: State<'_, AppState>,
+    options: project_clear::ProjectClearOptions,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> ProjectClearGeneratedDataResult {
+    project_clear_generated_data_inner(
+        state.inner(),
+        &options,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3044,6 +3112,55 @@ mod tests {
             .expect("应读到快照");
         assert_eq!(latest.chapter_number, 2);
         assert_eq!(latest.character_states, "{\"林清玄\":{}}");
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn project_clear_generated_data_channel_test() {
+        let (state, root, session) = activated_state("clear");
+        let options = project_clear::ProjectClearOptions {
+            generated_text: Some(true),
+            ..Default::default()
+        };
+
+        // 门禁：缺会话 → MUTATING 包装
+        let denied = project_clear_generated_data_inner(&state, &options, &root, None);
+        assert!(!denied.success);
+        assert_eq!(
+            denied.error.as_deref(),
+            Some("Error: 缺少项目会话上下文，已拒绝操作")
+        );
+
+        // 造出待清理的数据：草稿 + 根目录成稿实体稿
+        let draft = draft_create_inner(
+            &state,
+            &drafts::DraftCreateParams {
+                chapter_number: 1,
+                version: None,
+                source: "write".to_string(),
+                content: "正文".to_string(),
+                word_count: 2,
+                source_dependencies: None,
+            },
+            &root,
+            Some(&session),
+        );
+        assert!(draft.success, "建草稿应成功：{:?}", draft.error);
+        let finalized_file = std::path::Path::new(&root).join("第1章 起始.txt");
+        std::fs::write(&finalized_file, "定稿正文").unwrap();
+
+        let cleared = project_clear_generated_data_inner(&state, &options, &root, Some(&session));
+        assert!(cleared.success, "清空应成功：{:?}", cleared.error);
+        assert_eq!(
+            cleared.cleared,
+            Some(vec![project_clear::ProjectClearScope::GeneratedText])
+        );
+        assert_eq!(cleared.physical_files_deleted, Some(1));
+        assert!(!finalized_file.exists(), "成稿实体稿应移出根目录");
+        assert!(draft_list_all_inner(&state, &root, Some(&session))
+            .unwrap()
+            .is_empty());
 
         cleanup(&root);
     }

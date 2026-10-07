@@ -18,7 +18,7 @@ mod skin; // 批次 A：皮肤管理
 mod official_homepage; // 批次 A：官方主页
 mod model_provider_resource; // 批次 A：模型资源
 mod fs; // 批次 B：项目文件系统
-mod project; // 批次 B：项目生命周期
+pub mod project; // 批次 B：项目生命周期
 mod external_file_grant; // 批次 B：外部文件授权
 mod db; // 批次 C：项目数据库
 

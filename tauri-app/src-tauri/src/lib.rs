@@ -126,6 +126,8 @@ pub fn run() {
             commands::db_get_llm_history,
             commands::db_save_summary_snapshot,
             commands::db_get_latest_summary,
+            // 批次 C：项目生成数据清理
+            commands::db_project_clear_generated_data,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");
