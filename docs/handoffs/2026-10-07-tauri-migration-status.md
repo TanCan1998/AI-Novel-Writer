@@ -394,8 +394,8 @@ MUTATING 命令复用。
 
 | 项 | 值 |
 |---|---|
-| HEAD | `4d5ef61` |
-| 本会话提交（共 8 个） | `fa07875` reviews · `39ee0c2` post-process · `e0e1004` llm/摘要 · `d89861f` project 清理 · `da4073f` 校验脚本 · `3c9aa2b` 结束状态快照 · **`24c008f` 未迁移频道友好提示（遗留项 12）** · **`4d5ef61` 磁盘级端到端回归** |
+| HEAD | `acb1b03` |
+| 本会话提交（共 9 个） | `fa07875` reviews · `39ee0c2` post-process · `e0e1004` llm/摘要 · `d89861f` project 清理 · `da4073f` 校验脚本 · `3c9aa2b` 结束状态快照 · `24c008f` 未迁移频道友好提示（遗留项 12） · `4d5ef61` 磁盘级端到端回归 · `acb1b03` 第二十次快照 |
 | 已注册命令 | **90**（骨架 1 + A 11 + B 22 + C 子域 56） |
 | 验证 | `cargo check --all-targets` 0 告警 · `cargo test --lib` **169/169** · `pnpm typecheck`/`lint` exit 0 · `pnpm run check:channels` orphan 空 |
 | GUI 冒烟 | ✅ 两轮（首轮采集信号；次轮闭环验证友好文案） |

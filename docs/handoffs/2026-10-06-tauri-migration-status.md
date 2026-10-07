@@ -20,7 +20,7 @@
 | 双栈隔离 | ① 安装标识独立；② 全局数据根 = `AI_NOVEL_LOREKEEPER_HOME` 或 `~/.lorekeeper`（基线 `AI_NOVEL_VELA_HOME`/`~/.vela`，**不回退**）；③ 项目库 = `<root>/.vela/lorekeeper.db`（基线 `.vela/vela.db`）；④ `.vela` 目录本身仍共享（L3 押后） |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（遵循 AGENTS.md 第 3 条规则）；crates 走 rsproxy 镜像；VS Build Tools 已装；**脚本内需显式设 RUSTUP_HOME/CARGO_HOME** |
 | 已注册命令 | **90**（骨架 1 + A 11 + B 22 + C 子域 56） |
-| 未提交变更 | 无；`master` 与 `origin/master` 同步，最新提交 `4d5ef61`（2026-10-07 两轮会话共 **8 个 commit** 已全部推送） |
+| 未提交变更 | 无；`master` 与 `origin/master` 同步，最新提交 `acb1b03`（2026-10-07 两轮会话共 **9 个 commit** 已全部推送） |
 | 残留死文件 | ✅ 已删除（上会话残留 `state/commands.rs`、`commands/config/internal_exports.rs`） |
 | 未验证事项 | ① ~~`pnpm tauri dev` 窗口冒烟~~ → ✅ 已完成；② ~~批次 C `cargo check/test`~~ → ✅ **0 告警 + 169/169**（含 3 个磁盘级端到端）；③ 批次 B/C 与 Electron 版行为对照未做（**双栈同库对照**）；④ vitest 全量超时未定位；⑤ `cargo fmt --check` 未达标（未纳入验收）；⑥ ~~批次 C 未做 GUI 实机验证~~ → ✅ **2026-10-07 已做（第二十次）**：两轮 `pnpm tauri dev` 冒烟（窗口 `Lorekeeper`、内存 42.6 MB），且核心读写链路已由 `src-tauri/src/disk_e2e.rs` 用真实 `.vela/lorekeeper.db` 自动断言；**仍未人工验证的仅是界面交互形式**；⑦ ~~隔离改造后未重跑 dev 冒烟~~ → ✅ 已完成（第九次）；⑧ ~~未迁频道错误文案不友好（遗留项 12）~~ → ✅ **已修复（`24c008f`）**：改为「尚未迁移到 Tauri 侧」友好文案 + 生成物一致性测试 |
 
