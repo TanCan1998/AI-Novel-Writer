@@ -494,39 +494,144 @@ fn row_to_character_sync_operation(
     })
 }
 
+/// `blueprint_character_sync_operations` 的读取列（三条查询共用，避免列名漂移）
+const SYNC_OPERATION_COLUMNS: &str = "operation_id, blueprint_commit_operation_id, \
+     blueprint_commit_payload_hash, status, start_chapter, end_chapter, character_sync_input, \
+     completion_receipt, created_at, updated_at, completed_at";
+
+fn character_sync_operation_row(
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<BlueprintCharacterSyncOperationRow> {
+    Ok(BlueprintCharacterSyncOperationRow {
+        operation_id: row.get(0)?,
+        blueprint_commit_operation_id: row.get(1)?,
+        blueprint_commit_payload_hash: row.get(2)?,
+        status: row.get(3)?,
+        start_chapter: row.get(4)?,
+        end_chapter: row.get(5)?,
+        character_sync_input: row.get(6)?,
+        completion_receipt: row.get(7)?,
+        created_at: row.get(8)?,
+        updated_at: row.get(9)?,
+        completed_at: row.get(10)?,
+    })
+}
+
 /// 读取单个角色同步操作（对齐 `readCharacterSyncOperation`）
 fn read_character_sync_operation(
     conn: &Connection,
     operation_id: &str,
 ) -> Result<Option<BlueprintCharacterSyncOperation>, String> {
+    let sql = format!(
+        "SELECT {SYNC_OPERATION_COLUMNS} FROM blueprint_character_sync_operations \
+         WHERE operation_id = ?1"
+    );
     let row = conn
-        .query_row(
-            "SELECT operation_id, blueprint_commit_operation_id, blueprint_commit_payload_hash,
-                    status, start_chapter, end_chapter, character_sync_input, completion_receipt,
-                    created_at, updated_at, completed_at
-             FROM blueprint_character_sync_operations WHERE operation_id = ?1",
-            [operation_id],
-            |row| {
-                Ok(BlueprintCharacterSyncOperationRow {
-                    operation_id: row.get(0)?,
-                    blueprint_commit_operation_id: row.get(1)?,
-                    blueprint_commit_payload_hash: row.get(2)?,
-                    status: row.get(3)?,
-                    start_chapter: row.get(4)?,
-                    end_chapter: row.get(5)?,
-                    character_sync_input: row.get(6)?,
-                    completion_receipt: row.get(7)?,
-                    created_at: row.get(8)?,
-                    updated_at: row.get(9)?,
-                    completed_at: row.get(10)?,
-                })
-            },
-        )
+        .query_row(&sql, [operation_id], character_sync_operation_row)
         .optional()
         .map_err(|error| format!("读取蓝图角色同步操作失败：{error}"))?;
     match row {
         Some(row) => row_to_character_sync_operation(&row).map(Some),
         None => Ok(None),
+    }
+}
+
+/// `db:blueprint-character-sync-list-pending` —— 列出可在重启后恢复的提交后工作项。
+pub fn list_pending_character_sync_operations(
+    conn: &Connection,
+) -> Result<Vec<BlueprintCharacterSyncOperation>, String> {
+    ensure_blueprint_commit_schema(conn).map_err(|error| error.to_string())?;
+    let sql = format!(
+        "SELECT {SYNC_OPERATION_COLUMNS} FROM blueprint_character_sync_operations \
+         WHERE status = 'pending' ORDER BY created_at ASC, operation_id ASC"
+    );
+    let mut stmt = conn
+        .prepare(&sql)
+        .map_err(|error| format!("读取蓝图角色同步操作失败：{error}"))?;
+    let rows = stmt
+        .query_map([], character_sync_operation_row)
+        .map_err(|error| format!("读取蓝图角色同步操作失败：{error}"))?;
+    let mut operations = Vec::new();
+    for row in rows {
+        let row = row.map_err(|error| format!("读取蓝图角色同步操作失败：{error}"))?;
+        operations.push(row_to_character_sync_operation(&row)?);
+    }
+    Ok(operations)
+}
+
+/// `db:blueprint-character-sync-get` —— 读取单个操作（已完成时须与名单事实一致）。
+pub fn get_character_sync_operation(
+    conn: &Connection,
+    operation_id: &str,
+) -> Result<Option<BlueprintCharacterSyncOperation>, String> {
+    if operation_id.trim().is_empty() {
+        return Err("蓝图角色同步操作 ID 不能为空".to_string());
+    }
+    ensure_blueprint_commit_schema(conn).map_err(|error| error.to_string())?;
+    let operation = read_character_sync_operation(conn, operation_id)?;
+    if let Some(operation) = &operation {
+        assert_authoritative_character_sync_completion(conn, operation)?;
+    }
+    Ok(operation)
+}
+
+/// `db:blueprint-character-sync-complete` —— 由权威事实确认并闭合待处理操作。
+///
+/// 幂等：已完成为 completed 时直接回读并校验，不重复 UPDATE。
+pub fn complete_character_sync_operation(
+    conn: &Connection,
+    operation_id: &str,
+) -> Result<BlueprintCharacterSyncOperation, String> {
+    if operation_id.trim().is_empty() {
+        return Err("蓝图角色同步操作 ID 不能为空".to_string());
+    }
+    ensure_blueprint_commit_schema(conn).map_err(|error| error.to_string())?;
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| format!("开启事务失败：{error}"))?;
+
+    let outcome: Result<BlueprintCharacterSyncOperation, String> = (|| {
+        let operation = read_character_sync_operation(&tx, operation_id)?
+            .ok_or_else(|| "待处理蓝图角色同步操作不存在".to_string())?;
+        if operation.status == "completed" {
+            assert_authoritative_character_sync_completion(&tx, &operation)?;
+            return Ok(operation);
+        }
+        let completion_receipt = authoritative_character_sync_completion_receipt(&tx, &operation)?;
+        let serialized = canonical_json(
+            &serde_json::to_value(&completion_receipt).map_err(|error| error.to_string())?,
+        )?;
+        let changes = tx
+            .execute(
+                "UPDATE blueprint_character_sync_operations \
+                 SET status = 'completed', completion_receipt = ?1, \
+                     completed_at = datetime('now'), updated_at = datetime('now') \
+                 WHERE operation_id = ?2 AND status = 'pending'",
+                rusqlite::params![serialized, operation_id],
+            )
+            .map_err(|error| format!("完成蓝图角色同步操作失败：{error}"))?;
+        if changes != 1 {
+            return Err("蓝图角色同步完成状态更新失败".to_string());
+        }
+        let completed = read_character_sync_operation(&tx, operation_id)?;
+        let Some(completed) = completed else {
+            return Err("蓝图角色同步完成回执回读失败".to_string());
+        };
+        if completed.status != "completed" || completed.completion_receipt.is_none() {
+            return Err("蓝图角色同步完成回执回读失败".to_string());
+        }
+        assert_authoritative_character_sync_completion(&tx, &completed)?;
+        Ok(completed)
+    })();
+
+    match outcome {
+        Ok(operation) => {
+            tx.commit()
+                .map_err(|error| format!("提交蓝图角色同步失败：{error}"))?;
+            Ok(operation)
+        }
+        // `tx` drop 即回滚
+        Err(error) => Err(error),
     }
 }
 
@@ -1434,5 +1539,136 @@ mod tests {
         );
 
         assert!(read_character_sync_operation(&conn, "不存在").unwrap().is_none());
+    }
+
+    // ===== S2-c：角色同步操作 =====
+
+    #[test]
+    fn list_and_get_character_sync_operations_test() {
+        let conn = memory_db();
+        assert!(list_pending_character_sync_operations(&conn).unwrap().is_empty());
+
+        commit_range(&conn, &commit_request(COMMIT_MODE_FULL, 1, 1, &[1])).unwrap();
+        let mut second = commit_request(COMMIT_MODE_REPLACE_RANGE, 2, 2, &[2]);
+        second.operation_id = "op-2".to_string();
+        commit_range(&conn, &second).unwrap();
+
+        let pending = list_pending_character_sync_operations(&conn).unwrap();
+        assert_eq!(pending.len(), 2);
+        assert!(pending.iter().all(|operation| operation.status == "pending"));
+
+        let target = character_sync_operation_id("op-1");
+        let fetched = get_character_sync_operation(&conn, &target).unwrap().unwrap();
+        assert_eq!(fetched.blueprint_commit_operation_id, "op-1");
+        assert_eq!(fetched.character_sync_input.len(), 1);
+
+        assert!(get_character_sync_operation(&conn, "不存在").unwrap().is_none());
+        assert_eq!(
+            get_character_sync_operation(&conn, "  ").unwrap_err(),
+            "蓝图角色同步操作 ID 不能为空"
+        );
+        assert_eq!(
+            complete_character_sync_operation(&conn, "不存在").unwrap_err(),
+            "待处理蓝图角色同步操作不存在"
+        );
+
+        // 完成后从待处理列表移除
+        complete_character_sync_operation(&conn, &target).unwrap();
+        let remaining = list_pending_character_sync_operations(&conn).unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].blueprint_commit_operation_id, "op-2");
+    }
+
+    #[test]
+    fn complete_character_sync_without_roster_evidence_is_already_satisfied_test() {
+        let conn = memory_db();
+        commit_range(&conn, &commit_request(COMMIT_MODE_FULL, 1, 1, &[1])).unwrap();
+
+        let completed =
+            complete_character_sync_operation(&conn, &character_sync_operation_id("op-1")).unwrap();
+        assert_eq!(completed.status, "completed");
+        let receipt = completed.completion_receipt.expect("应有完成回执");
+        assert_eq!(receipt.status, "already-satisfied");
+        assert!(receipt.roster_receipt.is_none(), "无名单操作证据时不返回名单证据");
+    }
+
+    #[test]
+    fn complete_character_sync_reports_committed_with_roster_evidence_test() {
+        let conn = memory_db();
+        commit_range(&conn, &commit_request(COMMIT_MODE_FULL, 1, 1, &[1])).unwrap();
+        let sync_id = character_sync_operation_id("op-1");
+
+        // 角色名单提交要求主台账已初始化（基线：打开项目时 init）
+        crate::repositories::project_core_repository::init(
+            &conn,
+            "测试项目",
+            crate::repositories::project_core_repository::DEFAULT_WRITING_LANGUAGE,
+        )
+        .unwrap();
+
+        // 模拟渲染层以同一 operationId 提交名单事实（同步的唯一完成路径）
+        let payload = serde_json::json!({
+            "operationId": sync_id,
+            "expectedRevision": 0,
+            "schemaVersion": 1,
+            "intent": "initialize",
+            "entries": [{
+                "name": "林清玄",
+                "role": "protagonist",
+                "gender": "",
+                "age": "",
+                "appearance": "",
+                "personality": "",
+                "background": "",
+                "abilities": "",
+                "motivation": "",
+                "relationships": [],
+                "arc": "",
+                "notes": ""
+            }],
+        });
+        roster::commit(&conn, &payload).unwrap();
+
+        let completed = complete_character_sync_operation(&conn, &sync_id).unwrap();
+        assert_eq!(completed.status, "completed");
+        let receipt = completed.completion_receipt.clone().expect("应有完成回执");
+        assert_eq!(receipt.status, "committed");
+        let roster_receipt = receipt.roster_receipt.expect("应有名单证据");
+        assert_eq!(roster_receipt.operation_id, sync_id);
+        assert_eq!(roster_receipt.revision, 1);
+        assert!(!roster_receipt.idempotent);
+        assert!(is_sha256_hex(&roster_receipt.payload_hash));
+
+        // 幂等：重复完成返回同一回执（不回退已提交状态）
+        let again = complete_character_sync_operation(&conn, &sync_id).unwrap();
+        assert_eq!(again.completion_receipt, completed.completion_receipt);
+
+        // 完成后的回读仍通过权威校验
+        let fetched = get_character_sync_operation(&conn, &sync_id).unwrap().unwrap();
+        assert_eq!(fetched.status, "completed");
+        assert!(list_pending_character_sync_operations(&conn).unwrap().is_empty());
+    }
+
+    #[test]
+    fn complete_character_sync_rejects_missing_declared_candidate_test() {
+        let conn = memory_db();
+        let mut request = commit_request(COMMIT_MODE_FULL, 1, 1, &[1]);
+        request.blueprints[0].new_character_candidates = Some(vec![serde_json::json!({
+            "name": "苏晚",
+            "role": "supporting"
+        })]);
+        commit_range(&conn, &request).unwrap();
+        let sync_id = character_sync_operation_id("op-1");
+
+        assert_eq!(
+            complete_character_sync_operation(&conn, &sync_id).unwrap_err(),
+            "角色名单缺少第1章蓝图声明的新角色候选「苏晚」，已拒绝完成蓝图角色同步"
+        );
+
+        // 失败必须回滚：状态仍为 pending 且仍在待处理列表
+        let pending = read_character_sync_operation(&conn, &sync_id).unwrap().unwrap();
+        assert_eq!(pending.status, "pending");
+        assert!(pending.completion_receipt.is_none());
+        assert_eq!(list_pending_character_sync_operations(&conn).unwrap().len(), 1);
     }
 }

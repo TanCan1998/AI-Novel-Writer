@@ -79,6 +79,10 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'db:blueprint-delete': ['chapterNumber', 'expectedProjectPath'],
   'db:blueprint-clear-all': ['expectedProjectPath'],
   'db:blueprint-commit-range': ['request', 'expectedProjectPath'],
+  // 批次 C：蓝图角色同步（blueprints 子域 S2-c）
+  'db:blueprint-character-sync-list-pending': ['expectedProjectPath'],
+  'db:blueprint-character-sync-get': ['operationId', 'expectedProjectPath'],
+  'db:blueprint-character-sync-complete': ['operationId', 'expectedProjectPath'],
 }
 
 /** 频道 → Tauri 命令名（`channel:seg-name` → `channel_seg_name`）。 */

@@ -7,18 +7,18 @@
 
 ---
 
-## 快照（最后更新：2026-10-07 · 第十二次）
+## 快照（最后更新：2026-10-07 · 第十三次）
 
 | 项 | 值 |
 |---|---|
 | 仓库 | **`TanCan1998/Lorekeeper`**（原名 `AI-Novel-Writer`；仍为 `EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork） |
 | 分支 | `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm 包 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 当前阶段 | **批次 C 进行中**：`project_core` ✅、`characters/roster` ✅（`69fc50c`）、**`blueprints` S2-a ✅ + S2-b ✅（本轮）**；下一步 **S2-c**（`db:blueprint-character-sync-*` 3 频道） |
-| 已注册命令 | **49**（骨架 1 + A 11 + B 22 + C project_core 4 + characters 3 + blueprints 8） |
+| 当前阶段 | **批次 C 进行中**：`project_core` ✅、`characters/roster` ✅（`69fc50c`）、**`blueprints` 11 频道全部 ✅（S2-a/b/c）**；下一步 **批次 C 下一子域：`drafts`（16 频道）** |
+| 已注册命令 | **52**（骨架 1 + A 11 + B 22 + C project_core 4 + characters 3 + blueprints 11） |
 | 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后 |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`） |
-| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **109/109** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 |
+| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **114/114** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 |
 
 ---
 
@@ -147,16 +147,57 @@
 
 ---
 
-## 下一步：S2-c（3 频道）
+## 本次更新（第十三次：`blueprints` S2-c — 角色同步 3 频道，子域收口）
 
-| 频道 | 参数 | 行为 |
+### 1. `repositories/blueprint_repository.rs`（S2-c）
+
+- 抽出 `SYNC_OPERATION_COLUMNS` + `character_sync_operation_row` 共享行读取（三条查询共用，避免列名漂移）。
+- `list_pending_character_sync_operations` —— 对齐 `listPendingCharacterSyncOperations`
+  （`status = 'pending'`，`ORDER BY created_at ASC, operation_id ASC`）。
+- `get_character_sync_operation` —— 对齐 `getCharacterSyncOperation`
+  （空 ID → 「蓝图角色同步操作 ID 不能为空」；已完成项跑 authoritative 校验）。
+- `complete_character_sync_operation` —— 对齐 `completeCharacterSyncOperation`：
+  单事务 + 幂等（已完成直接回读校验）+ `UPDATE ... WHERE status = 'pending'` 变更数校验
+  + 回读校验；回执按 `canonical_json` 序列化存储。
+
+### 2. `commands/db.rs` / `lib.rs` / `ipc-client.ts`
+
+- 3 命令：`db:blueprint-character-sync-list-pending`（读）、`-get`（读）、
+  `-complete`（MUTATING，信封 `{ success, operation?, error? }`）。
+- `lib.rs` 注册（**49 → 52**）；`ipc-client.ts` 登记 3 个频道参数名。
+
+### 3. 验证与测试
+
+新增 Rust 测试 **5 个**（仓储 4 + 命令 1）：列表/单读/空 ID 校验、already-satisfied、
+**committed**（以同一 operationId 先跑 `roster::commit`，验证名单证据与幂等重放）、
+缺候选拒绝 + 事务回滚、命令门禁端到端。
+
+结果：`cargo check --all-targets` **0 告警** · `cargo test --lib` **114/114** ·
+`pnpm typecheck` / `pnpm run lint` 均 exit 0。
+
+### 4. `blueprints` 子域收口状态
+
+| 步骤 | 频道数 | 状态 |
 |---|---|---|
-| `db:blueprint-character-sync-list-pending` | `expectedProjectPath` | `listPendingCharacterSyncOperations`（`status='pending'`，按 `created_at, operation_id` 升序） |
-| `db:blueprint-character-sync-get` | `operationId` | 读单个操作 + `assert_authoritative_character_sync_completion` |
-| `db:blueprint-character-sync-complete` | `operationId` | MUTATING：`authoritative_*_receipt` → UPDATE 为 completed + 回执 + 回读校验 |
+| S2-a 基础读写 | 7 | ✅ `50c0fe8` |
+| S2-b 范围提交 | 1 | ✅ `1332216` |
+| S2-c 角色同步 | 3 | ✅ 本轮 |
+| **合计** | **11** | ✅ **全部完成**（命令 41 → 52） |
 
-复用 S2-b 已落地的 `read_character_sync_operation` 与 authoritative 校验（需把它们从 private
-提为模块内可见）；预期命令注册 49 → **52**。
+---
+
+## 下一步：批次 C 下一子域 `drafts`（16 频道）
+
+- 建 `src-tauri/src/repositories/draft_repository.rs`；`db/schema.rs` 已有 `contents` / `drafts` /
+  `finalization_outbox` 建表（drafts 子域迁移时不再重复建表）。
+- 逐条对照 `electron/repositories/draft-repository.ts`；注意：
+  - `db:draft-import-finalized-batch` / `db:draft-create` / `db:draft-update-status` /
+    `db:draft-update-content` / `db:draft-delete` 属 MUTATING；
+  - 依赖 `draft-source-guard.ts`（`SOURCE_DRAFT_CHANGED` 等错误码）与
+    `draft-source-dependency.ts` 的共享类型；
+  - 蓝图/角色同步所需 `finalization_outbox` 已在 schema 就位。
+- 每子域固定流程：仓储 + 命令 + `ipc-client` 登记 + `cargo check`（0 告警）+
+  `cargo test --lib` + `pnpm typecheck/lint` → 单独 commit。
 
 ---
 

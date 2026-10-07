@@ -79,6 +79,10 @@ pub fn run() {
             commands::db_blueprint_delete,
             commands::db_blueprint_clear_all,
             commands::db_blueprint_commit_range,
+            // 批次 C：蓝图角色同步（blueprints 子域 S2-c）
+            commands::db_blueprint_character_sync_list_pending,
+            commands::db_blueprint_character_sync_get,
+            commands::db_blueprint_character_sync_complete,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

@@ -592,6 +592,105 @@ pub fn db_blueprint_commit_range(
     )
 }
 
+/// `db:blueprint-character-sync-complete` 的 IPC 信封（对齐 `{ success, operation?, error? }`）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlueprintCharacterSyncCompleteResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation: Option<blueprints::BlueprintCharacterSyncOperation>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+pub(crate) fn blueprint_character_sync_list_pending_inner(
+    state: &AppState,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Vec<blueprints::BlueprintCharacterSyncOperation>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(blueprints::list_pending_character_sync_operations)
+}
+
+pub(crate) fn blueprint_character_sync_get_inner(
+    state: &AppState,
+    operation_id: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Option<blueprints::BlueprintCharacterSyncOperation>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| blueprints::get_character_sync_operation(conn, operation_id))
+}
+
+pub(crate) fn blueprint_character_sync_complete_inner(
+    state: &AppState,
+    operation_id: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> BlueprintCharacterSyncCompleteResult {
+    let outcome = guard_read(state, expected_project_path, session).and_then(|()| {
+        state.with_project_db(|conn| blueprints::complete_character_sync_operation(conn, operation_id))
+    });
+    match outcome {
+        Ok(operation) => BlueprintCharacterSyncCompleteResult {
+            success: true,
+            operation: Some(operation),
+            error: None,
+        },
+        Err(error) => BlueprintCharacterSyncCompleteResult {
+            success: false,
+            operation: None,
+            error: Some(mutating_error(error)),
+        },
+    }
+}
+
+/// `db:blueprint-character-sync-list-pending` —— 列出待恢复的角色同步操作
+#[tauri::command]
+pub fn db_blueprint_character_sync_list_pending(
+    state: State<'_, AppState>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<blueprints::BlueprintCharacterSyncOperation>, String> {
+    blueprint_character_sync_list_pending_inner(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:blueprint-character-sync-get` —— 读取单个角色同步操作
+#[tauri::command]
+pub fn db_blueprint_character_sync_get(
+    state: State<'_, AppState>,
+    operation_id: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Option<blueprints::BlueprintCharacterSyncOperation>, String> {
+    blueprint_character_sync_get_inner(
+        state.inner(),
+        &operation_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:blueprint-character-sync-complete` —— 闭合待处理操作（MUTATING）
+#[tauri::command]
+pub fn db_blueprint_character_sync_complete(
+    state: State<'_, AppState>,
+    operation_id: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> BlueprintCharacterSyncCompleteResult {
+    blueprint_character_sync_complete_inner(
+        state.inner(),
+        &operation_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1035,6 +1134,67 @@ mod tests {
         );
         assert!(shrunk.success, "全量裁剪应成功：{:?}", shrunk.error);
         assert_eq!(blueprint_get_all_inner(&state, &root, Some(&session)).unwrap().len(), 1);
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn blueprint_character_sync_channels_test() {
+        let (state, root, session) = activated_state("sync");
+        let request = commit_request("full", "op-1", 1, 1, &[1]);
+        assert!(blueprint_commit_range_inner(&state, &request, &root, Some(&session)).success);
+        let sync_id = "blueprint-sync-op-1";
+
+        // 读频道门禁：缺会话 → 直接拒绝
+        assert_eq!(
+            blueprint_character_sync_list_pending_inner(&state, &root, None).unwrap_err(),
+            "缺少项目会话上下文，已拒绝操作"
+        );
+
+        let pending =
+            blueprint_character_sync_list_pending_inner(&state, &root, Some(&session)).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].status, "pending");
+        assert_eq!(pending[0].operation_id, sync_id);
+
+        let fetched = blueprint_character_sync_get_inner(&state, sync_id, &root, Some(&session))
+            .unwrap()
+            .expect("应读到同步操作");
+        assert_eq!(fetched.blueprint_commit_operation_id, "op-1");
+        assert!(blueprint_character_sync_get_inner(&state, "不存在", &root, Some(&session))
+            .unwrap()
+            .is_none());
+
+        // 完成（MUTATING）：无名单证据 → already-satisfied
+        let completed =
+            blueprint_character_sync_complete_inner(&state, sync_id, &root, Some(&session));
+        assert!(completed.success, "完成应成功：{:?}", completed.error);
+        let operation = completed.operation.expect("应返回操作");
+        assert_eq!(operation.status, "completed");
+        assert_eq!(
+            operation.completion_receipt.as_ref().map(|receipt| receipt.status.as_str()),
+            Some("already-satisfied")
+        );
+
+        // MUTATING 失败包装
+        let missing =
+            blueprint_character_sync_complete_inner(&state, "不存在", &root, Some(&session));
+        assert!(!missing.success);
+        assert_eq!(
+            missing.error.as_deref(),
+            Some("Error: 待处理蓝图角色同步操作不存在")
+        );
+        let denied = blueprint_character_sync_complete_inner(&state, sync_id, &root, None);
+        assert!(!denied.success);
+        assert_eq!(
+            denied.error.as_deref(),
+            Some("Error: 缺少项目会话上下文，已拒绝操作")
+        );
+
+        // 完成后待处理列表清空
+        assert!(blueprint_character_sync_list_pending_inner(&state, &root, Some(&session))
+            .unwrap()
+            .is_empty());
 
         cleanup(&root);
     }
