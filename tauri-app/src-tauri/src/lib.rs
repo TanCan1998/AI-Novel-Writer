@@ -8,6 +8,8 @@
 mod character_role;
 mod commands;
 mod db;
+#[cfg(test)]
+mod disk_e2e;
 mod draft_source_guard;
 mod project_access;
 mod repositories;
