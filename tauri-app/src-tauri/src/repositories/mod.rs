@@ -1,0 +1,5 @@
+//! 仓储层 —— 一域一仓，平移自 `electron/repositories/*`。
+//!
+//! 约定：仓储只接收 `&Connection`，不持有全局状态；命令层负责会话门禁与错误形状。
+
+pub mod project_core_repository;
