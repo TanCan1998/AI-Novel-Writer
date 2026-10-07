@@ -35,8 +35,6 @@ pub struct ProjectDatabaseState {
 pub struct AppState {
     /// 启动时间戳（毫秒）。阶段 0 用于健康检查命令验证状态注入链路。
     pub(crate) started_at_ms: u64,
-    /// 批次 A：配置存储
-    pub(crate) config: Mutex<crate::commands::ConfigStore>,
     /// 批次 A：皮肤命令存储
     pub(crate) skin: Mutex<crate::commands::SkinCommandStore>,
     /// 批次 B/C：活跃项目会话（None = 未打开项目；项目域命令一律拒绝）
@@ -56,7 +54,6 @@ impl AppState {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_millis() as u64)
                 .unwrap_or(0),
-            config: Mutex::new(crate::commands::ConfigStore::new()),
             skin: Mutex::new(crate::commands::SkinCommandStore::new()),
             active_project: Mutex::new(None),
             project_db: Mutex::new(None),

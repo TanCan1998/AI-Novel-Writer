@@ -61,11 +61,12 @@ describe('channel migration coverage', () => {
     }
   })
 
-  it('未迁移频道会被前置拦截（如批次 D 的 llm:list-models）', () => {
-    expect(MIGRATED_CHANNELS.has('llm:list-models')).toBe(false)
+  it('未迁移频道会被前置拦截（如批次 D2 的 llm:generate）', () => {
+    expect(MIGRATED_CHANNELS.has('llm:generate')).toBe(false)
     expect(MIGRATED_CHANNELS.has('kb:search')).toBe(false)
     // 已迁频道不受影响
     expect(MIGRATED_CHANNELS.has('config:get')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('llm:list-models')).toBe(true)
     expect(MIGRATED_CHANNELS.has('db:project-clear-generated-data')).toBe(true)
   })
 })

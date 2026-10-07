@@ -5,12 +5,14 @@
 //! - 项目域命令预留尾参 `project_session`（渲染层 ipc-client.ts 自动注入）并校验租约（ADR 0001）；
 //! - 仅新增，不改 Electron 代码；每批次迁移配 Rust 单元测试并通过 `cargo test`。
 
+mod app_paths;
 mod character_role;
 mod commands;
 mod db;
 #[cfg(test)]
 mod disk_e2e;
 mod draft_source_guard;
+mod json_store;
 mod project_access;
 mod repositories;
 mod security;
@@ -20,10 +22,18 @@ mod state;
 pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState::new())
+        // 对齐基线 `ensureVelaHome()`：启动即保证 `~/.lorekeeper/{prompts,logs}` 存在。
+        // 失败不阻断启动（首次写入时会再次建目录并给出可读错误）。
+        .setup(|_app| {
+            if let Err(error) = app_paths::ensure_lorekeeper_home() {
+                eprintln!("[Lorekeeper] {error}");
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             // 阶段 0 骨架联调命令（非业务频道，验证 invoke/状态注入链路）
             commands::app_health_check,
-            // 批次 A：基础配置
+            // 批次 A：基础配置（批次 D1 补齐真实文件持久化）
             commands::config_get,
             commands::config_set,
             // 批次 A：窗口管理
@@ -130,6 +140,14 @@ pub fn run() {
             commands::db_get_latest_summary,
             // 批次 C：项目生成数据清理
             commands::db_project_clear_generated_data,
+            // 批次 D1：LLM 模型管理（7 频道）
+            commands::llm_list_models,
+            commands::llm_save_model,
+            commands::llm_delete_model,
+            commands::llm_get_default_model,
+            commands::llm_set_default_model,
+            commands::llm_get_default_embedding_model,
+            commands::llm_set_default_embedding_model,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

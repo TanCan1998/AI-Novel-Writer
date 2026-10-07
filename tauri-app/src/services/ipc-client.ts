@@ -38,7 +38,9 @@ import { MIGRATED_CHANNELS } from '../shared/migrated-channels'
  *
  * - 批次 A：config / window / skin / official-homepage / model-provider-resource
  * - 批次 B：fs（7）/ grant（3）/ project 带参频道（7）
- * - 批次 B+ 迁移时在此追加登记；无参频道无需登记。
+ * - 批次 C：db 各子域带参频道
+ * - 批次 D1：llm 模型管理带参频道（4）
+ * - 后续批次迁移时在此追加登记；无参频道无需登记。
  */
 const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'config:set': ['config'],
@@ -130,6 +132,12 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'db:get-latest-summary': ['expectedProjectPath'],
   // 批次 C：项目生成数据清理
   'db:project-clear-generated-data': ['options', 'expectedProjectPath'],
+  // 批次 D1：LLM 模型管理（无参频道：list-models / get-default-model /
+  // get-default-embedding-model 无需登记）
+  'llm:save-model': ['model'],
+  'llm:delete-model': ['modelId'],
+  'llm:set-default-model': ['modelId'],
+  'llm:set-default-embedding-model': ['modelId'],
 }
 
 /** 频道 → Tauri 命令名（`channel:seg-name` → `channel_seg_name`）。 */

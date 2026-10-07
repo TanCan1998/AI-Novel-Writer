@@ -40,39 +40,15 @@ pub struct RuntimeContext {
     pub db_ready: bool,
 }
 
-/// LOREKEEPER_HOME —— Tauri 侧的全局数据根，**刻意与 Electron 基线隔离**。
-///
-/// 基线读 `AI_NOVEL_VELA_HOME` 并回退 `~/.vela`。两个应用可以同时在同一台机器上
-/// 运行，所以这里既不读旧环境变量、也不回退到旧目录，否则 `config.json` /
-/// `models.json` / `recent-projects.json` / `prompts/` 会被两个进程同时读写。
-pub fn lorekeeper_home() -> std::path::PathBuf {
-    if let Ok(home) = std::env::var("AI_NOVEL_LOREKEEPER_HOME") {
-        let trimmed = home.trim();
-        if !trimmed.is_empty() {
-            return std::path::PathBuf::from(trimmed);
-        }
-    }
-    let home = std::env::var("USERPROFILE")
-        .or_else(|_| std::env::var("HOME"))
-        .unwrap_or_default();
-    std::path::PathBuf::from(home.trim()).join(".lorekeeper")
-}
-
-fn recent_projects_path() -> std::path::PathBuf {
-    lorekeeper_home().join("recent-projects.json")
-}
-
 /// 读最近项目列表：缺失或损坏返回空列表（对齐 `readJsonFile(path, [])`）。
 pub fn load_recent_projects() -> Vec<RecentProject> {
-    let Ok(content) = std::fs::read_to_string(recent_projects_path()) else {
-        return Vec::new();
-    };
-    serde_json::from_str(&content).unwrap_or_default()
+    crate::json_store::read_json_file(&crate::app_paths::recent_projects_path(), Vec::new())
 }
 
+/// 原子写最近项目列表（对齐基线 `writeJsonFile`：同目录临时文件 + rename 提交）。
 fn write_recent_projects(list: &[RecentProject]) -> Result<(), String> {
-    let value = serde_json::to_string_pretty(list).map_err(|e| e.to_string())?;
-    std::fs::write(recent_projects_path(), value).map_err(|e| e.to_string())
+    let value = serde_json::to_value(list).map_err(|error| error.to_string())?;
+    crate::json_store::write_json_file(&crate::app_paths::recent_projects_path(), &value)
 }
 
 /// 最近项目路径一致性：词法归一比较。基线为 canonical root 优先 + 词法键
