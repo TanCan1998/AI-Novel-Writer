@@ -5,19 +5,20 @@
 
 ---
 
-## 快照（最后更新：2026-10-06 · 第九次）
+## 快照（最后更新：2026-10-07 · 第十次）
 
 | 项 | 值 |
 |---|---|
-| 分支 | `master`（`origin/master` 已同步至 `c9e21bf`；本地新增 `69fc50c` 待推送） |
+| 仓库 | **`TanCan1998/Lorekeeper`**（2026-10-07 由 `AI-Novel-Writer` 改名；description / homepage 已更新；仍为 `EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork，parent/upstream 未变，旧 URL 302 重定向） |
+| 分支 | `master`（与 `origin/master` 同步） |
 | 基准 SHA | `a0fd2f4`（阶段 0 锚点提交；后续批次 A–H 以此为起点） |
 | 产品身份 | **Lorekeeper（中文副名「设定司」）**；`identifier = com.tancan1998.lorekeeper`；npm 包名 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib`（原 `com.ai-novel-writer.app` 与 Electron **完全相同**，已消除） |
-| 当前阶段 | **批次 C 进行中**：`project_core` ✅、**`characters/roster` ✅（`69fc50c`，41 命令）**、**Lorekeeper 身份 + 双栈隔离 L0/L1/L2 ✅**；下一步 `blueprints`（11 频道） |
+| 当前阶段 | **批次 C 进行中**：`project_core` ✅、`characters/roster` ✅（`69fc50c`，41 命令）、**Lorekeeper 身份 + 双栈隔离 L0/L1/L2 ✅**、**仓库改名 ✅**；**S2（blueprints 11 频道）拆解已定、待开工**（用户选项①：S2-a 7 → S2-b 1 → S2-c 3，见第十次更新 §3） |
 | 结构 | **独立迁移根 `tauri-app/`**（用户确认的方案 B），根目录三文件已还原上游原样 |
 | 双栈隔离 | ① 安装标识独立；② 全局数据根 = `AI_NOVEL_LOREKEEPER_HOME` 或 `~/.lorekeeper`（基线 `AI_NOVEL_VELA_HOME`/`~/.vela`，**不回退**）；③ 项目库 = `<root>/.vela/lorekeeper.db`（基线 `.vela/vela.db`）；④ `.vela` 目录本身仍共享（L3 押后） |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（遵循 AGENTS.md 第 3 条规则）；crates 走 rsproxy 镜像；VS Build Tools 已装；**脚本内需显式设 RUSTUP_HOME/CARGO_HOME** |
 | 已注册命令 | **41**（骨架 1 + A 11 + B 22 + C project_core 4 + C characters 3） |
-| 未提交变更 | 无（本次快照与盘点文档改动随隔离 commit 一起提交）。新增：`69fc50c feat(tauri): 批次 C — 角色与角色名单仓储及命令（characters 子域）` |
+| 未提交变更 | 无（本会话 4 个 commit 已全部推送：`69fc50c` characters/roster、`0d0e597` Lorekeeper 身份与隔离、`3c81ad1` 官方主页改指 fork、最后一个为仓库改名同步） |
 | 残留死文件 | ✅ 已删除（上会话残留 `state/commands.rs`、`commands/config/internal_exports.rs`） |
 | 未验证事项 | ① ~~`pnpm tauri dev` 窗口冒烟~~ → ✅ 已完成；② ~~批次 C `cargo check/test`~~ → ✅ **0 告警 + 94/94**；③ 批次 B/C 与 Electron 版行为对照未做；④ vitest 全量超时未定位；⑤ `cargo fmt --check` 未达标（未纳入验收）；⑥ **批次 C 未做 GUI 实机验证**（打开真实项目、读写 project_core/角色名单）；⑦ ~~隔离改造后未重跑 dev 冒烟~~ → ✅ **已完成（第九次）**：进程 `lorekeeper`、窗口标题 `Lorekeeper`、exe `target/debug/lorekeeper.exe`、vite@5190 正常，仅预期报错 `llm_list_models not found`（批次 D）；**注**：`~/.lorekeeper` 只在首次打开/创建/移除项目时才生成，本次冒烟未触发 |
 
@@ -252,8 +253,9 @@
 14. **`pnpm tauri dev` 会规范化 `Cargo.toml`**（第六次更新后期实测发现）：注释中若写 `features=["bundled"]` 这类 TOML 片段，dev 启动后会被重写为 `features= ["bundled"]`（tauri CLI 内部 toml 格式化），造成每次 dev 后工作区无故脏。→ ✅ **已规避**：注释改写为不含 TOML 片段形式的等价表述；**后续在 `Cargo.toml` 注释中写示例配置时，请直接用已带空格的规范写法，避免反复产生噪声 diff**。
 15. **L3 项目目录改名押后**：`.vela` → `.lorekeeper` 需同步约 20 个前端非测试文件 + 若干测试；`vela://` 伪协议暂不改。收口后单独提交、单独验证。
 16. **可见品牌未改（押后项）**：`tauri-app/src/shared/brand.ts`（zhName/enName/shortName）、`src/i18n/messages/{zh-CN,en-US}.ts` 的 `app.windowTitle`、`BottomPanel.tsx` 的版本号行、`theme-store` 的 localStorage 键 `ai-novel-writer-theme`、以及 agent 工具描述里的「AI小说作家」；均有对应测试需同步。
-17. ~~**`official_homepage` 仍是上游仓库地址**~~ → ✅ **已改指本 fork**（`https://github.com/TanCan1998/AI-Novel-Writer`，2026-10-07）：同步更新 `tauri-app/src/shared/official-homepage.ts`、其契约测试、`src-tauri/src/commands/official_homepage.rs`（常量 + 断言）；根目录基线副本保持不动（上游同步锚点）。
-18. ~~**隔离改造后未重跑 dev 冒烟**~~ → ✅ **已完成（第九次更新）**：进程名 `lorekeeper`、窗口标题 `Lorekeeper`、exe `tauri-app/src-tauri/target/debug/lorekeeper.exe`、vite@5190 正常；仅预期报错 `Command llm_list_models not found`（批次 D）。两点待留意：① `~/.lorekeeper/` 只在首次打开/创建/移除项目时才生成（本次未触发）；② `target/debug/` 下仍残留重命名前的旧产物 `ai-novel-writer.exe`（构建产物，不入 Git，可随时清理）。
+17. ~~**`official_homepage` 仍是上游仓库地址**~~ → ✅ **已改指本 fork**（`https://github.com/TanCan1998/Lorekeeper`，2026-10-07）：同步更新 `tauri-app/src/shared/official-homepage.ts`、其契约测试、`src-tauri/src/commands/official_homepage.rs`（常量 + 断言）；根目录基线副本保持不动（上游同步锚点）。
+18. ~~**隔离改造后未重跑 dev 冒烟**~~ → ✅ **已完成（第九次更新）**：进程名 `lorekeeper`、窗口标题 `Lorekeeper`、exe `tauri-app/src-tauri/target/debug/lorekeeper.exe`、vite@5190 正常；仅预期报错 `Command llm_list_models not found`（批次 D）。两点待留意：① `~/.lorekeeper/` 只在首次打开/创建/移除项目时才生成（本次未触发）；② ~~`target/debug/` 下仍残留重命名前的旧产物 `ai-novel-writer.exe`~~ → ✅ 已删除（2026-10-07）。
+19. **仓库 topics 为空**：fork 未继承上游的 14 个 topics（`ai-writing` / `local-first` / `ollama` …）。改名后如需提高可发现性，可补 `tauri` / `rust` / `lorekeeper` / `local-first` / `ai-writing` 等；本次未执行。
 
 ---
 
@@ -368,6 +370,42 @@
 
 `cargo check --all-targets` **0 告警**、`cargo test --lib` **94/94**、`pnpm typecheck` exit 0、`pnpm run lint` exit 0。
 
+### 2026-10-06 第十次更新（仓库改名 Lorekeeper + 官方主页改指本 fork + S2 拆分定案）
+
+#### 1. 仓库改名（用户确认）
+
+- `TanCan1998/AI-Novel-Writer` → **`TanCan1998/Lorekeeper`**（`gh repo rename`，2026-10-07）。
+- repository **description / homepage** 同步更新：
+  - description：`Lorekeeper 设定司 — 本地优先的 AI 长篇小说创作工作台｜Electron → Tauri 2 迁移 fork（上游：EthanYoQ/AI-Novel-Writer）`
+  - homepage：`https://github.com/TanCan1998/Lorekeeper`
+- 事实核对：仍为 `EthanYoQ/AI-Novel-Writer` 的 **PUBLIC fork**（`isFork: true`，parent/source 未变）；`master` 分支、提交历史、Release 全保留；旧 URL 由 GitHub 自动 302 重定向；可逆（`gh repo rename AI-Novel-Writer`）。
+- 本地同步：`git remote set-url origin https://github.com/TanCan1998/Lorekeeper.git`（`git fetch origin` 通过）；`upstream` 仍指 `EthanYoQ/AI-Novel-Writer`。
+- 代码/文档自引用共 **5 处**改为新 URL：`tauri-app/src/shared/official-homepage.ts`、其契约测试、`src-tauri/src/commands/official_homepage.rs`（常量 + 断言）、`AGENTS.md:140`（本机忽略文件）、本文件遗留项 17。
+- **未动**（上游同步锚点 / 上游发布配置）：根 `README.md`/`README_zh.md`（讲的是与 upstream 的 fork 关系、指向上游 Release）、`electron-builder.json5` 的 publish `owner/repo`、`.github/workflows/*`、`docs/agents/issue-tracker.md`（Issue 仍按基线指向上游；本 fork `has_issues: false`）。
+
+#### 2. 官方主页改指本 fork（`3c81ad1`）
+
+`OFFICIAL_HOMEPAGE_URL` 先由 `EthanYoQ/...` 改为 `TanCan1998/AI-Novel-Writer`，随后随改名更新为 `TanCan1998/Lorekeeper`；根目录基线副本保持不动。另删除 `target/debug/ai-novel-writer.exe`（改名前的旧构建产物，不入 Git）。
+
+#### 3. S2（blueprints）拆分定案 —— 用户选①（三步全做，各自一个 commit）
+
+| 步骤 | 频道 | 内容 | Rust 预估 | 风险 |
+|---|---|---|---|---|
+| **S2-a** | 7 | `blueprint` 基础读写：`get-all`/`get`/`upsert`/`upsert-many`/`update-notes`/`delete`/`clear-all` + `ensure_blueprint_commit_schema`（两表 DDL）+ `pub clear_blueprint_facts_within_transaction`（供后续 `project-clear-generated-data`/import 复用） | ~450 行 | 🟢 低 |
+| **S2-b** | 1 | `db:blueprint-commit-range`：`canonicalize` / `commit_payload_hash` / `assert_exact_range` / `read_exact_range` + 幂等提交事务与回读校验 | ~350 行 | 🟡 中 |
+| **S2-c** | 3 | `db:blueprint-character-sync-{list-pending,get,complete}`：`character_sync_operation_id` / `read_character_sync_operation` / `authoritative_character_sync_completion_receipt` / `assert_authoritative_character_sync_completion` / `snapshot_with_character_sync_facts` / `same_persisted_blueprint` | ~450 行 | 🟠 中高 |
+
+- 依赖链：S2-a 的两表 → S2-b 的 `blueprint_commit_operations` 行 → S2-c 的交叉校验（`characterSyncOperationId(blueprintCommitOperationId)`）。
+- 命令注册预期：41 → 48 → 49 → 52。
+- 每步之间停下汇报一次（用户要求可随时叫停/调整）；`db:blueprint-character-sync-complete` 属 MUTATING → 走 `mutating_error()` 前缀。
+- 纯前端共享文件 `blueprint-character-sync-evidence.ts` / `blueprint-semantic-contract.ts` 已在 tauri-app 副本，无需迁移。
+
+#### 4. 本次会话结束状态
+
+- 工作区干净；`master` 与 `origin/master` 同步；仓库已更名为 `TanCan1998/Lorekeeper`。
+- 验证全绿：`cargo check --all-targets` 0 告警、`cargo test --lib` **94/94**、`pnpm typecheck` / `pnpm run lint` exit 0。
+- **下次接续从 S2-a 开工**（blueprints 基础读写 7 频道）。
+
 ### 关键发现摘要（接续前必读，详见盘点文档）
 
 - **★ 会话注入约定**：ipc-client 对项目域频道（`db:/kb:/chapter:/fs:/project:save|update-config|delete`）自动在 args 尾部追加 `projectSession`（契约未声明）—— Rust 命令签名必须预留尾参并校验租约。
@@ -392,7 +430,7 @@
 
 6. ~~批次 C `project_core` 子域~~ → ✅ 已完成（2026-10-06 第八次：接线 + 5 类编译修复 + 3 类测试修正 + `cargo check` 0 告警 + `cargo test --lib` 64/64 + TS 全绿 + 两个 commit `ff7fbd8`/`a8d742a`）。
 
-7. **批次 C 剩余子域**：~~`project_core`~~ ✅ → ~~`characters/roster`~~ ✅（`69fc50c`）→ **下一步 `blueprints`（11 频道）** → drafts（16）→ revisions（9）→ reviews（5）→ post-process（6）→ summary/llm-stats（5）→ project 清理（2）；每子域一个 commit（流程见上方「下一子域接续入口」）。
+7. **批次 C 剩余子域**：~~`project_core`~~ ✅ → ~~`characters/roster`~~ ✅（`69fc50c`）→ **当前：`blueprints`（11 频道）已按用户选项① 拆为 S2-a / S2-b / S2-c，从 S2-a 开工（见第十次更新 §3）** → 之后 drafts（16）→ revisions（9）→ reviews（5）→ post-process（6）→ summary/llm-stats（5）→ project 清理（2）；每子域（或每步）一个 commit（流程见上方「下一子域接续入口」）。
 
 7b. ~~**隔离收尾验证**~~ → ✅ **已完成（第九次：dev 冒烟通过，见遗留项 18）**；剩余待做：打开/新建一个真实项目，确认 `.vela/lorekeeper.db`（而非 `vela.db`）与 `~/.lorekeeper/recent-projects.json` 生成，且 Electron 基线仍能独立打开同一项目。
 
