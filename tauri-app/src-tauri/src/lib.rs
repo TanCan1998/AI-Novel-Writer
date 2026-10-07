@@ -113,6 +113,13 @@ pub fn run() {
             commands::db_review_get_latest,
             commands::db_review_get_full,
             commands::db_review_next_index,
+            // 批次 C：后处理（post-process 子域 S3-d）
+            commands::db_post_process_create_run,
+            commands::db_post_process_get_latest_run,
+            commands::db_post_process_get_steps,
+            commands::db_post_process_mark_step_ok,
+            commands::db_post_process_mark_step_failed,
+            commands::db_post_process_is_all_passed,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

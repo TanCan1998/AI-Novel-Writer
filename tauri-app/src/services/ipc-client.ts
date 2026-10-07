@@ -112,6 +112,13 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'db:review-get-latest': ['baseDraftId', 'expectedProjectPath'],
   'db:review-get-full': ['id', 'expectedProjectPath'],
   'db:review-next-index': ['baseDraftId', 'expectedProjectPath'],
+  // 批次 C：后处理（post-process 子域 S3-d）
+  'db:post-process-create-run': ['params', 'expectedProjectPath'],
+  'db:post-process-get-latest-run': ['sourceType', 'sourceId', 'expectedProjectPath'],
+  'db:post-process-get-steps': ['runId', 'expectedProjectPath'],
+  'db:post-process-mark-step-ok': ['runId', 'stepKey', 'expectedProjectPath'],
+  'db:post-process-mark-step-failed': ['runId', 'stepKey', 'errorMsg', 'expectedProjectPath'],
+  'db:post-process-is-all-passed': ['sourceType', 'sourceId', 'expectedProjectPath'],
 }
 
 /** 频道 → Tauri 命令名（`channel:seg-name` → `channel_seg_name`）。 */

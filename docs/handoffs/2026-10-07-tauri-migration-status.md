@@ -7,18 +7,18 @@
 
 ---
 
-## 快照（最后更新：2026-10-07 · 第十六次）
+## 快照（最后更新：2026-10-07 · 第十七次）
 
 | 项 | 值 |
 |---|---|
 | 仓库 | **`TanCan1998/Lorekeeper`**（原名 `AI-Novel-Writer`；仍为 `EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork） |
 | 分支 | `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm 包 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 当前阶段 | **批次 C 进行中**：`project_core` ✅、`characters/roster` ✅（`69fc50c`）、`blueprints` 11 频道 ✅、`drafts` 12/16 频道 ✅、`revisions` 9 频道 ✅、**`reviews` 5 频道 ✅（2026-10-07）**；下一步 **`post-process`（6 频道）** |
-| 已注册命令 | **78**（骨架 1 + A 11 + B 22 + C project_core 4 + characters 3 + blueprints 11 + drafts 12 + revisions 9 + reviews 5） |
+| 当前阶段 | **批次 C 进行中**：`project_core` ✅、`characters/roster` ✅（`69fc50c`）、`blueprints` 11 ✅、`drafts` 12/16 ✅、`revisions` 9 ✅、`reviews` 5 ✅、**`post-process` 6 频道 ✅（2026-10-07）**；下一步 **`llm 日志/摘要`（5 频道）** |
+| 已注册命令 | **84**（骨架 1 + A 11 + B 22 + C：project_core 4 + characters 3 + blueprints 11 + drafts 12 + revisions 9 + reviews 5 + post-process 6） |
 | 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后 |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`） |
-| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **145/145** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 |
+| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **152/152** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 |
 
 ---
 
@@ -310,28 +310,68 @@
 
 ---
 
-## 下一步：`post-process`（6 频道）
+## 本次更新（第十七次：`post-process` S3-d — 后处理跑批 6 频道）
 
-`db:post-process-{create-run,get-latest-run,get-steps,mark-step-ok,mark-step-failed,is-all-passed}`
-（`electron/repositories/post-process-repository.ts`）：
+### 1. `db/schema.rs`：新增 `CREATE_POST_PROCESS`
 
-- 需在 `db/schema.rs` 补 `post_process_runs` / `post_process_steps` 建表（含
-  `idx_post_runs_source`）；
-- `create-run` 入参含 `steps: Array<{key,label,critical}>`，需在事务内同时写入 runs 与 steps；
-- `mark-step-ok` / `mark-step-failed` / `create-run` 为 MUTATING；
-- 「全部关键步骤通过」的 `all_critical_passed` 为**派生标志**，需对照基线确认何时重算。
+`post_process_runs`（TEXT UUID 主键 + `all_critical_passed` 派生标志）+
+`idx_post_runs_source` + `post_process_steps`（含 `attempt_count`/`completed_at`/`last_attempt_at`，
+`ON DELETE CASCADE` 指向 runs）。
+
+### 2. `repositories/post_process_repository.rs`（新）
+
+| 内容 | 要点 |
+|---|---|
+| `PostProcessRunData` / `PostProcessStepData` | camelCase；两者均为布尔字段（`allCriticalPassed` / `critical` / `ok`） |
+| `create_run` | 单事务写入 run + 全部 step（`critical` 转 0/1）；run ID 用 `project_access::random_uuid_v4()` |
+| `get_latest_run` | `ORDER BY created_at DESC LIMIT 1` |
+| `get_steps` | `ORDER BY id ASC` |
+| `mark_step_ok` | **步骤收据与跑批汇总同事务**；`attempt_count + 1`；失败时回写 `completed_at`；`changes != 1` → 「后处理步骤不存在或已失效」 |
+| `mark_step_failed` | 同上但 `ok = 0`、`completed_at = ''`；**汇总重算**（全量重跑不得保留旧 `true`） |
+| `refresh_critical_status`（private） | `COUNT(critical = 1 AND ok = 0) == 0 → all_critical_passed = 1` |
+| `is_all_critical_passed` | 取最新跑批标志；无跑批 → false |
+
+补充：新增了共享 helper `commands::db::simple_mutating_result(outcome)`，收敛后两个
+MUTATING 命令复用。
+
+### 3. 接线
+
+- 6 命令（`create-run` / `mark-step-ok` / `mark-step-failed` 为 MUTATING）。
+- `lib.rs` 注册（**78 → 84**）；`ipc-client.ts` 登记 6 个频道参数名。
+
+### 4. 验证与测试
+
+新增 Rust 测试 **7 个**（仓储 6 + 命令 1）：跑批初始化与步骤明细、
+逐步成功与汇总切换、失败重算与恢复、步骤不存在拒绝、空跑批语义、
+最新跑批按 `created_at` 降序、命令层端到端。
+
+结果：`cargo check --all-targets` **0 告警** · `cargo test --lib` **152/152** ·
+`pnpm typecheck` / `pnpm run lint` 均 exit 0。
+
+---
+
+## 下一步：`llm 日志 / 摘要`（5 频道）
+
+`db:log-llm-call` / `db:get-llm-stats` / `db:save-summary-snapshot`（及 summary 读取侧）
+（`electron/repositories/llm-repository.ts` / `summary-repository.ts`）：
+
+- 需在 `db/schema.rs` 补 `llm_call_logs`（或实际表名）与 `summary_snapshots` 建表；
+- `db:get-llm-stats` 返回聚合统计（totalCalls/successfulCalls/…），需对照基线字段集；
+- `db:save-summary-snapshot` 为 MUTATING。
+- 之后仅剩 `project 清理`（2 频道，其中 `db:import-global-facts-commit` 依赖批次 G）。
 
 ---
 
 ## 遗留项（沿用 2026-10-06 快照）
 
-- 未验证：批次 C **GUI 实机验证**（打开真实项目读写 project_core/角色/蓝图/草稿/修稿/审稿）、
+- 未验证：批次 C **GUI 实机验证**（打开真实项目读写全部已迁子域）、
   双栈同库行为对照、`vitest` 全量超时定位、`cargo fmt --check` 未纳入验收。
 - 押后：L3（`.vela` → `.lorekeeper`）、可见品牌（`brand.ts` / i18n 标题）。
 - 未迁频道的错误文案友好化（遗留项 12）。
 - 批次 G 需要的 `BlueprintRepository.getCommittedRangeOperation`（无 IPC 频道，被
   `import-run-repository.ts` 使用）尚未移植，随批次 G 一并落地。
-- `DraftRepository.clearAll`（服务 `db:project-clear-generated-data`）尚未移植；依赖的
-  `post_process_*` / `summary_snapshots` 建表也待相应子域补充。
+- `DraftRepository.clearAll`（服务 `db:project-clear-generated-data`）尚未移植；
+  `post_process_*` / `summary_snapshots` 建表已就位。
 - `drafts` 余 4 频道（`authority-sequence` / `export-snapshot` / `export-authority-current` /
   `import-finalized-batch`）依赖 finalization 仓储，随批次 E 落地。
+- `post_process_repository` 的 `get_failed_step_labels`（基线有但无 IPC 频道）未移植。

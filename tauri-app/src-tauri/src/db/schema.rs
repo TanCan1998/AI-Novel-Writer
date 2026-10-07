@@ -263,6 +263,38 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_reviews_draft_index
   ON reviews(base_draft_id, review_index);
 "#;
 
+/// post_process_runs / post_process_steps —— 后处理跑批与步骤明细
+///
+/// 每次后处理产生一个 Run（UUID 主键），下属多个 Step；`all_critical_passed` 是
+/// 由步骤收据派生的汇总标志（“无失败关键步骤”）。
+pub const CREATE_POST_PROCESS: &str = r#"
+CREATE TABLE IF NOT EXISTS post_process_runs (
+  id TEXT PRIMARY KEY,
+  trigger_source_type TEXT NOT NULL,
+  trigger_source_id TEXT NOT NULL,
+  source_label TEXT DEFAULT '',
+  all_critical_passed INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_post_runs_source
+  ON post_process_runs(trigger_source_type, trigger_source_id);
+
+CREATE TABLE IF NOT EXISTS post_process_steps (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id TEXT NOT NULL,
+  step_key TEXT NOT NULL,
+  label TEXT DEFAULT '',
+  critical INTEGER DEFAULT 0,
+  ok INTEGER DEFAULT 0,
+  error_msg TEXT DEFAULT '',
+  attempt_count INTEGER DEFAULT 0,
+  completed_at TEXT DEFAULT '',
+  last_attempt_at TEXT DEFAULT '',
+  FOREIGN KEY (run_id) REFERENCES post_process_runs(id) ON DELETE CASCADE
+);
+"#;
+
 /// character_roster —— 结构化角色名单的并发控制/迁移/投影元数据
 ///
 /// 角色条目本体始终留在 `characters` 表，这里绝不建并列 JSON 事实源。
@@ -304,6 +336,7 @@ pub fn create_tables(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(CREATE_DRAFTS)?;
     conn.execute_batch(CREATE_REVISIONS)?;
     conn.execute_batch(CREATE_REVIEWS)?;
+    conn.execute_batch(CREATE_POST_PROCESS)?;
     conn.execute_batch(CREATE_FINALIZATION_OUTBOX)?;
     migrate_project_core_legacy_columns(conn)?;
     migrate_character_roster_schema(conn)?;

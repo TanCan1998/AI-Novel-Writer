@@ -17,6 +17,7 @@ use crate::repositories::blueprint_repository as blueprints;
 use crate::repositories::character_repository as characters;
 use crate::repositories::character_roster_repository as roster;
 use crate::repositories::draft_repository as drafts;
+use crate::repositories::post_process_repository as post_process;
 use crate::repositories::project_core_repository as project_core;
 use crate::repositories::review_repository as reviews;
 use crate::repositories::revision_repository as revisions;
@@ -62,6 +63,20 @@ fn guard_read(
 /// 展示文案与 Electron 版出现差异。
 pub(crate) fn mutating_error(error: String) -> String {
     format!("Error: {error}")
+}
+
+/// 把 `Result<(), String>` 收敛为 MUTATING 信封（失败加 `"Error: "` 前缀）
+pub(crate) fn simple_mutating_result(outcome: Result<(), String>) -> SimpleResult {
+    match outcome {
+        Ok(()) => SimpleResult {
+            success: true,
+            error: None,
+        },
+        Err(error) => SimpleResult {
+            success: false,
+            error: Some(mutating_error(error)),
+        },
+    }
 }
 
 pub(crate) fn close_inner(
@@ -1589,6 +1604,207 @@ pub fn db_review_next_index(
     )
 }
 
+// ===== 后处理（post-process 子域 S3-d，6 频道） =====
+
+/// `db:post-process-create-run` 的 IPC 信封（对齐 `{ success, id?, error? }`）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PostProcessCreateRunResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+pub(crate) fn post_process_create_run_inner(
+    state: &AppState,
+    params: &post_process::PostProcessCreateParams,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> PostProcessCreateRunResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| post_process::create_run(conn, params)));
+    match outcome {
+        Ok(id) => PostProcessCreateRunResult {
+            success: true,
+            id: Some(id),
+            error: None,
+        },
+        Err(error) => PostProcessCreateRunResult {
+            success: false,
+            id: None,
+            error: Some(mutating_error(error)),
+        },
+    }
+}
+
+pub(crate) fn post_process_get_latest_run_inner(
+    state: &AppState,
+    source_type: &str,
+    source_id: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Option<post_process::PostProcessRunData>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| post_process::get_latest_run(conn, source_type, source_id))
+}
+
+pub(crate) fn post_process_get_steps_inner(
+    state: &AppState,
+    run_id: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Vec<post_process::PostProcessStepData>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| post_process::get_steps(conn, run_id))
+}
+
+pub(crate) fn post_process_mark_step_ok_inner(
+    state: &AppState,
+    run_id: &str,
+    step_key: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> SimpleResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| post_process::mark_step_ok(conn, run_id, step_key)));
+    simple_mutating_result(outcome)
+}
+
+pub(crate) fn post_process_mark_step_failed_inner(
+    state: &AppState,
+    run_id: &str,
+    step_key: &str,
+    error_msg: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> SimpleResult {
+    let outcome = guard_read(state, expected_project_path, session).and_then(|()| {
+        state.with_project_db(|conn| {
+            post_process::mark_step_failed(conn, run_id, step_key, error_msg)
+        })
+    });
+    simple_mutating_result(outcome)
+}
+
+pub(crate) fn post_process_is_all_passed_inner(
+    state: &AppState,
+    source_type: &str,
+    source_id: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<bool, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| post_process::is_all_critical_passed(conn, source_type, source_id))
+}
+
+/// `db:post-process-create-run` —— 创建后处理跑批（MUTATING）
+#[tauri::command]
+pub fn db_post_process_create_run(
+    state: State<'_, AppState>,
+    params: post_process::PostProcessCreateParams,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> PostProcessCreateRunResult {
+    post_process_create_run_inner(
+        state.inner(),
+        &params,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:post-process-get-latest-run` —— 读取最新跑批
+#[tauri::command]
+pub fn db_post_process_get_latest_run(
+    state: State<'_, AppState>,
+    source_type: String,
+    source_id: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Option<post_process::PostProcessRunData>, String> {
+    post_process_get_latest_run_inner(
+        state.inner(),
+        &source_type,
+        &source_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:post-process-get-steps` —— 读取跑批步骤明细
+#[tauri::command]
+pub fn db_post_process_get_steps(
+    state: State<'_, AppState>,
+    run_id: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<post_process::PostProcessStepData>, String> {
+    post_process_get_steps_inner(
+        state.inner(),
+        &run_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:post-process-mark-step-ok` —— 标记步骤成功（MUTATING）
+#[tauri::command]
+pub fn db_post_process_mark_step_ok(
+    state: State<'_, AppState>,
+    run_id: String,
+    step_key: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> SimpleResult {
+    post_process_mark_step_ok_inner(
+        state.inner(),
+        &run_id,
+        &step_key,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:post-process-mark-step-failed` —— 标记步骤失败（MUTATING）
+#[tauri::command]
+pub fn db_post_process_mark_step_failed(
+    state: State<'_, AppState>,
+    run_id: String,
+    step_key: String,
+    error_msg: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> SimpleResult {
+    post_process_mark_step_failed_inner(
+        state.inner(),
+        &run_id,
+        &step_key,
+        &error_msg,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:post-process-is-all-passed` —— 最新跑批是否全部关键步骤通过
+#[tauri::command]
+pub fn db_post_process_is_all_passed(
+    state: State<'_, AppState>,
+    source_type: String,
+    source_id: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<bool, String> {
+    post_process_is_all_passed_inner(
+        state.inner(),
+        &source_type,
+        &source_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2473,6 +2689,124 @@ mod tests {
         assert!(review_get_full_inner(&state, 9999, &root, Some(&session))
             .unwrap()
             .is_none());
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn post_process_channels_test() {
+        let (state, root, session) = activated_state("post-process");
+
+        // 读频道门禁
+        assert_eq!(
+            post_process_get_steps_inner(&state, "run", &root, None).unwrap_err(),
+            "缺少项目会话上下文，已拒绝操作"
+        );
+
+        let params = post_process::PostProcessCreateParams {
+            trigger_source_type: "chapter_finalize".to_string(),
+            trigger_source_id: "3".to_string(),
+            source_label: "第 3 章".to_string(),
+            steps: vec![
+                post_process::PostProcessStepInput {
+                    key: "extract".to_string(),
+                    label: "提取要点".to_string(),
+                    critical: true,
+                },
+                post_process::PostProcessStepInput {
+                    key: "summary".to_string(),
+                    label: "生成摘要".to_string(),
+                    critical: true,
+                },
+            ],
+        };
+
+        // 写入门禁
+        let denied = post_process_create_run_inner(&state, &params, &root, None);
+        assert!(!denied.success);
+        assert_eq!(
+            denied.error.as_deref(),
+            Some("Error: 缺少项目会话上下文，已拒绝操作")
+        );
+
+        let created = post_process_create_run_inner(&state, &params, &root, Some(&session));
+        assert!(created.success, "创建跑批应成功：{:?}", created.error);
+        let run_id = created.id.expect("应返回 run ID");
+        assert_eq!(run_id.len(), 36);
+
+        let run = post_process_get_latest_run_inner(
+            &state,
+            "chapter_finalize",
+            "3",
+            &root,
+            Some(&session),
+        )
+        .unwrap()
+        .expect("应读到跑批");
+        assert_eq!(run.id, run_id);
+        assert_eq!(run.source_label, "第 3 章");
+        assert!(!run.all_critical_passed);
+
+        let steps = post_process_get_steps_inner(&state, &run_id, &root, Some(&session)).unwrap();
+        assert_eq!(steps.len(), 2);
+        assert_eq!(steps[0].step_key, "extract");
+
+        // 初始汇总为 false
+        assert!(!post_process_is_all_passed_inner(
+            &state,
+            "chapter_finalize",
+            "3",
+            &root,
+            Some(&session)
+        )
+        .unwrap());
+
+        // 逐步标记成功
+        assert!(post_process_mark_step_ok_inner(&state, &run_id, "extract", &root, Some(&session)).success);
+        assert!(!post_process_is_all_passed_inner(
+            &state,
+            "chapter_finalize",
+            "3",
+            &root,
+            Some(&session)
+        )
+        .unwrap());
+        assert!(post_process_mark_step_ok_inner(&state, &run_id, "summary", &root, Some(&session)).success);
+        assert!(post_process_is_all_passed_inner(
+            &state,
+            "chapter_finalize",
+            "3",
+            &root,
+            Some(&session)
+        )
+        .unwrap());
+
+        // 重跑失败 → 汇总重算为 false
+        assert!(post_process_mark_step_failed_inner(
+            &state,
+            &run_id,
+            "extract",
+            "提取超时",
+            &root,
+            Some(&session)
+        )
+        .success);
+        assert!(!post_process_is_all_passed_inner(
+            &state,
+            "chapter_finalize",
+            "3",
+            &root,
+            Some(&session)
+        )
+        .unwrap());
+
+        // 步骤不存在 → MUTATING 文案
+        let missing = post_process_mark_step_ok_inner(&state, &run_id, "不存在", &root, Some(&session));
+        assert!(!missing.success);
+        assert_eq!(
+            missing.error.as_deref(),
+            Some("Error: 后处理步骤不存在或已失效")
+        );
 
         cleanup(&root);
     }
