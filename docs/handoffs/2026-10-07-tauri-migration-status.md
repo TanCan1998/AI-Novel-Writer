@@ -7,20 +7,20 @@
 
 ---
 
-## 快照（最后更新：2026-10-07 · 第二十一次）
+## 快照（最后更新：2026-10-07 · 第二十二次）
 
 | 项 | 值 |
 |---|---|
 | 仓库 | **`TanCan1998/Lorekeeper`**（原名 `AI-Novel-Writer`；仍为 `EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork） |
 | 分支 | `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm 包 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 当前阶段 | **批次 C 数据库层子域全部完成 ✅** + **批次 D1（`llm:*` 模型管理 7 频道）完成 ✅**：`project_core` / `characters` / `blueprints` / `drafts`（12/16）/ `revisions` / `reviews` / `post-process` / `llm 日志与摘要` / `project 清理` / **D1 模型管理**；剩余 `db:*` 频道归属批次 **E/F/G**，`llm:*` 生成链（7 频道 + 3 事件）归属 **D2（需 Ask first）** |
-| 已注册命令 | **97**（骨架 1 + A 11 + B 22 + C 子域 56 + D1 7） |
-| GUI 冒烟 | ✅ **已做**（2026-10-07 三轮 `pnpm tauri dev`）：窗口标题 `Lorekeeper`、vite@5190、cargo 353/353、`lorekeeper.exe` **内存 42.6 MB**（首轮）/ **30.1 MB**（D1 轮）；第二轮闭环验证遗留项 12 修复，第三轮验证 D1 新频道在真机启动路径无报错 |
-| 自动化回归 | `cargo test --lib` **199/199**（含 3 个**磁盘级**端到端：真实 `.vela/lorekeeper.db` + WAL + 外键 + 跨重开持久化）；`pnpm run check:channels` 校验契约↔命令映射（未迁移 95 频道） |
+| 当前阶段 | **批次 C 数据库层子域全部完成 ✅** + **批次 D1（`llm:*` 模型管理 7 频道）完成 ✅** + **批次 D2-a（生成参数策略 + 模型执行租约 2 频道）完成 ✅**：`project_core` / `characters` / `blueprints` / `drafts`（12/16）/ `revisions` / `reviews` / `post-process` / `llm 日志与摘要` / `project 清理` / **D1 模型管理** / **D2-a 租约**；`llm:*` 剩余生成链 5 频道（`generate` / `generate-stream` / `cancel` / `discover-models` / `test-connection`）归 **D2-b/c**（依赖已批准：`reqwest` + `native-tls` + `socks`） |
+| 已注册命令 | **99**（骨架 1 + A 11 + B 22 + C 子域 56 + D1 7 + D2-a 2） |
+| GUI 冒烟 | ✅ **已做**（2026-10-07 **四轮** `pnpm tauri dev`）：窗口标题 `Lorekeeper`、vite@5190、cargo 353/353、`lorekeeper.exe` **内存 42.6 MB**（首轮）/ **30.1 MB**（D1 轮）/ D2-a 轮 vite `482 ms` 起服且无 panic |
+| 自动化回归 | `cargo test --lib` **243/243**（含 3 个**磁盘级**端到端：真实 `.vela/lorekeeper.db` + WAL + 外键 + 跨重开持久化）；`pnpm run check:channels` 校验契约↔命令映射（未迁移 93 频道）；`vitest` 频道覆盖 6/6（含 2 个**新增防线**测试） |
 | 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后。D1 起 `~/.lorekeeper/{config.json,models.json,recent-projects.json}` 为**真实持久化**（此前 config 仅内存态） |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`） |
-| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **199/199** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 · ✅ `check:channels` orphan 空 · ✅ D1 GUI 冒烟（启动路径无 `Command ... not found` / 无「尚未迁移」） |
+| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test`（全目标）**243/243** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 · ✅ `check:channels` orphan 空 · ✅ D2-a GUI 冒烟（启动路径无 `Command ... not found` / 无 panic） |
 
 ---
 
@@ -664,6 +664,89 @@ cd tauri-app && pnpm tauri dev
 
 ---
 
+## 本次更新（第二十二次：批次 D2-a — 生成参数策略 + 模型执行租约 2 频道）
+
+### 0. 决策：D2 采用「Rust 重写」（用户已批准 `reqwest` 依赖）
+
+D2 的两种策略经**实测对比**后由用户拍板 **Rust 重写**。关键实测事实：
+
+| 事实 | 值 |
+|---|---|
+| `reqwest` 是否已在依赖树 | ✅ **是**（`tauri 2.12.1` 的直接依赖，`default-features = false`）——`hyper` / `tokio` / `futures-util` / `http-body-util` / `tower-http` / `bytes` / `base64` 全部已在 `Cargo.lock`（共 416 包） |
+| TLS 后端 | ❌ 不在（`native-tls` / `schannel` / `openssl` / `rustls` / `ring` 计数均为 0）→ **唯一的新增下载** |
+| 选定 feature | `["json", "stream", "native-tls", "socks"]`；`native-tls` 在 Windows 走系统 schannel（纯 FFI、无 C 编译），`socks` 是基线 `socks5://` 代理所需 |
+| `electron/llm/*` 是否依赖 Electron 运行时 | ❌ 不依赖（仅本地模块 + `package.json` 版本号；HTTP 走全局 `fetch`）——即 sidecar「零改动复用上游」的论据成立，但被 **+~100 MB `node.exe` 与 +40~60 MB 内存**否决（与本次迁移的立项动机直接冲突） |
+| Node sidecar 的真实代价 | `node.exe`(v26) **104 714 056 B ≈ 99.9 MB**；对照 `lorekeeper.exe`(debug) 17.6 MB、实跑内存 30.1 MB |
+
+D2 拆为三层推进：**D2-a 零依赖地基（本轮完成）** → D2-b 生成 / 流式（`reqwest`）→ D2-c 模型发现 / 连通性。
+
+### 1. 新增 `src-tauri/src/llm/`（4 模块，与基线「一文件 ↔ 一模块」对齐）
+
+| Rust 模块 | 行数 | 基线来源 | 内容 |
+|---|---|---|---|
+| `presets.rs` | 642 | `src/shared/provider-presets.ts` | 9 个内置服务商目录全量镜像；`resolve_model_profile_capabilities` / `resolve_model_profile_reasoning_mapping` |
+| `reasoning.rs` | 500 | `src/shared/reasoning-policy.ts` + `reasoning-types.ts` | 单一推理策略缝：阶段表 → 别名 / 封顶 / 强制 → provider 指令 |
+| `params.rs` | 408 | `electron/llm/generation-parameter-policy.ts` | 有效请求参数；Kimi 官方端点温度校验 + 固定采样家族省略温度 |
+| `lease.rs` | 812 | `electron/services/model-execution-lease.ts` | 能力证据 + 端点 / 主体 / 修订指纹 + 租约注册表（含关闭墓碑） |
+
+逐条对齐基线的要点（含**反直觉但必须复刻**项）：
+
+- **能力证据不可越级**：`verified-provider-preset` 仅在「provider + protocol + 规范化端点 + **精确模型 slug**」四重命中内置目录时成立；用户填写的 `capabilities` 最高只能到 `user-operational-cap`，`featureFlags` 一律 `unknown`。
+- **`maxOutputSource` 的 min() 语义原样复刻**：`maxTokens: 4096` 的 DeepSeek 档案会把已验证上限 384 000 压到 4 096 并标记 `legacy-profile`；随后再被上下文窗口**二次封顶**。
+- **端点比对含路径**：`bigmodel` 的 `/api/paas/v4` 必须整体匹配；大小写与尾斜杠差异视为同一端点；带用户名 / 密码 / 查询 / 片段一律拒绝。
+- **推理策略是唯一缝**：4 策略 × 4 阶段表 → 别名（deepseek `medium`→`high`）/ 封顶 / 强制 → provider 指令；无可信映射时状态 `unsupported` 且**不产生**指令（绝不猜默认值）。
+- **`temperature: undefined` = 必须省略字段**，绝不在 provider 层回退 —— NovelAI 与 Kimi 固定采样家族（`kimi-k3` / `kimi-k2.5~2.7` 前缀）的正确前提；官方 Kimi 端点的其它模型则**校验**温度 0~1，越界直接阻断（`KIMI_TEMPERATURE_MESSAGE` 与基线逐字一致）。
+- **租约**：冻结模型快照（配置变更不影响在途生成）、4 小时 TTL、过期即清理；`close` 在 5 分钟墓碑窗口内**幂等成功**，之后回落「无效或已关闭」。
+- **失败信封差异是刻意的**：租约失败返回结构化 `errorCode`（`MODEL_NOT_FOUND` / `LEASE_BEGIN_FAILED`）且**不带** `Error: ` 前缀；生成类命令走异常路径带前缀（`commands::db::mutating_error`）。
+
+两处超出基线的加固：
+
+1. `LeaseRecord` 手写 `Debug`，快照（含 `apiKey`）一律打码成 `<redacted>`，避免任何日志 / 诊断输出泄露凭据（有专门测试断言回执与序列化结果均不含密钥）；
+2. 指纹改用**规范化 JSON**（对象键排序）而非依赖 `serde_json` 的 map 后端 → 与 `preserve_order` feature 是否被其它依赖开启无关；与 Node 的哈希**刻意不要求逐字节一致**（`AGENTS.md` 双栈隔离约定，已在模块文档写明）。
+
+### 2. 新增 `commands/llm_execution.rs`（2 命令）
+
+| 频道 | 命令 | 关键行为 |
+|---|---|---|
+| `llm:begin-execution-lease` | `llm_begin_execution_lease` | `AppState.llm_leases` 冻结快照并签发**非密钥**回执 |
+| `llm:close-execution-lease` | `llm_close_execution_lease` | 幂等关闭（墓碑窗口内重复关闭仍 `success: true`） |
+
+### 3. 接线（含一处**真实缺口**修复）
+
+- `lib.rs`：`mod llm;` + 注册 2 命令（**97 → 99**）。该模块暂带 `#[allow(dead_code)]`：推理 / 参数模块的调用面在 D2-b 落地，注解处已写明「D2-b 接通后移除」。
+- `state.rs`：新增 `llm_leases: Mutex<LlmLeaseStore>`（进程内存态，重启即失效，对齐基线模块级 `Map`）。
+- **缺口**：`tauri-app/src/services/ipc-client.ts` 的 `buildNamedArgs` 对「带参但未登记参数名」的频道会**直接抛错**（`尚未迁移（参数名未登记）`）。本轮补登 `llm:begin-execution-lease` → `['modelId']`、`llm:close-execution-lease` → `['leaseId']`。
+- **新增回归防线**（`test/channel-migration-coverage.test.ts`，+2 测试）：机械比对契约源码中每个**已迁移**频道的 `args` 个数与 `CHANNEL_ARG_NAMES` 登记 —— 漏登记 / 多登记 / 个数不符 / 命名非 lowerCamelCase 都会在 `pnpm test` 阶段失败（这类缺陷原本只有真机点开对应功能才暴露）。解析器已处理多行元组、尾逗号、以及 `Record<string, unknown>` 这类泛型实参内部的逗号。
+- `pnpm run check:channels:emit` 重新生成 `src/shared/migrated-channels.ts`（**98** 个频道）。
+
+### 4. 验证与测试
+
+新增 Rust 测试 **44 个**（presets 9 + reasoning 8 + params 10 + lease 12 + llm_execution 4 + state 1），`cargo test --lib` **199 → 243**：
+
+- **presets**：9 服务商目录完整性、四重守卫（端点 / 协议 / slug / 类型）、大小写与尾斜杠等价、凭据 / 查询 / 片段拒绝、路径必须整体匹配、映射克隆隔离全局预设；
+- **reasoning**：无映射 → `unsupported` 且不给指令；deepseek 别名（medium→high）与 `off`→`disabled thinking`；非法覆盖值回落项目策略；xAI `max`→`high` 封顶、`off`→`low` 强制；Gemini thinkingBudget 透传（含 0）；阶段缺省 `general`；端点 / 协议不一致即无映射；
+- **params**：温度只来自档案、请求预算优先且「都缺省则整体省略」、已验证端点才带推理指令、Kimi 固定家族 5 种写法（含大小写 / 空白）全部省略温度、越界与缺失温度阻断（边界值 1 接受）、非官方主机（http / 别名域 / 伪造后缀 / 自建代理）不触发 Kimi 规则、`responseFormat` 原样透传、阶段影响指令；
+- **lease**：三项证据来源等级、min() 封顶（legacy 压已验证、上下文窗口压输出上限）、无协议证据时能力标记为 `null`、非法上限（0 / 负数 / 小数 / 字符串）拒绝、指纹稳定性与区分度（温度改变修订指纹但不改端点指纹、尾斜杠等价）、规范化 JSON 键序、端点规范化、**回执与序列化不含密钥**、冻结语义（签发后改写档案不影响在途租约）、过期清理、墓碑幂等与过期回落；
+- **llm_execution**：往返（开启 → 关闭 → 幂等重放 → 未知租约失败）、`MODEL_NOT_FOUND` 结构化信封且无 `Error: ` 前缀、能力非法落 `LEASE_BEGIN_FAILED`、回执字段集与 TTL 断言。
+
+结果：`cargo check --all-targets` **0 告警** · `cargo test`（全目标，bin 亦链接成功）**243/243** ·
+`pnpm typecheck` exit 0 · `pnpm run lint` exit 0 · `pnpm run check:channels` orphan 空
+（已注册 **99** → 覆盖 98 频道 → 未迁移 **93**，其中 `llm=5` 即 D2-b/c） · `vitest` 频道覆盖 **6/6**。
+
+### 5. GUI 实机冒烟（第四轮）
+
+`pnpm tauri dev`：vite `ready in 482 ms` @5190 → `Running target\debug\lorekeeper.exe`；
+webview 已联通（日志出现渲染层 `ipc-client` 输出），**无 panic**，无 `Command ... not found`；
+`AI_NOVEL_LOREKEEPER_HOME` 首次启动自动创建 `logs/` + `prompts/`（L1 隔离继续生效）；
+冒烟后进程树已清理（已核实残留 `node` 进程命令行均为 pi 自身，非本项目产物）。
+
+### 6. 依赖成本实测
+
+`Cargo.lock` **仅 +1 行**（`lorekeeper` 的依赖边新增 `url`），**零新增 crate 下载** ——
+`url` 早已在 `tauri → reqwest` 的传递依赖中。D2-b 将首次真正新增 crate（TLS 后端家族）。
+
+---
+
 ## 批次 C 收口状态（2026-10-07）
 
 **已完成子域**（命令累计 **90**，其中 C 子域 56）：
@@ -692,11 +775,13 @@ cd tauri-app && pnpm tauri dev
 
 ## 建议的下一步
 
-1. **批次 D2（`llm:*` 生成链，7 频道 + 3 事件）— 需用户先批准新增依赖**：
-   `reqwest`（HTTP/SSE）或 `tauri-plugin-http`；同时要决定「Rust 重写 LLM 适配」还是
-   「Node sidecar」（`docs/agents/pi-development.md` §3 明确要求 Ask first）。
-   涉及：`generation-parameter-policy` 复刻、`finishReason` 显式终态、流式事件经 webview 桥
-   的性能实测（盘点缺口 G5）。
+1. **批次 D2-b（`llm:*` 生成 / 流式，5 频道 + 3 事件）**：依赖已批准
+   （`reqwest = { version = "0.13", default-features = false, features = ["json", "stream", "native-tls", "socks"] }`
+   + `futures-util`）。范围：`generate`（非流式 + 调用统计落库 `db:log-llm-call`）、
+   `generate-stream` / `cancel` / 3 个流事件（`llm:stream-chunk|done|error`）、绕过 CORS 的 SSE 手工解析、
+   `finishReason` 显式终态、以及盘点缺口 **G5（流式事件经 webview 桥的性能实测）**；
+   随后 **D2-c**：`discover-models` / `test-connection`（后者含 embedding 分支，需评估是否同步引入 `electron/embedding.ts` 的 416 行移植）。
+   同时必须补登 `ipc-client.ts` 参数名（`llm:generate` → `['request']`、`llm:generate-stream` → `['requestId','request']`、`llm:cancel` → `['requestId']`、`llm:discover-models` → `['request']`、`llm:test-connection` → `['model','creativeStrategy']`），新防线测试会强制这一点。
 2. **双栈同库行为对照**：同目录下 Electron（`vela.db`）与 Tauri（`lorekeeper.db`）各写各库，
    确认互不影响；顺带对照 `~/.vela/config.json` 与 `~/.lorekeeper/config.json` 的读写形态差异。
 3. **`vitest` 全量超时定位**（遗留项 7）。
