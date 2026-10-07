@@ -16,6 +16,7 @@
     "test": "vitest run",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "check:channels": "node scripts/verify-channel-coverage.mjs",
+    "check:channels:emit": "node scripts/verify-channel-coverage.mjs --quiet --emit",
     "tauri": "tauri"
   },
   "dependencies": {

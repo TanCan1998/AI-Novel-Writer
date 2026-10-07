@@ -12,6 +12,8 @@
  * 用法：
  *   node scripts/verify-channel-coverage.mjs             # 汇总 + 未迁移清单
  *   node scripts/verify-channel-coverage.mjs --quiet     # 只输出汇总
+ *   node scripts/verify-channel-coverage.mjs --emit      # 额外（重新）生成
+ *                                                        # src/shared/migrated-channels.ts
  */
 
 import fs from 'node:fs'
@@ -24,8 +26,10 @@ const repoRoot = path.resolve(appRoot, '..')
 
 const channelsFile = path.join(repoRoot, 'src/shared/ipc-channels.ts')
 const libFile = path.join(appRoot, 'src-tauri/src/lib.rs')
+const migratedFile = path.join(appRoot, 'src/shared/migrated-channels.ts')
 
 const quiet = process.argv.includes('--quiet')
+const emit = process.argv.includes('--emit')
 
 function readLines(file) {
   try {
@@ -59,6 +63,34 @@ function collectRegistered() {
     for (const match of line.matchAll(/commands::([a-z0-9_]+)/gu)) registered.add(match[1])
   }
   return registered
+}
+
+/**
+ * （重新）生成 `src/shared/migrated-channels.ts`。
+ * 内容未变时不写盘，避免制造无意义 diff。
+ */
+function emitMigratedChannels(channels) {
+  const generated = [
+    '/**',
+    ' * 已迁移到 Tauri 侧的契约频道（**自动生成，请勿手改**）。',
+    ' *',
+    ' * 生成：`pnpm run check:channels --emit`',
+    ' * 事实源：`src-tauri/src/lib.rs` 的 `generate_handler!` 命令注册',
+    ' *         ↔ `src/shared/ipc-channels.ts` 的 invoke 频道（机械映射 `:`/`-` → `_`）。',
+    ' *',
+    ' * 用途：ipc-client 对未迁移频道直接给出「尚未迁移」的友好提示，',
+    ' *       而不是 Tauri 原生的 `Unknown Error: Command xxx not found`。',
+    ' */',
+    'export const MIGRATED_CHANNELS: ReadonlySet<string> = new Set([',
+    ...channels.map((channel) => `  '${channel}',`),
+    '])',
+    '',
+  ].join('\n')
+
+  const previous = fs.existsSync(migratedFile) ? fs.readFileSync(migratedFile, 'utf8') : ''
+  if (previous === generated) return false
+  fs.writeFileSync(migratedFile, generated, 'utf8')
+  return true
 }
 
 const commandName = (channel) => channel.replace(/[:-]/g, '_')
@@ -108,3 +140,12 @@ if (orphan.length > 0) {
 }
 
 console.log('命令名与契约频道一一对应 ✅')
+
+if (emit) {
+  const changed = emitMigratedChannels(migrated)
+  console.log(
+    changed
+      ? `已生成 src/shared/migrated-channels.ts（${migrated.length} 个频道）`
+      : `src/shared/migrated-channels.ts 已是最新（${migrated.length} 个频道）`,
+  )
+}

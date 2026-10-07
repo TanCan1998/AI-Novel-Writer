@@ -15,6 +15,8 @@
  *   批次迁移时在此登记；未登记的非空参频道立即抛错，防止静默错配。
  * - 项目域频道沿用「尾部注入 projectSession」约定：Tauri 下作为命名参数
  *   `projectSession` 传入，对应 Rust 命令尾参 `project_session`。
+ * - 未迁移频道（后续批次）由 `MIGRATED_CHANNELS` 前置拦截，抛出统一的
+ *   「尚未迁移」提示，而不是 Tauri 原生的 `Unknown Error: Command xxx not found`。
  */
 import { invoke as tauriInvoke } from '@tauri-apps/api/core'
 import { listen as tauriListen, once as tauriOnce } from '@tauri-apps/api/event'
@@ -26,6 +28,7 @@ import type {
 } from '../shared/ipc-channels'
 import type { ProjectSessionContext } from '../shared/ipc-channels'
 import { getActiveProjectSessionContext } from '../shared/project-session-context'
+import { MIGRATED_CHANNELS } from '../shared/migrated-channels'
 
 /**
  * 频道 → invoke 命名参数名登记表（camelCase，与 Rust `#[tauri::command]`
@@ -134,6 +137,38 @@ function toCommandName(channel: string): string {
   return channel.replace(/[:-]/g, '_')
 }
 
+/** 未迁移频道的统一错误文案（人工核对 `MIGRATED_CHANNELS` 时的定位入口）。 */
+export function unMigratedChannelMessage(channel: string): string {
+  return `[Tauri 适配] 频道 ${channel} 尚未迁移到 Tauri 侧（后续批次），已拒绝调用`
+}
+
+/**
+ * Tauri 对未注册命令的报错格式（tauri 2.x：`Unknown Error: Command xxx not found`）。
+ * 作为**兜底**：`MIGRATED_CHANNELS` 可能落后于 Rust 侧注册，此时仍翻译为友好文案。
+ */
+const TAURI_UNKNOWN_COMMAND_PATTERN = /Command\s+\S+\s+not found/u
+
+/**
+ * 调用后端命令：未迁移频道前置拦截；其余错误原样透传。
+ *
+ * 注意：本函数只负责「频道可用性」识别，不构造参数（参数由 `buildNamedArgs` 负责）。
+ */
+function invokeCommand<C extends InvokeChannel>(
+  channel: C,
+  named: Record<string, unknown>,
+): Promise<AllInvokeChannels[C]['return']> {
+  if (!MIGRATED_CHANNELS.has(channel)) {
+    return Promise.reject(new Error(unMigratedChannelMessage(channel)))
+  }
+  return tauriInvoke(toCommandName(channel), named).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error)
+    if (TAURI_UNKNOWN_COMMAND_PATTERN.test(message)) {
+      throw new Error(unMigratedChannelMessage(channel))
+    }
+    throw error
+  }) as Promise<AllInvokeChannels[C]['return']>
+}
+
 /** 是否运行在 Tauri 环境（由 Tauri 注入的内部全局判定）。 */
 function isTauri(): boolean {
   return typeof window !== 'undefined'
@@ -201,7 +236,7 @@ function invokeWithSession<C extends InvokeChannel>(
     }
   }
   const named = buildNamedArgs(channel, args, projectSession)
-  return tauriInvoke(toCommandName(channel), named) as Promise<AllInvokeChannels[C]['return']>
+  return invokeCommand(channel, named)
 }
 
 /** 类型安全的 IPC 客户端 */
