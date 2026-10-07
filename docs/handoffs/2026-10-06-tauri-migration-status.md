@@ -5,18 +5,18 @@
 
 ---
 
-## 快照（最后更新：2026-10-06 · 第六次）
+## 快照（最后更新：2026-10-06 · 第八次）
 
 | 项 | 值 |
 |---|---|
 | 分支 | `master` |
 | 基准 SHA | `a0fd2f4`（阶段 0 锚点提交；后续批次 A–H 以此为起点） |
-| 当前阶段 | **批次 B 完成（接线 + 验证全绿）**；批次 A 已提交 |
+| 当前阶段 | **批次 C `project_core` 子域完成并提交**（`ff7fbd8` 数据层 + `a8d742a` 生命周期与接线）：`db:close` 与 project_core 三命令已注册（**38 命令**）、Rust 64/64、0 告警、TS 全绿；批次 C 剩余子域（blueprints → characters/roster → drafts → …）待续 |
 | 结构 | **独立迁移根 `tauri-app/`**（用户确认的方案 B），根目录三文件已还原上游原样 |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（遵循 AGENTS.md 第 3 条规则）；crates 走 rsproxy 镜像；VS Build Tools 已装；**脚本内需显式设 RUSTUP_HOME/CARGO_HOME** |
-| 未提交变更 | ✅ **批次 B 已完成待提交**：4 个新 Rust 文件 + state/lib/mod/ipc-client 四处接线；`cargo test --lib` 28/28、`cargo check --all-targets` 0 告警、typecheck/lint/build 全绿 |
+| 未提交变更 | 无（工作区仅余本快照与盘点文档的文档改动）。批次 C 已拆两个 commit：`ff7fbd8 feat(tauri): 批次 C — rusqlite 数据库层与 project_core 仓储`、`a8d742a feat(tauri): 批次 C — 项目生命周期真实化与 db 命令接线` |
 | 残留死文件 | ✅ 已删除（上会话残留 `state/commands.rs`、`commands/config/internal_exports.rs`） |
-| 未验证事项 | ① ~~`pnpm tauri dev` 窗口冒烟~~ → ✅ 已完成（第六次更新后期：窗口渲染正常、未迁频道仅报 `Command not found`）；② 批次 B 与 Electron 版行为对照未做；③ vitest 全量超时未定位；④ `cargo fmt --check` 未达标（批次 A/B 均未过 rustfmt，未纳入验收） |
+| 未验证事项 | ① ~~`pnpm tauri dev` 窗口冒烟~~ → ✅ 已完成；② ~~批次 C `cargo check/test`~~ → ✅ **已完成（第八次更新：0 告警 + 64/64）**；③ 批次 B/C 与 Electron 版行为对照未做；④ vitest 全量超时未定位；⑤ `cargo fmt --check` 未达标（未纳入验收）；⑥ **批次 C 未做 GUI 实机验证**（打开真实项目、读写 project_core） |
 
 ### 结构重设计（2026-10-06 第二次更新，用户确认）
 
@@ -34,8 +34,8 @@
 | `pnpm run lint` | ✅ 零告警（适配后复验） |
 | `pnpm build`（→ tauri-app/dist/） | ✅ 2.11s（适配后复验） |
 | `pnpm test`（vitest 全量） | ⚠️ 25 分钟超时未定位，**批次验收遗留项**（setup-locale + source-contract 单文件 5/5 通过） |
-| `cargo test --lib` | ✅ **28/28 全绿**（2026-10-06 第六次更新验证：批次 A 17 + 批次 B 11，含 fs/security/project 契约用例） |
-| `cargo check --all-targets` | ✅ **0 告警**（第六次更新：消除 dead_code 告警 6 处） |
+| `cargo test --lib` | ✅ **64/64 全绿**（第八次更新：批次 A 17 + 批次 B 11 + 批次 C 36） |
+| `cargo check --all-targets` | ✅ **0 告警**（第八次更新：5 处骨架预留态 dead_code 加 `allow` + 注释） |
 | `pnpm tauri dev` | ✅ **窗口冒烟通过**（2026-10-06 第六次更新后期）：vite 489ms ready @5190 → cargo 0.57s → 窗口 1440x900 无边框 + 自定义标题栏；WebView 渲染 125 节点（45 按钮/28 树/4 组）= 前端完整加载；批次 A 已迁频道无报错，未迁频道仅 `llm:list_models` 报 `Command not found`（属预期）；冒烟后已清理进程树（端口 5190 释放） |
 
 ### 批次 A 迁移完成详情（2026-10-06 第三次更新）
@@ -156,13 +156,88 @@
 - **两个 Ask first 决策点仍待用户确认**：① `tauri-plugin-dialog`（`dialog:select-folder`/`select-export-directory` 真实目录选择，新增插件依赖）；② `rusqlite`（批次 C 数据库层，Rust crate 依赖）——均需用户点头后再加。
 - **写入污染教训**：长文件 `write` 易产生重复定义/残缺片段（本批次出现 `RuntimeContext` 重定义、缺失函数引用、字段名悬空）。**每写完一个长文件先跑顶层声明去重 + 括号配平扫描（`ctx_execute` 脚本）再接线**，本次已在接线前发现并清理 2 处。
 
+### 批次 C（2026-10-06 第八次更新：`project_core` 子域**已完成并提交**）
+
+批次 C = 数据库层（`docs/plans/tauri-migration-channel-inventory.md` §4），采用**垂直切片**策略：DB 层（rusqlite + 连接 + schema + project_core 仓储 + `db:*` 命令）与 `project:create/open` 真实化**同时交付**——因为所有 `db:*` 命令都依赖活跃项目会话租约。
+
+#### 第八次更新：接线、编译验证、提交与质检修正
+
+**1. 接线 4 处（原第七次待办 1–5 项，全部完成）**
+
+| 位置 | 内容 |
+|---|---|
+| `commands/mod.rs` | `mod db;` + `pub use db::*;` |
+| `lib.rs` | `mod db; mod project_access; mod repositories;` + `generate_handler!` 注册 4 命令（共 **38 命令**） |
+| `commands/fs.rs` | 守卫链改用 `state.active_project_snapshot()`，`assert_current_project_context(context, active.as_ref())` 对齐新签名 |
+| `ipc-client.ts` | `CHANNEL_ARG_NAMES` 登记 4 个 db 频道（`db:close`/`project-core-get` 为 `['expectedProjectPath']`，`project-core-update` 为 `['data','expectedProjectPath']`，`synopsis-commit` 为 `['request','expectedProjectPath']`）；项目会话注入沿用 `startsWith('db:')` 分支，无需额外改动 |
+| `commands/db.rs` | 删除未使用的 `ProjectCoreUpdatePayload` 与 `serde::Deserialize` 导入 |
+
+**2. 编译期修复 5 类（均属接线后首次编译暴露的真实缺陷）**
+
+1. `resolve_writing_language` / `resolve_creative_strategy` 私有 → 提为 `pub`（`commands/project.rs` 三处调用）。
+2. `project_core::init` 实为三参（`conn, project_name, writing_language`），`project.rs` 两处调用点补齐：`project:open` 传 `DEFAULT_WRITING_LANGUAGE`，`project:create` 传 `config.writingLanguage` 收敛值（对齐基线 `ProjectCoreRepository.init(projectName, resolveWritingLanguage(config.writingLanguage))`），并删除原先重复写语言的 update 分支。
+3. `ProjectDatabase` 缺 `Debug`（`AppState` derive 要求）→ 加 `#[derive(Debug)]`（rusqlite `Connection` 已实现 `Debug`）。
+4. **`db:close` 补齐会话租约校验**：基线 `registerProjectDatabaseHandler` 对**所有** `db:*`（含 `db:close`）先 `assertCurrentProjectContext`；原实现只校验 `expectedProjectPath`，属安全语义缺口 → `close_inner` 改为 `assert_session` + `assert_project_path` 双门禁。
+5. dead_code 5 处（骨架预留态）→ `#[allow(dead_code)]` + 注释注明启用批次：`GuardKind::MissingSessionContext`、`ProjectProbe::root_path`、`ProjectDatabase::root_path`（字段与方法）、`reset_creative_fields`。
+
+**3. 测试修正 3 类（测试断言错了，非实现错）**
+
+- `commands/db.rs` 测试辅助 `activated_state` 未 `init` 主台账行 → 读/更新/提交均空转，补 `project_core::init(conn, "测试项目", DEFAULT_WRITING_LANGUAGE)`。
+- 守卫文案断言缺句号：`guard_message` 输出**带句号**（与基线 `fs-controller-project-boundary.test.ts` 中 `'检测到跨项目读写，已拒绝操作。'` 一致），修正 4 处断言。
+- `sanitize_project_directory_name("/")` 期望值错：基线 `"/".split(/[\\/]/).pop() || trimmed` 中 `pop()` 得空串后回落 `trimmed`，替换后为 `"_"`（非 `"未命名项目"`）→ 断言改为 `"_"` 并加注释说明。
+
+**4. 验证（第八次更新全绿）**：`cargo check --all-targets` **0 告警**、`cargo test --lib` **64/64**（批次 A 17 + B 11 + C 36）、`cd tauri-app && pnpm typecheck` exit 0、`pnpm run lint` exit 0。
+
+**5. 提交**：`ff7fbd8`（Cargo.toml/Cargo.lock/db/repositories，6 文件 +1051）、`a8d742a`（project_access/state/security/commands/lib/ipc-client，9 文件 +1948/-98）。
+
+#### 已完成（第七次更新写入，第八次已编译验证）
+
+| 文件 | 内容 |
+|---|---|
+| `src-tauri/Cargo.toml` | ✅ `rusqlite v0.40.2`（features: bundled）——用户已批准（Ask first 项目 5）；`cargo build` 已单独验证 bundled SQLite 在 MSVC 下编译通过（39.31s） |
+| `src-tauri/src/db/schema.rs`（新） | `CREATE_PROJECT_CORE`（27 列完整终态 DDL，对齐 Electron 最终列集）+ `create_tables` + `table_columns` + `migrate_project_core_legacy_columns`（旧库列回填：core_outline←synopsis 等）+ 3 测试 |
+| `src-tauri/src/db/mod.rs`（新） | `ProjectDatabase::open(root)`（建目录 → 开库 → `pragma journal_mode=WAL` → `foreign_keys=ON` → `create_tables`）+ `.vela/vela.db` 路径推导 + 2 测试 |
+| `src-tauri/src/repositories/project_core_repository.rs`（新） | `ProjectCoreData`（serde camelCase 23 字段）、`get/init/update/commit_synopsis/reset_creative_fields`、`FIELD_MAP`（22 camel→snake）、`charactersArch` 只读拒绝、写作语言/创作策略白名单收敛、阈值钳位（1–50）、乐观并发文案 `SYNOPSIS_CONFLICT_MESSAGE`；含多个单测（在内存/临时库上直测仓储） |
+| `src-tauri/src/project_access.rs`（新） | 平移 `electron/services/project-access.ts`：路径身份键 `project_path_key`（去 `\\\\?\\` 前缀 + 分隔符/大小写归一）、`is_contained_path`、`sanitize_project_name` / `sanitize_project_directory_name`、清单校验 `is_project_manifest` + `is_uuid_v4`、`random_uuid_v4`（零依赖 splitmix64，替代 `crypto.randomUUID`）、`probe_existing_project`（清单优先 → 旧版 SQLite 指纹只读探测）、`adopt_legacy_project`、`create_project`、`authorize_deletion`；8 个单测（含旧版指纹收养 roundtrip） |
+| `src-tauri/src/commands/db.rs`（新） | 4 命令：`db:close` / `db:project-core-get` / `db:project-core-update` / `db:project-core-synopsis-commit`；门禁链＝会话租约 + 冻结路径；读写频道失败形态对齐基线（写返回 `{success,error}`，读直接 reject）；含 6 个门禁/仓储集成测试；**末尾一个未使用的 `ProjectCoreUpdatePayload` 待删（会报 dead_code）** |
+| `src-tauri/src/state.rs`（改） | `ActiveProject` 扩为 `{project_id, lease_id, root_path}`（+`to_lease()`）；新增 `project_db: Mutex<Option<ProjectDatabase>>`、`latest_open_token`；新方法 `activate_project`（先关旧库再开新库，不出现半切换）、`close_project_database`、`invalidate_current_session`、`with_project_db`、`database_state`/`neutral_database_state`、`project_database_open`；3 测试 |
+| `src-tauri/src/security.rs`（改） | `assert_current_project_context(context, Option<&ActiveProject>)` 由骨架升为**真实租约校验**（三字段非空 + projectId/leaseId 全等 + 路径一致）；移除两处 `#[allow(dead_code)]` |
+| `src-tauri/src/commands/project.rs`（改） | 5 命令真实化：`project:create`（净化名 → 建根 → 写清单 → 建 `.vela/prompts` → init 主台账 → 回到中立态）、`project:open`（探测/收养 → 开库 → 补 init → 返回 ProjectData + sessionLease）、`project:save`/`update-config`（会话+身份门禁 → `novelConfig`→列映射）、`project:delete`（授权 → 关库 → 退避重试删目录 → 失败恢复库）；`project:get-runtime-context` 的 `db_ready` 真实化（无项目时必须无库） |
+
+已确认的关键契约/常量：项目清单 `.vela/project.json`（schemaVersion=1/kind=ai-novel-project/UUID v4 的 projectId）；旧版指纹表 `project_core/blueprints/characters/contents/drafts` + 列 `id/project_name/genre/total_chapters/character_states`；`db:*` 参数名（`expectedProjectPath`、`data`、`request`）；`novelConfig` 字段→ `project_core` 列映射（`narrativePOV → narrativePov`）。
+
+#### 下一子域接续入口（批次 C 继续）
+
+1. **blueprints（11 频道）**：建 `src-tauri/src/repositories/blueprint_repository.rs` + 扩展 `commands/db.rs`；DDL 追加到 `db/schema.rs`（逐列对照 `electron/database.ts`），仓储与命令行为对照 `electron/repositories/blueprint-repository.ts`。
+2. 依次推进：characters/roster（3）→ drafts（16）→ revisions（9）→ reviews（5）→ post-process（6）→ llm 日志/摘要（5）→ project 清理与全局事实（2：`db:project-clear-generated-data` 可直接迁；`db:import-global-facts-commit` 依赖批次 G 导入链，押后）。
+3. 每子域固定流程：仓储 + 命令 + `ipc-client` 参数名登记 + `cargo check --all-targets`（0 告警）+ `cargo test --lib` + `pnpm typecheck/lint` → 单独 commit（建议 `feat(tauri): 批次 C — <子域> 仓储与命令`）。
+4. 批次 C 全部子域收口时，做一次**双栈同库验证**（Electron 5180 / Tauri 5190 轮流打开同一 `.vela/vela.db`，确认写入互不破坏、`project_core` 列集一致）。
+5. 新子域开写前，先重跑一次「顶层声明去重 + 括号配平扫描」（长文件写入污染的防范措施，参见遗留教训）。
+
+#### 第八次更新已核实的编译风险结论（原「待核对」项）
+
+- `repositories/project_core_repository.rs` 的公开面（`resolve_writing_language` / `resolve_creative_strategy` / `SYNOPSIS_CONFLICT_MESSAGE` / `ProjectCoreData` 字段）与 `commands/project.rs`、`commands/db.rs` 引用已全部对齐 ✅；两个 `resolve_*` 已提为 `pub`。
+- `ProjectCoreSynopsisExpected` 字段集与仓储 `commit_synopsis` 的比较列一致 ✅（测试已跑通）。
+- `open_project_inner` 的 `#[allow(clippy::type_complexity)]` 未触发 `unknown_lints` 告警 ✅（`cargo check --all-targets` 0 告警）。
+- 双栈 DDL 一致性：`db/schema.rs` 的 `CREATE_PROJECT_CORE` 与 `electron/database.ts:67` 同列集，两侧均 `CREATE TABLE IF NOT EXISTS`，可增量推进 ✅（**实机双栈同库验证尚未做**）。
+
+#### 原「未完成」清单（第七次，已全部勾销）
+
+~~1. mod.rs 接线~~ ✅ · ~~2. lib.rs 模块与 4 命令注册~~ ✅ · ~~3. fs.rs:126 签名修正~~ ✅ · ~~4. ipc-client 参数登记~~ ✅（并核实：`db:*` 会话注入沿用前缀分支，无需改动） · ~~5. db.rs 清死代码~~ ✅ · ~~6. cargo check/test + typecheck/lint~~ ✅ · ~~7. 两笔 commit~~ ✅ · ~~8. 快照第八次~~ ✅（本节）。
+
+#### 已知取舍（需在提交说明或后续 ADR 注明）
+
+- 基线用「回滚边界快照 + 串行队列」处理并发打开/失败还原；Rust 侧简化为**请求令牌新鲜度检查 + 单活跃项目**，**不做旧项目自动还原**（`project:create` 完成后回到中立态，不恢复先前打开的项目）。
+- UUID v4 为自实现（非密码学），申报为遗留项，后续可换 `uuid` crate。
+- 目录删除的重试/只读属性处理比基线 `removeDirectoryWithWindowsRetry` 简（5 次线性退避，未处理只读位/占用诊断文案）。
+
 ### 已知遗留项（下一会话处理）
 
 1. ~~提交批次 B~~ → ✅ 已完成（`3541630 feat(tauri): 迁移批次 B — fs/project/grant 22 命令接线与验证`，10 文件 +1345 行）
 2. **Ask first 待确认**：`tauri-plugin-dialog`（dialog 2 频道真实化）与 `rusqlite`（批次 C 前置），均需用户点头后再加
 3. **批次 B 验证**：与 Electron 版行为对照（recent-projects.json 双栈互通、错误文案、commitState 两态）
 4. ~~`pnpm tauri dev` 窗口冒烟~~ → ✅ 已完成（第六次更新后期，结论与新发现见下方遗留项 12/13）
-5. **批次 C（数据库层）**：rusqlite 真实实现 + project:create/open/save/delete 租约签发启用（会话租约完整校验补入 security.rs 骨架处）
+5. **批次 C（数据库层）—— `project_core` 子域已完成**：`rusqlite` 已批准并加入；项目生命周期（create/open/save/update-config/delete）与 `db:close` + project_core 三命令已真实化、接线、验证并提交（`ff7fbd8` + `a8d742a`）；**剩余子域（blueprints → characters/roster → drafts → …）待续**，入口见上方「下一子域接续入口」。
 6. **持续验证**：提交前 `cd tauri-app && pnpm typecheck && pnpm run lint`；改 Rust 追加 `cargo test --lib`；双栈并行（5180/5190）
 7. **vitest 全量超时定位**（上表 ⚠️）
 8. **i18n 校验**：`check:i18n` 未在 tauri-app 配置，批次 E 收口前补
@@ -181,7 +256,7 @@
 |---|---|---|
 | 0 | Tauri 脚手架（`tauri-app/` 迁移根 + AppState + invoke_handler 骨架 + tauri.conf.json 接 Vite） | ✅ **完成**（TS 全绿 + cargo test 待验证） |
 | 1 | IPC 契约盘点（198 频道清单、模式标注、批次规划） | ✅ 2026-10-06 完成 |
-| 2 | 按 controller 批次迁移（A→H，见盘点文档 §6） | 🟡 **批次 A/B 已提交，窗口冒烟通过**；下一步批次 C（需用户确认 rusqlite） |
+| 2 | 按 controller 批次迁移（A→H，见盘点文档 §6） | 🟡 **批次 A/B 已提交，窗口冒烟通过**；**批次 C `project_core` 子域已完成并提交**（38 命令注册，Rust 64/64）；剩余子域待续 |
 | 3 | 原生绑定收尾（窗口/菜单/通知/更新插件、zoom 替代、CI tauri-action） | ⬜ 未开始 |
 | 4 | 双栈并存验证 + 上游同步策略执行 | ⬜ 未开始 |
 
@@ -239,6 +314,22 @@
 6. **提交**：`3541630 feat(tauri): 迁移批次 B — fs/project/grant 22 命令接线与验证`（10 文件 +1345/-19）。
 7. **GUI 冒烟（附加）**：`cargo build` 主二进制 12.44s 成功 → `pnpm tauri dev` 启动成功，窗口 1440x900 无边框 + 自定义标题栏渲染、WebView 125 节点（45 按钮/28 树）确认前端完整加载；已迁频道无报错，未迁频道报 `Command not found`（预期）；冒烟后已终止进程树。发现 2 项遗留（未迁频道错误文案、vite dev 预打包扫描警告）。
 
+### 2026-10-06 第七次更新（批次 C 开工，未完成）
+
+- **依赖获批**：`rusqlite v0.40.2`（bundled）加入 `Cargo.toml`（用户批准 Ask first 项）；单独 `cargo build` 已证 bundled SQLite 在 MSVC 下可编（39.31s）。
+- **基线重读**：`electron/database.ts`（1060 行）、`repositories/project-core-repository.ts`、`controllers/db-controller.ts`（MUTATING 频道清单）、`services/project-access.ts`、`controllers/project-controller.ts` + `project-path.ts`，确认 `db:*` 6 频道契约与项目清单/旧版指纹语义。
+- **新增 6 个 Rust 文件**：`db/schema.rs`、`db/mod.rs`、`repositories/mod.rs`、`repositories/project_core_repository.rs`、`project_access.rs`、`commands/db.rs`。
+- **改造 3 个已有文件**：`state.rs`（会话租约三字段 + 项目库持有 + 打开令牌 + 6 个新方法）、`security.rs`（租约真实校验）、`commands/project.rs`（5 骨架命令真实化 + `db_ready` 真实化）。
+- **未完成**：4 处接线（mod/lib/fs.rs 签名/ipc-client 登记）+ `cargo check/test` + 提交；已锁定 1 处必然编译错误（`fs.rs:126` 旧签名）与 1 处 dead_code（`ProjectCoreUpdatePayload`）。详见上方「批次 C 进行中」章节。
+
+### 2026-10-06 第八次更新（批次 C `project_core` 子域完成并提交）
+
+1. **接线 4 处**：`commands/mod.rs`（`mod db` + 再导出）、`lib.rs`（3 个模块声明 + 4 命令注册 → 共 38 命令）、`commands/fs.rs`（守卫链改走 `active_project_snapshot()`）、`ipc-client.ts`（4 个 db 频道参数名登记）。
+2. **编译修复 5 类**：`resolve_*` 提 `pub`、`project_core::init` 第三参（open → 默认语言；create → `config.writingLanguage` 收敛值）、`ProjectDatabase` 加 `Debug`、**`db:close` 补齐会话租约校验**（对齐基线所有 `db:*` 统一门禁）、5 处骨架预留 dead_code 加 `allow` + 注释。
+3. **测试修正 3 类**：db 测试辅助补 `init` 主台账行、守卫文案补句号（对齐基线带句号文案）、`sanitize_project_directory_name("/")` 期望值 `"_"`（对齐基线 `pop() || trimmed` 语义）。
+4. **验证全绿**：`cargo check --all-targets` 0 告警、`cargo test --lib` 64/64、`pnpm typecheck` exit 0、`pnpm run lint` exit 0。
+5. **提交**：`ff7fbd8`（数据层 6 文件 +1051）、`a8d742a`（生命周期与接线 9 文件 +1948/-98）；第一个 commit 消息曾因 PowerShell `Out-File -Encoding utf8` 带入 BOM，已用 `reset --soft` 重建两笔提交消除（教训：**提交消息写文件用 `[System.IO.File]::WriteAllText` + `UTF8Encoding($false)`**）。
+
 ### 关键发现摘要（接续前必读，详见盘点文档）
 
 - **★ 会话注入约定**：ipc-client 对项目域频道（`db:/kb:/chapter:/fs:/project:save|update-config|delete`）自动在 args 尾部追加 `projectSession`（契约未声明）—— Rust 命令签名必须预留尾参并校验租约。
@@ -255,17 +346,19 @@
 
 2. ~~前端适配~~ → ✅ 已完成（ipc-client.ts 已切 Tauri invoke；契约对齐修复 6 项，见上方适配详情）
 
-3. ~~批次 B 迁移~~ → ✅ 已完成（2026-10-06 第六次：22 命令注册 + 接线 + 验证 28/28 + 前端登记 17 频道）；**下一步提交批次 B**
+3. ~~批次 B 迁移~~ → ✅ 已完成（2026-10-06 第六次：22 命令注册 + 接线 + 验证 28/28 + 前端登记 17 频道）；批次 B 提交已推送（`3541630` → `origin/master`）
 
 4. ~~窗口冒烟~~ → ✅ 已完成（2026-10-06 第六次更新后期）：`pnpm tauri dev` 启动成功（vite @5190 + Rust 壳），窗口 1440x900 无边框、自定义标题栏（最小/最大/关闭）均渲染；前端完整加载（125 节点）；已迁批次 A 命令无报错，未迁命令仅报 `Command not found`（属预期）。发现 2 项待优化：未迁频道错误文案（遗留项 12）、vite dev 预打包扫描警告（遗留项 13）。 **本项为终端命令侧自动化验证，暂未在真实 GUI 交互上验证业务操作**（如打开项目、写入文件）。
 
 5. ~~提交批次 A~~ → ✅ 已完成（两个 commit：Rust 后端 + ipc-client 适配；2 个残留死文件已删）
 
-6. **批次 C（数据库层）**：需用户先确认 `rusqlite` 依赖（Ask first）；接入后启用 `project:create/open/save/update-config/delete` 真实实现 + 租约签发，法兰 `security.rs` 的 `assert_current_project_context` 完整校验
+6. ~~批次 C `project_core` 子域~~ → ✅ 已完成（2026-10-06 第八次：接线 + 5 类编译修复 + 3 类测试修正 + `cargo check` 0 告警 + `cargo test --lib` 64/64 + TS 全绿 + 两个 commit `ff7fbd8`/`a8d742a`）。
 
-7. **批次 B 双栈行为对照**：recent-projects.json 双栈互通、错误文案、`commitState` 两态（与 Electron 5180 并行验证）
+7. **批次 C 剩余子域**（当前仅完成 `project_core`）：blueprints → characters/roster → drafts → revisions → reviews → post-process → summary/llm-stats；每子域一个 commit（流程见上方「下一子域接续入口」）。
 
-6. **持续验证**：
+8. **批次 B 双栈行为对照**：recent-projects.json 双栈互通、错误文案、`commitState` 两态（与 Electron 5180 并行验证）
+
+9. **持续验证**：
    - 每次提交前：`cd tauri-app && pnpm typecheck && pnpm run lint`；改 Rust 追加 `cargo test --lib`
    - 每次提交后：运行 `pnpm tauri dev` 验证双栈兼容（5180/5190）
 

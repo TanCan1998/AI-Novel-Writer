@@ -21,6 +21,8 @@
 
 `electron/preload.ts` 暴露面 = `invoke / on / once / send / setZoomLevel / setZoomFactor / getZoomLevel`（zoom 走 Electron `webFrame`，Tauri 侧需用 Webview zoom API 或 CSS 替代，归阶段 3）。
 
+**迁移进度（截至 2026-10-06 第八次更新）**：已注册 Rust 命令 **38** 个（阶段 0 联调 1 + 批次 A 11 + 批次 B 22 + 批次 C `project_core` 子域 4），覆盖 193 个 invoke 频道中的 **38** 个；批次 A–C 均已提交（`ff7fbd8` + `a8d742a` 为批次 C），批次 C 剩余 db 子域待续。逐批状态与接续入口见 [`docs/handoffs/2026-10-06-tauri-migration-status.md`](../handoffs/2026-10-06-tauri-migration-status.md)。
+
 ## 2. 必须知晓的传输层约定（Rust 签名要预留）
 
 1. **项目会话注入**：`ipc-client.ts` 的 `invokeWithSession` 对项目域频道（`db:*`、`kb:*`、`chapter:*`、`fs:*`、`project:save|update-config|delete`）**自动在参数尾部追加 `projectSession`**（`ProjectSessionContext { projectId, leaseId, projectPath }`）。契约文件的 `args` 不包含它 —— **Rust 命令必须接受这个尾参**并校验租约（对应 ADR 0001 会话租约）。
@@ -28,6 +30,7 @@
 3. **`expectedProjectPath` 防护参数**：几乎所有 `db:/fs:` 频道带此参数，主进程须做规范根目录校验。
 4. **`AppResult<T>`**：`T | { success: false, errorCode: AppErrorCode, error? }`；`AppErrorCode` 共 6 种（KNOWLEDGE_BASE_NATIVE_UNAVAILABLE / LEGACY_VECTOR_MIGRATION_BLOCKED / PROJECT_NOT_OPEN / EMBEDDING_MODEL_NOT_CONFIGURED / PROJECT_STORAGE_PATH_UNSUPPORTED / PROJECT_ROOT_REQUIRED），Rust 侧建等价 enum。
 5. **事件载荷为单对象**：事件频道回调收到的参数形如 `{ requestId, chunk }`，Tauri `emit` 时保持同构。
+6. **参数命名映射（源码级核实，`tauri-macros 2.7.1`）**：Rust 命令参数名与前端 `invoke(name, obj)` 的 key 经 **`to_lower_camel_case()`** 对应 —— Rust `expected_project_path` ↔ JS `expectedProjectPath`（前导下划线如 `_project_id` 同样归并为 `projectId`）；`Option<T>` 参数在 key 缺失时注入 `None`（可省略不传）。因此契约 `args` 的位置参数在 Tauri 侧**一律改为命名参数**，由 `tauri-app/src/services/ipc-client.ts` 的 `CHANNEL_ARG_NAMES` 登记表维护；未登记的非空参频道会立即抛错（防静默错配）。
 
 ## 3. 契约缺口与异常点（迁移前须补齐/决策）
 
@@ -64,6 +67,7 @@
 ### 4.6 ProjectChannels（10 + dialog 1）— controller: `project-controller.ts` — 批次 B
 `project:get-runtime-context`、`project:create(config, requestToken, rendererProjectPath)`、`project:open(projectPath, requestToken, rendererProjectPath)`、`project:save`★、`project:update-config`★、`project:recent-list`、`project:recent-remove`、`project:delete`★（返回含 `directoryDeleted`/`databaseRestored`，须事务性恢复）、`project:smoke-open-request`、`project:smoke-open-confirm`、`dialog:select-folder`。
 核心语义：requestToken / rendererProjectPath 防陈旧窗口写入；`sessionLease` 由主进程签发冻结。
+**状态（2026-10-06 第八次更新）**：批次 B 已把这 10 频道接线完成（后 5 个当时为骨架）；批次 C 已将 `project:create/open/save/update-config/delete` **全部真实化**（项目清单探测/创建、rusqlite 打开 `.vela/vela.db`、租约签发、ProjectData 回传），已编译验证（`cargo test --lib` 64/64）并提交（`a8d742a`）。
 
 ### 4.7 FileChannels（7 + grant 3 + dialog 1）— controller: `fs-controller.ts` + `external-file-grant-controller.ts` — 批次 B
 基础（全部带 `expectedProjectPath`★）：`fs:read-file`、`fs:write-file`（返回 `commitState`）、`fs:list-dir`、`fs:mkdir`、`fs:check-exists`、`fs:read-json`、`fs:write-json`。
@@ -103,6 +107,23 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 
 数据库层迁移：better-sqlite3 → `rusqlite`（bundled）；一域一仓（`blueprint_repository.rs`…）；controller 不写 SQL。
 
+**迁移进度（2026-10-06 第八次更新）**：
+
+| 子域 | 频道数 | 状态 |
+|---|---|---|
+| project_core / 清理 / 全局事实 | 6 | 🟡 **部分完成**：`db:close`、`db:project-core-{get,update,synopsis-commit}` **4 命令已注册并编译验证**（`commands/db.rs` + `repositories/project_core_repository.rs` + `db/schema.rs`，`cargo test --lib` 64/64，提交 `ff7fbd8`/`a8d742a`）；`db:project-clear-generated-data` 可直接续迁，`db:import-global-facts-commit` 依赖批次 G |
+| blueprints | 11 | ⬜ 待迁移 |
+| characters / roster | 3 | ⬜ 待迁移 |
+| drafts | 16 | ⬜ 待迁移 |
+| revisions | 9 | ⬜ 待迁移 |
+| reviews | 5 | ⬜ 待迁移 |
+| post-process | 6 | ⬜ 待迁移 |
+| llm 日志 / 摘要 | 5 | ⬜ 待迁移 |
+| import-run（批次 G） | 18 | ⬜ 待迁移 |
+| continuity / consistency-exemption / narrative-thread / plot-tree / recovery-candidate / finalization-link | 21 | ⬜ 待迁移（部分归批次 E/F） |
+
+**双栈互通约束（重要）**：Rust 侧建的 `project_core` DDL 必须与 Electron `electron/database.ts:67` 的**最终列集**结构一致（两边都开同一个 `.vela/vela.db`）；采用逐子域增量 DDL 是安全的（两边均 `CREATE TABLE IF NOT EXISTS`，Electron 下次 `initProjectDatabase` 会回填缺失列）。
+
 ### 4.11 KnowledgeBaseChannels（15 + dialog 2）— controller: `kb-controller.ts` — 批次 F
 `kb:import-{document,folder}`（grantId 入口）、`kb:import-{text,planning-text,reference-text}`、`kb:search`、`kb:search-writing-context`、`kb:search-with-scope`、`kb:list-documents`、`kb:remove-document`、`kb:clear-all`、`kb:stats`、`kb:get-vectorless-count`、`kb:get-vector-rebuild-status`（纯本地状态读，不发 embedding 请求）、`kb:backfill-vectors`；`dialog:select-knowledge-{files,folder}`。
 返回多为 `AppResult<T>`★。LanceDB → Rust `lancedb` crate 或降级 SQLite FTS（评估项）。
@@ -138,7 +159,7 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 | **0** | Tauri 脚手架（Ask first：新增 `src-tauri/` + 依赖）、AppState + invoke_handler 骨架 | — | 不动 Electron 代码 |
 | **A** | window(+G4 决策协议)、config、skin、official-homepage、model-provider-resource | 0 | 前端可见性最快，先打通 invoke/event 双通道 |
 | **B** | project、fs 基础、external-file-grant、dialog | 0 | 会话租约签发/校验（ADR 0001）、fs 授权（ADR 0002） |
-| **C** | db 子域逐步：project-core → blueprints → characters/roster → drafts → revisions → reviews → post-process → summary/llm-stats | B | rusqlite repository 一域一仓；行为与 Electron 对照 |
+| **C** | db 子域逐步：project-core → blueprints → characters/roster → drafts → revisions → reviews → post-process → summary/llm-stats | B | 🟡 **进行中（2026-10-06 第八次更新）**：`project_core` 子域**已完成并提交**（`ff7fbd8` + `a8d742a`，Rust 64/64、0 告警）；剩余子域按上方进度表逐个迁移（入口见 `docs/handoffs/2026-10-06-tauri-migration-status.md` 第八次快照「下一子域接续入口」）。一域一仓；行为与 Electron 对照 |
 | **D** | llm 全部 + 3 个流事件（G5 性能实测） | C | generation-parameter-policy 复刻；finishReason 显式终态 |
 | **E** | finalization(G1 补契约)、chapter-lifecycle、continuity、recovery-candidate、draft-import-finalized-batch | C, D | 定稿不可逆 + 删除生命周期（ADR 0003/0011）等量测试 |
 | **F** | kb 全部、plot-tree、narrative-thread、consistency-exemption | C | AppResult 错误码对齐；LanceDB 评估 |
