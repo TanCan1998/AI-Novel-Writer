@@ -70,6 +70,14 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'db:character-get-all': ['expectedProjectPath'],
   'db:character-roster-read': ['expectedProjectPath'],
   'db:character-roster-commit': ['request', 'expectedProjectPath'],
+  // 批次 C：章节蓝图（blueprints 子域 S2-a）
+  'db:blueprint-get-all': ['expectedProjectPath'],
+  'db:blueprint-get': ['chapterNumber', 'expectedProjectPath'],
+  'db:blueprint-upsert': ['data', 'expectedProjectPath'],
+  'db:blueprint-upsert-many': ['items', 'expectedProjectPath'],
+  'db:blueprint-update-notes': ['chapterNumber', 'notes', 'expectedProjectPath'],
+  'db:blueprint-delete': ['chapterNumber', 'expectedProjectPath'],
+  'db:blueprint-clear-all': ['expectedProjectPath'],
 }
 
 /** 频道 → Tauri 命令名（`channel:seg-name` → `channel_seg_name`）。 */

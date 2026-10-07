@@ -71,6 +71,13 @@ pub fn run() {
             commands::db_character_get_all,
             commands::db_character_roster_read,
             commands::db_character_roster_commit,
+            commands::db_blueprint_get_all,
+            commands::db_blueprint_get,
+            commands::db_blueprint_upsert,
+            commands::db_blueprint_upsert_many,
+            commands::db_blueprint_update_notes,
+            commands::db_blueprint_delete,
+            commands::db_blueprint_clear_all,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

@@ -13,6 +13,7 @@
 use tauri::State;
 
 use crate::commands::SimpleResult;
+use crate::repositories::blueprint_repository as blueprints;
 use crate::repositories::character_repository as characters;
 use crate::repositories::character_roster_repository as roster;
 use crate::repositories::project_core_repository as project_core;
@@ -297,6 +298,251 @@ pub fn db_character_roster_commit(
     )
 }
 
+/// `db:blueprint-update-notes` 的 IPC 信封（对齐基线 `{ success, updated?, error? }`）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlueprintUpdateNotesResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+// ===== 章节蓝图（blueprints 子域 S2-a） =====
+
+pub(crate) fn blueprint_get_all_inner(
+    state: &AppState,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Vec<blueprints::BlueprintData>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(blueprints::get_all)
+}
+
+pub(crate) fn blueprint_get_inner(
+    state: &AppState,
+    chapter_number: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Option<blueprints::BlueprintData>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| blueprints::get_by_chapter(conn, chapter_number))
+}
+
+pub(crate) fn blueprint_upsert_inner(
+    state: &AppState,
+    data: &blueprints::BlueprintData,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> SimpleResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| blueprints::upsert(conn, data)));
+    match outcome {
+        Ok(()) => SimpleResult {
+            success: true,
+            error: None,
+        },
+        Err(error) => SimpleResult {
+            success: false,
+            error: Some(mutating_error(error)),
+        },
+    }
+}
+
+pub(crate) fn blueprint_upsert_many_inner(
+    state: &AppState,
+    items: &[blueprints::BlueprintData],
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> SimpleResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| blueprints::upsert_many(conn, items)));
+    match outcome {
+        Ok(()) => SimpleResult {
+            success: true,
+            error: None,
+        },
+        Err(error) => SimpleResult {
+            success: false,
+            error: Some(mutating_error(error)),
+        },
+    }
+}
+
+pub(crate) fn blueprint_update_notes_inner(
+    state: &AppState,
+    chapter_number: i64,
+    notes: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> BlueprintUpdateNotesResult {
+    let outcome = guard_read(state, expected_project_path, session).and_then(|()| {
+        state.with_project_db(|conn| blueprints::update_notes(conn, chapter_number, notes))
+    });
+    match outcome {
+        Ok(updated) => BlueprintUpdateNotesResult {
+            success: true,
+            updated: Some(updated),
+            error: None,
+        },
+        Err(error) => BlueprintUpdateNotesResult {
+            success: false,
+            updated: None,
+            error: Some(mutating_error(error)),
+        },
+    }
+}
+
+pub(crate) fn blueprint_delete_inner(
+    state: &AppState,
+    chapter_number: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> SimpleResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| blueprints::delete(conn, chapter_number)));
+    match outcome {
+        Ok(()) => SimpleResult {
+            success: true,
+            error: None,
+        },
+        Err(error) => SimpleResult {
+            success: false,
+            error: Some(mutating_error(error)),
+        },
+    }
+}
+
+pub(crate) fn blueprint_clear_all_inner(
+    state: &AppState,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> SimpleResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(blueprints::clear_all));
+    match outcome {
+        Ok(()) => SimpleResult {
+            success: true,
+            error: None,
+        },
+        Err(error) => SimpleResult {
+            success: false,
+            error: Some(mutating_error(error)),
+        },
+    }
+}
+
+/// `db:blueprint-get-all` —— 读取全部章节蓝图（按章节号升序）
+#[tauri::command]
+pub fn db_blueprint_get_all(
+    state: State<'_, AppState>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<blueprints::BlueprintData>, String> {
+    blueprint_get_all_inner(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:blueprint-get` —— 读取单章蓝图（未找到返回 null）
+#[tauri::command]
+pub fn db_blueprint_get(
+    state: State<'_, AppState>,
+    chapter_number: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Option<blueprints::BlueprintData>, String> {
+    blueprint_get_inner(
+        state.inner(),
+        chapter_number,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:blueprint-upsert` —— 插入或更新单章蓝图（MUTATING）
+#[tauri::command]
+pub fn db_blueprint_upsert(
+    state: State<'_, AppState>,
+    data: blueprints::BlueprintData,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> SimpleResult {
+    blueprint_upsert_inner(
+        state.inner(),
+        &data,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:blueprint-upsert-many` —— 批量插入/更新章节蓝图（MUTATING）
+#[tauri::command]
+pub fn db_blueprint_upsert_many(
+    state: State<'_, AppState>,
+    items: Vec<blueprints::BlueprintData>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> SimpleResult {
+    blueprint_upsert_many_inner(
+        state.inner(),
+        &items,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:blueprint-update-notes` —— 仅更新 notes 字段（MUTATING）
+#[tauri::command]
+pub fn db_blueprint_update_notes(
+    state: State<'_, AppState>,
+    chapter_number: i64,
+    notes: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> BlueprintUpdateNotesResult {
+    blueprint_update_notes_inner(
+        state.inner(),
+        chapter_number,
+        &notes,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:blueprint-delete` —— 删除单章蓝图（MUTATING）
+#[tauri::command]
+pub fn db_blueprint_delete(
+    state: State<'_, AppState>,
+    chapter_number: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> SimpleResult {
+    blueprint_delete_inner(
+        state.inner(),
+        chapter_number,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:blueprint-clear-all` —— 清空所有章节蓝图（MUTATING）
+#[tauri::command]
+pub fn db_blueprint_clear_all(
+    state: State<'_, AppState>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> SimpleResult {
+    blueprint_clear_all_inner(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -540,6 +786,93 @@ mod tests {
         // 读频道缺会话 → 直接拒绝（不包装）
         let denied = character_get_all_inner(&state, &root, None).unwrap_err();
         assert_eq!(denied, "缺少项目会话上下文，已拒绝操作");
+
+        cleanup(&root);
+    }
+
+    fn sample_blueprint(chapter: i64) -> blueprints::BlueprintData {
+        blueprints::BlueprintData {
+            chapter_number: chapter,
+            title: format!("第 {chapter} 章"),
+            role: "起".to_string(),
+            purpose: "推进主线".to_string(),
+            key_events: "事件".to_string(),
+            characters: vec!["林清玄".to_string()],
+            new_character_candidates: None,
+            relationship_hints: None,
+            suspense_hook: "钩子".to_string(),
+            user_guidance: "指导".to_string(),
+            notes: String::new(),
+            notes_updated_at: String::new(),
+        }
+    }
+
+    #[test]
+    fn blueprint_channels_guard_and_crud_test() {
+        let (state, root, session) = activated_state("blueprint");
+
+        // 读频道门禁：缺会话 / 跨项目路径
+        assert_eq!(
+            blueprint_get_all_inner(&state, &root, None).unwrap_err(),
+            "缺少项目会话上下文，已拒绝操作"
+        );
+        assert_eq!(
+            blueprint_get_all_inner(&state, "C:\\other", Some(&session)).unwrap_err(),
+            "检测到跨项目读写，已拒绝操作。"
+        );
+
+        // 写频道门禁：失败走 MUTATING 包装
+        let denied = blueprint_upsert_inner(&state, &sample_blueprint(1), &root, None);
+        assert!(!denied.success);
+        assert_eq!(
+            denied.error.as_deref(),
+            Some("Error: 缺少项目会话上下文，已拒绝操作")
+        );
+
+        // 正常写入 + 回读
+        let one = blueprint_upsert_inner(&state, &sample_blueprint(1), &root, Some(&session));
+        assert!(one.success, "单条写入应成功：{:?}", one.error);
+        let many = blueprint_upsert_many_inner(
+            &state,
+            &[sample_blueprint(2), sample_blueprint(3)],
+            &root,
+            Some(&session),
+        );
+        assert!(many.success, "批量写入应成功：{:?}", many.error);
+
+        let all = blueprint_get_all_inner(&state, &root, Some(&session)).unwrap();
+        assert_eq!(all.len(), 3);
+        assert_eq!(all[0].chapter_number, 1);
+        assert_eq!(all[0].characters, vec!["林清玄".to_string()]);
+
+        let single = blueprint_get_inner(&state, 2, &root, Some(&session))
+            .unwrap()
+            .expect("第 2 章应存在");
+        assert_eq!(single.title, "第 2 章");
+        assert!(blueprint_get_inner(&state, 99, &root, Some(&session))
+            .unwrap()
+            .is_none());
+
+        // 仅更新 notes，返回 updated 判定
+        let notes = blueprint_update_notes_inner(&state, 1, "要点", &root, Some(&session));
+        assert!(notes.success);
+        assert_eq!(notes.updated, Some(true));
+        let missing_notes = blueprint_update_notes_inner(&state, 99, "空", &root, Some(&session));
+        assert!(missing_notes.success);
+        assert_eq!(missing_notes.updated, Some(false));
+        assert_eq!(
+            blueprint_get_inner(&state, 1, &root, Some(&session))
+                .unwrap()
+                .unwrap()
+                .notes,
+            "要点"
+        );
+
+        // 删除与清空
+        assert!(blueprint_delete_inner(&state, 1, &root, Some(&session)).success);
+        assert_eq!(blueprint_get_all_inner(&state, &root, Some(&session)).unwrap().len(), 2);
+        assert!(blueprint_clear_all_inner(&state, &root, Some(&session)).success);
+        assert!(blueprint_get_all_inner(&state, &root, Some(&session)).unwrap().is_empty());
 
         cleanup(&root);
     }

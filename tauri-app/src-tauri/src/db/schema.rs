@@ -66,6 +66,72 @@ CREATE TABLE IF NOT EXISTS blueprints (
 );
 "#;
 
+/// blueprint_commit_operations —— 蓝图表提交幂等日志（对齐基线 `ensureBlueprintCommitSchema`）
+pub const CREATE_BLUEPRINT_COMMIT_OPERATIONS: &str = r#"
+CREATE TABLE IF NOT EXISTS blueprint_commit_operations (
+  operation_id TEXT PRIMARY KEY,
+  payload_hash TEXT NOT NULL,
+  mode TEXT NOT NULL CHECK(mode IN ('full', 'replace-range')),
+  start_chapter INTEGER NOT NULL,
+  end_chapter INTEGER NOT NULL,
+  character_sync_input TEXT NOT NULL,
+  committed_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"#;
+
+/// blueprint_character_sync_operations —— 角色同步操作持久化（含基线外键与索引）
+pub const CREATE_BLUEPRINT_CHARACTER_SYNC_OPERATIONS: &str = r#"
+CREATE TABLE IF NOT EXISTS blueprint_character_sync_operations (
+  operation_id TEXT PRIMARY KEY,
+  blueprint_commit_operation_id TEXT NOT NULL UNIQUE,
+  blueprint_commit_payload_hash TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'completed')),
+  start_chapter INTEGER NOT NULL,
+  end_chapter INTEGER NOT NULL,
+  character_sync_input TEXT NOT NULL,
+  completion_receipt TEXT DEFAULT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at TEXT DEFAULT NULL,
+  FOREIGN KEY (blueprint_commit_operation_id)
+    REFERENCES blueprint_commit_operations(operation_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_blueprint_character_sync_status
+  ON blueprint_character_sync_operations(status, created_at);
+"#;
+
+/// 蓝图提交/角色同步表的幂等收敛（对齐基线 `ensureBlueprintCommitSchema`）
+///
+/// 建表 + 索引 + 回填：把已存在的提交操作补建对应的待处理角色同步操作。
+/// Tauri 侧在每次 `create_tables`（即每次打开项目库）调用，效果等价于基线在
+/// 各 blueprint 写路径前的惰性收敛。
+pub fn ensure_blueprint_commit_schema(conn: &Connection) -> SqlResult<()> {
+    conn.execute_batch(CREATE_BLUEPRINT_COMMIT_OPERATIONS)?;
+    conn.execute_batch(CREATE_BLUEPRINT_CHARACTER_SYNC_OPERATIONS)?;
+    conn.execute_batch(
+        r#"
+        INSERT OR IGNORE INTO blueprint_character_sync_operations (
+          operation_id,
+          blueprint_commit_operation_id,
+          blueprint_commit_payload_hash,
+          start_chapter,
+          end_chapter,
+          character_sync_input
+        )
+        SELECT
+          'blueprint-sync-' || operation_id,
+          operation_id,
+          payload_hash,
+          start_chapter,
+          end_chapter,
+          character_sync_input
+        FROM blueprint_commit_operations;
+        "#,
+    )?;
+    Ok(())
+}
+
 /// characters —— 角色卡（`currentState` 拍平为 `cs_*` 列，杜绝 JSON 大字段）
 pub const CREATE_CHARACTERS: &str = r#"
 CREATE TABLE IF NOT EXISTS characters (
@@ -183,6 +249,7 @@ CREATE TABLE IF NOT EXISTS character_roster_operations (
 pub fn create_tables(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(CREATE_PROJECT_CORE)?;
     conn.execute_batch(CREATE_BLUEPRINTS)?;
+    ensure_blueprint_commit_schema(conn)?;
     conn.execute_batch(CREATE_CHARACTERS)?;
     conn.execute_batch(CREATE_CONTENTS)?;
     conn.execute_batch(CREATE_DRAFTS)?;
