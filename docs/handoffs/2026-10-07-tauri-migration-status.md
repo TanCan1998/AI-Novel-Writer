@@ -422,6 +422,31 @@ MUTATING 命令复用。
 结果：`cargo check --all-targets` **0 告警** · `cargo test --lib` **166/166** ·
 `pnpm typecheck` / `pnpm run lint` 均 exit 0。
 
+### 6. 新增契约覆盖校验脚本（静态回归工具）
+
+`tauri-app/scripts/verify-channel-coverage.mjs` + `pnpm run check:channels`（零依赖纯 node）：
+不启动应用即可核对「契约频道 ↔ 已注册命令」的机械映射，输出未迁移清单与 orphan 清单
+（存在 orphan 时退出码 1）。当前结果：
+
+```
+契约 invoke 频道 191（事件频道 4）
+已注册命令 90 → 覆盖 invoke 频道 89
+未迁移 invoke 频道 102  [db=44 kb=15 llm=14 mcp=9 update=6 chapter=4 skills=4 dialog=3 prompt=3]
+命令名与契约频道一一对应 ✅
+```
+
+**未迁移 102 频道按批次归类**（供后续排期）：
+
+| 批次 | 数量 | 频道 |
+|---|---|---|
+| **E / G** | 28 | continuity(4) + finalization-link(1) + drafts 余 4 + import-run(18) + import-global-facts(1) |
+| **F** | 16 | consistency-exemption(3) + narrative-thread(6) + plot-tree(3) + recovery-candidate(4) |
+| **E** | 4 | `chapter:*`（定稿删除与生命周期） |
+| **D** | 14 | `llm:*`（模型管理 / 生成 / 流式 / 租约） |
+| 向量库 | 15 | `kb:*` |
+| MCP | 9 | `mcp:*` |
+| 其它 | 16 | prompt(3) + skills(4) + dialog(3) + update(6) |
+
 ---
 
 ## 批次 C 收口状态（2026-10-07）
