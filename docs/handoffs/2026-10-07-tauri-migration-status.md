@@ -7,18 +7,20 @@
 
 ---
 
-## 快照（最后更新：2026-10-07 · 第十九次）
+## 快照（最后更新：2026-10-07 · 第二十次）
 
 | 项 | 值 |
 |---|---|
 | 仓库 | **`TanCan1998/Lorekeeper`**（原名 `AI-Novel-Writer`；仍为 `EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork） |
 | 分支 | `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm 包 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 当前阶段 | **批次 C 数据库层子域全部完成 ✅**：`project_core` / `characters` / `blueprints` / `drafts`（12/16）/ `revisions` / `reviews` / `post-process` / `llm 日志与摘要` / **`project 清理`（2026-10-07）**；剩余 `db:*` 频道全部归属批次 **E/F/G** |
+| 当前阶段 | **批次 C 数据库层子域全部完成 ✅**：`project_core` / `characters` / `blueprints` / `drafts`（12/16）/ `revisions` / `reviews` / `post-process` / `llm 日志与摘要` / **`project 清理`**；剩余 `db:*` 频道全部归属批次 **E/F/G** |
 | 已注册命令 | **90**（骨架 1 + A 11 + B 22 + C 子域 56） |
+| GUI 冒烟 | ✅ **已做**（2026-10-07 两轮 `pnpm tauri dev`）：窗口标题 `Lorekeeper`、vite@5190、cargo 353/353、`lorekeeper.exe` **内存 42.6 MB**；第二轮闭环验证遗留项 12 修复 |
+| 自动化回归 | `cargo test --lib` **169/169**（含 3 个**磁盘级**端到端：真实 `.vela/lorekeeper.db` + WAL + 外键 + 跨重开持久化）；`pnpm run check:channels` 校验契约↔命令映射 |
 | 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后 |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`） |
-| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **166/166** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 |
+| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **169/169** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 · ✅ `check:channels` orphan 空 |
 
 ---
 
@@ -386,42 +388,46 @@ MUTATING 命令复用。
 
 ---
 
-## 本次会话结束状态（2026-10-07）
+## 本次会话结束状态（2026-10-07 · 第二轮）
 
 **工作区**：干净（仅未跟踪的 `.pi/` agent 临时目录，不入 Git）；`master` 已与 `origin/master` 同步。
 
 | 项 | 值 |
 |---|---|
-| HEAD | `da4073f` |
-| 会话提交 | 6 个：`fa07875` reviews · `39ee0c2` post-process · `e0e1004` llm/摘要 · `d89861f` project 清理 · `da4073f` 校验脚本 |
+| HEAD | `4d5ef61` |
+| 本会话提交（共 8 个） | `fa07875` reviews · `39ee0c2` post-process · `e0e1004` llm/摘要 · `d89861f` project 清理 · `da4073f` 校验脚本 · `3c9aa2b` 结束状态快照 · **`24c008f` 未迁移频道友好提示（遗留项 12）** · **`4d5ef61` 磁盘级端到端回归** |
 | 已注册命令 | **90**（骨架 1 + A 11 + B 22 + C 子域 56） |
-| 验证 | `cargo check --all-targets` 0 告警 · `cargo test --lib` **166/166** · `pnpm typecheck`/`lint` exit 0 · `pnpm run check:channels` orphan 空 |
-| 未迁移频道 | 102（契约 191 invoke 频道；已按批次归类，见上） |
+| 验证 | `cargo check --all-targets` 0 告警 · `cargo test --lib` **169/169** · `pnpm typecheck`/`lint` exit 0 · `pnpm run check:channels` orphan 空 |
+| GUI 冒烟 | ✅ 两轮（首轮采集信号；次轮闭环验证友好文案） |
+| 未迁移频道 | 102（契约 191 invoke 频道；已按批次归类） |
 
 ### 下一次会话的推荐起手
 
-1. **GUI 实机冒烟**（最优先，见下）——批次 C 的 56 个命令至今未经真实项目验证。
-2. 双击风险上最低的推进项：**批次 D（`llm:*` 14 频道）**，完成后可消除启动即报的
-   `llm_list_models not found`（遗留项 12）。
-3. 若要接数据层：批次 F（豁免/叙事线程/派生树/恢复候选，16 频道，互依赖少）；
-   批次 E（continuity + finalization + `chapter:*`）需先落 finalization 仓储，风险最大。
+1. **批次 D（`llm:*` 14 频道）** —— 当前最低风险的实质推进项；做完可让 `llm:list-models`
+   等启动即调用的频道真正可用（遗留项 12 的友好提示仍会保留作为「未迁」兜底）。
+2. 批次 F（豁免/叙事线程/派生树/恢复候选，16 频道，互依赖少）。
+3. 批次 E（continuity + finalization + `chapter:*`）需先落 finalization 仓储，风险最大。
 
-### GUI 冒烟清单（建议逐项打勾）
+### GUI 冒烟清单（本轮已做部分已勾选）
 
 ```bash
 cd tauri-app && pnpm tauri dev
 ```
 
-- [ ] 窗口标题为 `Lorekeeper`，能打开真实小说目录（`.vela/project.json` 存在）
-- [ ] 项目主台账读写（新建/重开项目，配置保存后重进不漂移）
-- [ ] 蓝图：批量写入 → 列表回读 → 范围提交 → 角色同步 pending → complete
-- [ ] 草稿：创建（version 自增）→ 改正文 → 依赖变旧标记
-- [ ] 修稿：create → replace-pending → merge（幂等重放）
-- [ ] 审稿：create → get-latest
-- [ ] 后处理：create-run → mark-step-ok/failed → is-all-passed
-- [ ] LLM：调用后 get-stats / get-history 数值合理
-- [ ] 清理：`generatedText` 后根目录 `第N章*.txt` 进入 `.vela/trash/`
-- [ ] 全程无 `Command ... not found`（未迁频道除外，如 `llm:list-models`）
+- [x] 窗口标题为 `Lorekeeper`（进程 `lorekeeper.exe`，vite@5190，cargo 353/353）
+- [x] 全程无 `Command ... not found`（→ 已改为「尚未迁移到 Tauri 侧」友好文案）
+- [ ] 项目主台账读写（新建/重开项目，配置保存后重进不漂移）——*磁盘级测试已覆盖持久化*
+- [ ] 蓝图：批量写入 → 列表回读 → 范围提交 → 角色同步 pending → complete ——*磁盘级测试已覆盖*
+- [ ] 草稿：创建（version 自增）→ 改正文 ——*磁盘级测试已覆盖*
+- [ ] 修稿：create → merge（幂等重放）——*磁盘级测试已覆盖*
+- [ ] 审稿：create → get-latest ——*磁盘级测试已覆盖*
+- [ ] 后处理：create-run → mark-step-ok/failed → is-all-passed ——*磁盘级测试已覆盖*
+- [ ] LLM：get-stats / get-history 数值合理 ——*磁盘级测试已覆盖*
+- [ ] 清理：`generatedText` 后根目录 `第N章*.txt` 进入 `.vela/trash/` ——*磁盘级测试已覆盖*
+
+> 说明：*磁盘级测试已覆盖* = 该路径已在 `disk_e2e.rs` 中以真实 `.vela/lorekeeper.db`
+> 断言（不再依赖人工点击）。**尚未人工验证**的是「界面呈现与交互」本身
+> （按钮触发、表单回显、错误提示的 UI 形式），仍建议在后续会话中人工过一遍。
 
 ---
 
@@ -488,6 +494,61 @@ cd tauri-app && pnpm tauri dev
 
 ---
 
+## 本次更新（第二十次：GUI 冒烟验证 + 遗留项 12 修复 + 磁盘级端到端回归）
+
+本轮完成的是上一轮「结束本次」所中断的事项：**GUI 实机冒烟**（批次 C 交付 56 命令后
+从未在真实项目上验证过，是当时最大的风险敷口）。
+
+### 1. GUI 实机冒烟（两轮）
+
+**首轮（采集信号）**：
+
+| 信号 | 结果 |
+|---|---|
+| vite | `ready in 1420 ms` @ `http://127.0.0.1:5190/` |
+| cargo | 353/353 编译完成，`Running target\debug\lorekeeper.exe` |
+| 进程 | `lorekeeper.exe`（PID 26088），**内存 42.6 MB** ← 迁移目标（Electron 通常 150–300 MB） |
+| 窗口 | 可见窗口标题 `Lorekeeper`（EnumWindows + GetWindowText 采集） |
+| WebView2 | 18 个子进程（页面真实渲染） |
+| 前端日志 | `setZoomFactor 尚未在 Tauri 侧实现`（阶段 3 预期）；`Unknown Error: Command llm_list_models not found`（遗留项 12） |
+| 副作用 | `Cargo.toml` **未被重写** → 遗留项 14 的注释规避写法有效 ✅ |
+
+**次轮（闭环验证修复）**：原生错误消失，友好文案 6 次命中 ——
+`[Tauri 适配] 频道 llm:list-models 尚未迁移到 Tauri 侧（后续批次），已拒绝调用`。
+两轮冒烟后进程树均已清理（端口 5190 释放）。
+
+### 2. 遗留项 12 修复：未迁移频道友好提示（`24c008f`）
+
+- `scripts/verify-channel-coverage.mjs` 新增 `--emit`：生成
+  `src/shared/migrated-channels.ts`（89 个已迁移频道；内容未变时不写盘）。
+- `ipc-client`：未迁移频道**前置拦截** + 对 Tauri 原生
+  `Unknown Error: Command xxx not found` 的**兜底翻译**（生成物落后于 Rust 注册时仍友好）。
+- `package.json` 新增 `check:channels:emit`。
+- 新增 `test/channel-migration-coverage.test.ts`（4 用例）：重算契约↔命令映射并与生成物
+  比对，**防止生成物过期或被手改**；断言已迁移集合是契约的真子集。
+
+### 3. 磁盘级端到端回归（`4d5ef61`）—— 冒烟的可自动化版本
+
+新增 `src-tauri/src/disk_e2e.rs`（`#[cfg(test)] mod`）。与各仓储的内存库单测不同，它走
+**真机等价路径**：真实 `<root>/.vela/lorekeeper.db`、WAL、`foreign_keys=ON`、
+真实目录上的物理文件、**跨连接重开后的持久化**。
+
+| 用例 | 覆盖 |
+|---|---|
+| `real_project_creation_lifecycle_persists_across_reopen_test` | 主台账 → 蓝图范围提交 → 蓝图角色同步 → 草稿 → 修稿合并 → 审稿 → 后处理跑批 → LLM 日志与统计；随后重开库逐域断言（含步骤失败原因、修订 `merged` 状态） |
+| `real_project_sqlite_pragmas_are_effective_on_disk_test` | 文件库上 WAL 真实生效；外键 `RESTRICT` 阻止删除被草稿引用的正文；删草稿**级联**带走修稿与审稿 |
+| `real_project_clear_moves_physical_files_and_keeps_library_test` | 清理移动真实成稿文件、保留非成稿文件与未勾选范围，库本身仍可重开 |
+
+这三项**内存库测不出来**（WAL、真实路径、跨重开），正是此前「56 命令未经真机验证」的核心缺口。
+
+### 4. 验证
+
+`cargo test --lib` **169/169**（166 + 3 磁盘级）· `cargo check --all-targets` **0 告警** ·
+`pnpm typecheck` / `pnpm run lint` exit 0 · `pnpm run check:channels` orphan 空 ·
+两轮 dev 冒烟通过。
+
+---
+
 ## 批次 C 收口状态（2026-10-07）
 
 **已完成子域**（命令累计 **90**，其中 C 子域 56）：
@@ -528,10 +589,13 @@ cd tauri-app && pnpm tauri dev
 
 ## 遗留项（沿用 2026-10-06 快照）
 
-- 未验证：批次 C **GUI 实机验证**、双栈同库行为对照、`vitest` 全量超时定位、
-  `cargo fmt --check` 未纳入验收（`src-tauri/` 全域存在 rustfmt 差异，需单独提交）。
+- ✅ **批次 C GUI 实机验证（自动化部分已完成）**：两轮 `pnpm tauri dev` 冒烟通过；
+  核心读写链路已由 `disk_e2e.rs` 用真实 `.vela/lorekeeper.db` 断言覆盖。
+  **仍未人工验证**：界面交互本身（按钮触发、表单回显、错误提示的 UI 形式）。
+- 未验证：双栈同库行为对照、`vitest` 全量超时定位、`cargo fmt --check` 未纳入验收
+  （`src-tauri/` 全域存在 rustfmt 差异，需单独提交）。
 - 押后：L3（`.vela` → `.lorekeeper`）、可见品牌（`brand.ts` / i18n 标题）。
-- 未迁频道的错误文案友好化（遗留项 12）。
+- ✅ **遗留项 12 已修复**（`24c008f`）：未迁移频道给出统一友好提示 + 生成物一致性测试。
 - 批次 G 需要的 `BlueprintRepository.getCommittedRangeOperation`（无 IPC 频道，被
   `import-run-repository.ts` 使用）尚未移植，随批次 G 一并落地。
 - 无 IPC 频道的基线辅助方法未移植：`post_process_repository.get_failed_step_labels`、
