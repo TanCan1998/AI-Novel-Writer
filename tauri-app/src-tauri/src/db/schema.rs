@@ -1,12 +1,12 @@
 //! 项目数据库 schema —— 分批平移自 `electron/database.ts` 的 `createTables`
 //!
-//! 约束（与 Electron 基线双栈互通）：
-//! 1. 建表必须幂等（`IF NOT EXISTS`），因为 Electron 与 Tauri 都会打开同一个 `.vela/vela.db`；
-//! 2. 列定义必须与 Electron 侧的**最终列集**一致（含历史 ALTER 追加列），
-//!    否则后打开的栈会读到不一致结构；
-//! 3. 旧库（Electron 早期版本建的）通过 legacy 列补齐迁移收敛，迁移规则逐字对齐基线。
+//! 约束（Tauri 侧**独立库**，与原项目不共享数据库文件）：
+//! 1. 建表必须幂等（`IF NOT EXISTS`）：`read` / `commit` 等路径每次打开都会复跑迁移；
+//! 2. 列定义对齐 Electron 侧的**最终列集**（含历史 ALTER 追加列），以保留将来
+//!    一次性导入原项目数据的能力；
+//! 3. 旧库通过 legacy 列补齐迁移收敛，迁移规则逐字对齐基线。
 //!
-//! 批次 C 按子域推进：本文件只含 project_core 域，后续子域建表陆续追加。
+//! 批次 C 按子域推进：建表与迁移在此汇总，仓储实现在 `repositories/`。
 
 use rusqlite::{Connection, OptionalExtension, Result as SqlResult};
 use std::collections::HashSet;

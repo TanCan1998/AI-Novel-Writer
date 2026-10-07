@@ -5,18 +5,21 @@
 
 ---
 
-## 快照（最后更新：2026-10-06 · 第八次）
+## 快照（最后更新：2026-10-06 · 第九次）
 
 | 项 | 值 |
 |---|---|
-| 分支 | `master` |
+| 分支 | `master`（`origin/master` 已同步至 `c9e21bf`；本地新增 `69fc50c` 待推送） |
 | 基准 SHA | `a0fd2f4`（阶段 0 锚点提交；后续批次 A–H 以此为起点） |
-| 当前阶段 | **批次 C `project_core` 子域完成并提交**（`ff7fbd8` 数据层 + `a8d742a` 生命周期与接线）：`db:close` 与 project_core 三命令已注册（**38 命令**）、Rust 64/64、0 告警、TS 全绿；批次 C 剩余子域（blueprints → characters/roster → drafts → …）待续 |
+| 产品身份 | **Lorekeeper（中文副名「设定司」）**；`identifier = com.tancan1998.lorekeeper`；npm 包名 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib`（原 `com.ai-novel-writer.app` 与 Electron **完全相同**，已消除） |
+| 当前阶段 | **批次 C 进行中**：`project_core` ✅、**`characters/roster` ✅（`69fc50c`，41 命令）**、**Lorekeeper 身份 + 双栈隔离 L0/L1/L2 ✅**；下一步 `blueprints`（11 频道） |
 | 结构 | **独立迁移根 `tauri-app/`**（用户确认的方案 B），根目录三文件已还原上游原样 |
+| 双栈隔离 | ① 安装标识独立；② 全局数据根 = `AI_NOVEL_LOREKEEPER_HOME` 或 `~/.lorekeeper`（基线 `AI_NOVEL_VELA_HOME`/`~/.vela`，**不回退**）；③ 项目库 = `<root>/.vela/lorekeeper.db`（基线 `.vela/vela.db`）；④ `.vela` 目录本身仍共享（L3 押后） |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（遵循 AGENTS.md 第 3 条规则）；crates 走 rsproxy 镜像；VS Build Tools 已装；**脚本内需显式设 RUSTUP_HOME/CARGO_HOME** |
-| 未提交变更 | 无（工作区仅余本快照与盘点文档的文档改动）。批次 C 已拆两个 commit：`ff7fbd8 feat(tauri): 批次 C — rusqlite 数据库层与 project_core 仓储`、`a8d742a feat(tauri): 批次 C — 项目生命周期真实化与 db 命令接线` |
+| 已注册命令 | **41**（骨架 1 + A 11 + B 22 + C project_core 4 + C characters 3） |
+| 未提交变更 | 无（本次快照与盘点文档改动随隔离 commit 一起提交）。新增：`69fc50c feat(tauri): 批次 C — 角色与角色名单仓储及命令（characters 子域）` |
 | 残留死文件 | ✅ 已删除（上会话残留 `state/commands.rs`、`commands/config/internal_exports.rs`） |
-| 未验证事项 | ① ~~`pnpm tauri dev` 窗口冒烟~~ → ✅ 已完成；② ~~批次 C `cargo check/test`~~ → ✅ **已完成（第八次更新：0 告警 + 64/64）**；③ 批次 B/C 与 Electron 版行为对照未做；④ vitest 全量超时未定位；⑤ `cargo fmt --check` 未达标（未纳入验收）；⑥ **批次 C 未做 GUI 实机验证**（打开真实项目、读写 project_core） |
+| 未验证事项 | ① ~~`pnpm tauri dev` 窗口冒烟~~ → ✅ 已完成；② ~~批次 C `cargo check/test`~~ → ✅ **0 告警 + 94/94**；③ 批次 B/C 与 Electron 版行为对照未做；④ vitest 全量超时未定位；⑤ `cargo fmt --check` 未达标（未纳入验收）；⑥ **批次 C 未做 GUI 实机验证**（打开真实项目、读写 project_core/角色名单）；⑦ ~~隔离改造后未重跑 dev 冒烟~~ → ✅ **已完成（第九次）**：进程 `lorekeeper`、窗口标题 `Lorekeeper`、exe `target/debug/lorekeeper.exe`、vite@5190 正常，仅预期报错 `llm_list_models not found`（批次 D）；**注**：`~/.lorekeeper` 只在首次打开/创建/移除项目时才生成，本次冒烟未触发 |
 
 ### 结构重设计（2026-10-06 第二次更新，用户确认）
 
@@ -237,7 +240,7 @@
 2. **Ask first 待确认**：`tauri-plugin-dialog`（dialog 2 频道真实化）与 `rusqlite`（批次 C 前置），均需用户点头后再加
 3. **批次 B 验证**：与 Electron 版行为对照（recent-projects.json 双栈互通、错误文案、commitState 两态）
 4. ~~`pnpm tauri dev` 窗口冒烟~~ → ✅ 已完成（第六次更新后期，结论与新发现见下方遗留项 12/13）
-5. **批次 C（数据库层）—— `project_core` 子域已完成**：`rusqlite` 已批准并加入；项目生命周期（create/open/save/update-config/delete）与 `db:close` + project_core 三命令已真实化、接线、验证并提交（`ff7fbd8` + `a8d742a`）；**剩余子域（blueprints → characters/roster → drafts → …）待续**，入口见上方「下一子域接续入口」。
+5. **批次 C（数据库层）—— `project_core` ✅ + `characters/roster` ✅**：`rusqlite` 已批准并加入；`project_core` 四命令（`ff7fbd8` + `a8d742a`）；`characters/roster` 三命令（`69fc50c`）。**剩余子域：blueprints（11）→ drafts（16）→ revisions（9）→ reviews（5）→ post-process（6）→ llm 日志/摘要（5）→ project 清理（2，`db:import-global-facts-commit` 依赖批次 G 押后）**。
 6. **持续验证**：提交前 `cd tauri-app && pnpm typecheck && pnpm run lint`；改 Rust 追加 `cargo test --lib`；双栈并行（5180/5190）
 7. **vitest 全量超时定位**（上表 ⚠️）
 8. **i18n 校验**：`check:i18n` 未在 tauri-app 配置，批次 E 收口前补
@@ -247,6 +250,10 @@
 12. **未迁频道错误文案不友好**（第六次更新冒烟发现）：未注册命令报 Tauri 原生 `Unknown Error: Command llm_list_models not found`，与预期的「尚未迁移（批次 X）」不一致。修复方向：ipc-client 维护「已迁移频道集合」，命中未迁名单时直接抛统一提示（保留 Rust 侧抛错兜底），便于逐批推进时快速定位。
 13. **dev 依赖预打包扫描警告**（第六次更新冒烟发现，不影响 `pnpm build` 产物）：vite `optimizeDeps` 扫描到 `electron/security/windows-safe-file-system.ts`（经测试文件 `__tests__/export-service-integration.test.ts` → `@baseline/controllers/external-file-grant-controller` → … 可达）内部 `import ... from 'electron'` 无法解析，导致预打包被跳过（首次 dev 变慢、真实依赖优化被掩盖）。→ ✅ **已修复**（commit `8dda8b7`：`optimizeDeps.entries: ['index.html']`，dev 启动无该警告，build 仍通过）。
 14. **`pnpm tauri dev` 会规范化 `Cargo.toml`**（第六次更新后期实测发现）：注释中若写 `features=["bundled"]` 这类 TOML 片段，dev 启动后会被重写为 `features= ["bundled"]`（tauri CLI 内部 toml 格式化），造成每次 dev 后工作区无故脏。→ ✅ **已规避**：注释改写为不含 TOML 片段形式的等价表述；**后续在 `Cargo.toml` 注释中写示例配置时，请直接用已带空格的规范写法，避免反复产生噪声 diff**。
+15. **L3 项目目录改名押后**：`.vela` → `.lorekeeper` 需同步约 20 个前端非测试文件 + 若干测试；`vela://` 伪协议暂不改。收口后单独提交、单独验证。
+16. **可见品牌未改（押后项）**：`tauri-app/src/shared/brand.ts`（zhName/enName/shortName）、`src/i18n/messages/{zh-CN,en-US}.ts` 的 `app.windowTitle`、`BottomPanel.tsx` 的版本号行、`theme-store` 的 localStorage 键 `ai-novel-writer-theme`、以及 agent 工具描述里的「AI小说作家」；均有对应测试需同步。
+17. **`official_homepage` 仍是上游仓库地址**：`OFFICIAL_HOMEPAGE_URL = https://github.com/EthanYoQ/AI-Novel-Writer`（与基线同源，有契约测试）。是否改指本 fork 属产品决策，待确认。
+18. ~~**隔离改造后未重跑 dev 冒烟**~~ → ✅ **已完成（第九次更新）**：进程名 `lorekeeper`、窗口标题 `Lorekeeper`、exe `tauri-app/src-tauri/target/debug/lorekeeper.exe`、vite@5190 正常；仅预期报错 `Command llm_list_models not found`（批次 D）。两点待留意：① `~/.lorekeeper/` 只在首次打开/创建/移除项目时才生成（本次未触发）；② `target/debug/` 下仍残留重命名前的旧产物 `ai-novel-writer.exe`（构建产物，不入 Git，可随时清理）。
 
 ---
 
@@ -330,6 +337,37 @@
 4. **验证全绿**：`cargo check --all-targets` 0 告警、`cargo test --lib` 64/64、`pnpm typecheck` exit 0、`pnpm run lint` exit 0。
 5. **提交**：`ff7fbd8`（数据层 6 文件 +1051）、`a8d742a`（生命周期与接线 9 文件 +1948/-98）；第一个 commit 消息曾因 PowerShell `Out-File -Encoding utf8` 带入 BOM，已用 `reset --soft` 重建两笔提交消除（教训：**提交消息写文件用 `[System.IO.File]::WriteAllText` + `UTF8Encoding($false)`**）。
 
+### 2026-10-06 第九次更新（批次 C `characters/roster` 子域完成 + Lorekeeper 身份与双栈隔离）
+
+#### 1. `characters/roster` 子域完成并提交（`69fc50c`，41 命令）
+
+- `src-tauri/src/character_role.rs`（新）：`CharacterRole` 枚举、`CHARACTER_ROLE_ORDER`（排序权的单一事实源，`sort_weight()` 由它推导）、`as_str`/`label(english)`、自定义 Serialize/Deserialize（非字符串或未知值回落 `supporting`）、中英别名归一表。
+- `src-tauri/src/repositories/character_repository.rs`（新）：`characters` 表仓储。`currentState` 拍平为 `cs_*` 列，`cs_updated_at_chapter` 为 NULL 表示无状态（第 0 章合法）；`get_all`（ORDER BY role CASE）/ `get_by_name` / `count` / `upsert`（20 列 ON CONFLICT）/ `save_all`（事务：名字归一与唯一、改名一致性、**两阶段临时键**允许 A↔B 交换、蓝图引用同步）/ `delete` / `update_state`。
+- `src-tauri/src/repositories/character_roster_repository.rs`（新，约 1050 行含测试）：角色名单深 module，外部只有 `read` / `commit`。
+  - **「提交事实」与「回读事实」必须严格一致**：空 `provenance` 一律折叠为「键缺失」（写入恒 `{}`、读回恒 `None`），否则 `assert_read_back` 的规范 JSON 比对必失败。
+  - `provenance` 改用 `BTreeMap`（原 `HashMap` 会让同一事实每次读回的 `fact_hash` 漂移 —— 本次修掉的一个真实隐患）。
+  - 逐条复刻基线 `normalizeRequest` 的**全部校验与中文错误文案**（含 `requiredText` / `requiredTextOrFiniteNumber` / `Number.isSafeInteger` / `Object.hasOwn` 语义）；因此命令入口的 `request` 保持 `serde_json::Value` 而非强类型。
+  - 幂等：`character_roster_operations(operation_id, payload_hash)`；replay 返回读取时的**完整当前快照**（不把历史 `committed_revision` 冒充当前事实）。
+  - 规范 JSON 由 Rust 自建（字段顺序 = 结构体声明序），不再逐字节复刻 `JSON.stringify`；SHA-256 小写 hex。
+- `src-tauri/src/db/schema.rs`：补齐 `blueprints` / `characters` / `contents` / `drafts` / `finalization_outbox` / `character_roster_{meta,operations}` 建表与幂等迁移（`characters.cs_provenance`、`meta.fact_hash`、首次建档按「已有卡片 → 旧图谱原文 → 空」判定迁移状态）。
+- `src-tauri/src/commands/db.rs`：`db:character-get-all` / `db:character-roster-read` / `db:character-roster-commit`；**新增 `mutating_error()`**，把 MUTATING 频道失败统一为 `"Error: {msg}"`（对齐基线 `String(err)`），并同步修正 `db:close` / `db:project-core-update` 的既有偏差（synopsis 冲突仍返回裸文案，与基线显式 `return` 一致）。
+- `src/services/ipc-client.ts`：`CHANNEL_ARG_NAMES` 登记三个 `db:character-*` 频道。
+- **新增依赖 `sha2 = "0.10"`**（用户批准）：已在 `Cargo.lock`（tauri 传递依赖 0.10.9），**零新增下载**；hex 用 `{:02x}` 手写。
+
+#### 2. Lorekeeper 身份与双栈隔离（L0 + L1 + L2，用户批准）
+
+**背景（诊断结论）**：两个应用曾在 5 个层面完全共享 —— 安装标识（Tauri `identifier` 与 Electron `appId` **逐字相同**）、全局数据根（`~/.vela`）、项目隐藏目录（`.vela`）、项目库文件（`vela.db`）、产品名部分重叠。用户确认：**Tauri 版需与原项目在同一台机器同时运行**，且**不需要复用同一 SQLite、不需要解码原项目 DB 数据**。
+
+- **L0 打包身份**：`tauri.conf.json` → `productName: "Lorekeeper"`、`identifier: "com.tancan1998.lorekeeper"`、窗口标题 `Lorekeeper`；`package.json` name → `lorekeeper-tauri`；`Cargo.toml` package → `lorekeeper`、lib → `lorekeeper_lib`（`main.rs` 同步）；`tauri-app/index.html` 标题与初始化文案。
+- **L1 全局数据根**：`commands/project.rs::vela_home()` → `lorekeeper_home()`，读 `AI_NOVEL_LOREKEEPER_HOME`，默认 `~/.lorekeeper`。**刻意不读 `AI_NOVEL_VELA_HOME`、不回退 `~/.vela`**，否则 `config.json` / `models.json` / `recent-projects.json` / `prompts/` 会被两进程同时读写。
+- **L2 项目库文件**：`db/mod.rs::PROJECT_DB_FILE_NAME` → `lorekeeper.db`（`<root>/.vela/lorekeeper.db`）。前端从不接触库文件名，故渲染层零改动；同一个小说文件夹里两栈各写各的库。
+- **L3（押后）**：`.vela` 目录整体改名留作收口后的独立机械项；`vela://` 伪协议**保持不动**（纯进程内字符串，改动面 60+ 处、零收益）。
+- **已知残留共享（L2 后）**：`.vela/project.json`、`.vela/prompts/`、`.vela/partial_arch.json`、`.vela/post_process/*.json`、`.vela/chapter_creation_log.json`、`.vela/writing-skills.json`、`.vela/skills/`。是否彻底隔离需先做 L3。
+
+#### 3. 验证全绿
+
+`cargo check --all-targets` **0 告警**、`cargo test --lib` **94/94**、`pnpm typecheck` exit 0、`pnpm run lint` exit 0。
+
 ### 关键发现摘要（接续前必读，详见盘点文档）
 
 - **★ 会话注入约定**：ipc-client 对项目域频道（`db:/kb:/chapter:/fs:/project:save|update-config|delete`）自动在 args 尾部追加 `projectSession`（契约未声明）—— Rust 命令签名必须预留尾参并校验租约。
@@ -354,9 +392,13 @@
 
 6. ~~批次 C `project_core` 子域~~ → ✅ 已完成（2026-10-06 第八次：接线 + 5 类编译修复 + 3 类测试修正 + `cargo check` 0 告警 + `cargo test --lib` 64/64 + TS 全绿 + 两个 commit `ff7fbd8`/`a8d742a`）。
 
-7. **批次 C 剩余子域**（当前仅完成 `project_core`）：blueprints → characters/roster → drafts → revisions → reviews → post-process → summary/llm-stats；每子域一个 commit（流程见上方「下一子域接续入口」）。
+7. **批次 C 剩余子域**：~~`project_core`~~ ✅ → ~~`characters/roster`~~ ✅（`69fc50c`）→ **下一步 `blueprints`（11 频道）** → drafts（16）→ revisions（9）→ reviews（5）→ post-process（6）→ summary/llm-stats（5）→ project 清理（2）；每子域一个 commit（流程见上方「下一子域接续入口」）。
 
-8. **批次 B 双栈行为对照**：recent-projects.json 双栈互通、错误文案、`commitState` 两态（与 Electron 5180 并行验证）
+7b. ~~**隔离收尾验证**~~ → ✅ **已完成（第九次：dev 冒烟通过，见遗留项 18）**；剩余待做：打开/新建一个真实项目，确认 `.vela/lorekeeper.db`（而非 `vela.db`）与 `~/.lorekeeper/recent-projects.json` 生成，且 Electron 基线仍能独立打开同一项目。
+
+7c. **L3 押后项**：`.vela` → `.lorekeeper` 整体改名 + 可见品牌（遗留项 16）待迁移收口后独立提交。
+
+8. **批次 B/C 双栈行为对照**：**已改为「隔离并行验证」**——两栈在同一台机器同时运行互不干扰（全局数据根与项目库文件已分离）；再对照错误文案与 `commitState` 两态（Electron 5180 / Tauri 5190 并行）。
 
 9. **持续验证**：
    - 每次提交前：`cd tauri-app && pnpm typecheck && pnpm run lint`；改 Rust 追加 `cargo test --lib`
@@ -364,6 +406,7 @@
 
 ## 纪律提醒（来自 AGENTS.md / pi-development.md）
 
+- **`AGENTS.md` 是本机忽略文件**：`.gitignore:58` 有 `/AGENTS.md`，它**未被 Git 追踪**（含 `D:\Environment\rust` 等机器局部路径）。对它的一切改动只落本地磁盘，**不要 `git add -f` 提交**；需要可提交的权威副本时写本目录（handoff / 盘点文档）。
 - 根目录**（Electron 基线）永不改动**（上游同步锚点）；一切迁移工作在 `tauri-app/` 内。
 - 每批次验收：`cargo test` + `pnpm typecheck` + `pnpm run lint` + 与 Electron 版行为对照（两栈可并行：5180/5190）。
 - 定稿不可逆（ADR 0003/0011）、会话租约（ADR 0001）、外部文件授权（ADR 0002）、提示词合同（ADR 0008/0015）不得在迁移中弱化。

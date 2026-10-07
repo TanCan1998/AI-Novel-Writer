@@ -21,7 +21,7 @@
 
 `electron/preload.ts` 暴露面 = `invoke / on / once / send / setZoomLevel / setZoomFactor / getZoomLevel`（zoom 走 Electron `webFrame`，Tauri 侧需用 Webview zoom API 或 CSS 替代，归阶段 3）。
 
-**迁移进度（截至 2026-10-06 第八次更新）**：已注册 Rust 命令 **38** 个（阶段 0 联调 1 + 批次 A 11 + 批次 B 22 + 批次 C `project_core` 子域 4），覆盖 193 个 invoke 频道中的 **38** 个；批次 A–C 均已提交（`ff7fbd8` + `a8d742a` 为批次 C），批次 C 剩余 db 子域待续。逐批状态与接续入口见 [`docs/handoffs/2026-10-06-tauri-migration-status.md`](../handoffs/2026-10-06-tauri-migration-status.md)。
+**迁移进度（截至 2026-10-06 第九次更新）**：已注册 Rust 命令 **41** 个（阶段 0 联调 1 + 批次 A 11 + 批次 B 22 + 批次 C `project_core` 4 + 批次 C `characters/roster` 3），覆盖 193 个 invoke 频道中的 **41** 个；批次 A–C 已提交（`ff7fbd8` + `a8d742a` + `69fc50c`），批次 C 剩余 db 子域待续。同时已完成 **Lorekeeper 身份与双栈隔离 L0/L1/L2**（见 §4.10 末「双栈隔离约束」）。逐批状态与接续入口见 [`docs/handoffs/2026-10-06-tauri-migration-status.md`](../handoffs/2026-10-06-tauri-migration-status.md)。
 
 ## 2. 必须知晓的传输层约定（Rust 签名要预留）
 
@@ -107,13 +107,13 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 
 数据库层迁移：better-sqlite3 → `rusqlite`（bundled）；一域一仓（`blueprint_repository.rs`…）；controller 不写 SQL。
 
-**迁移进度（2026-10-06 第八次更新）**：
+**迁移进度（2026-10-06 第九次更新）**：
 
 | 子域 | 频道数 | 状态 |
 |---|---|---|
-| project_core / 清理 / 全局事实 | 6 | 🟡 **部分完成**：`db:close`、`db:project-core-{get,update,synopsis-commit}` **4 命令已注册并编译验证**（`commands/db.rs` + `repositories/project_core_repository.rs` + `db/schema.rs`，`cargo test --lib` 64/64，提交 `ff7fbd8`/`a8d742a`）；`db:project-clear-generated-data` 可直接续迁，`db:import-global-facts-commit` 依赖批次 G |
-| blueprints | 11 | ⬜ 待迁移 |
-| characters / roster | 3 | ⬜ 待迁移 |
+| project_core / 清理 / 全局事实 | 6 | 🟡 **部分完成 4/6**：`db:close`、`db:project-core-{get,update,synopsis-commit}` 已注册并验证（`repositories/project_core_repository.rs`，`ff7fbd8`/`a8d742a`）；`db:project-clear-generated-data` 可直接续迁，`db:import-global-facts-commit` 依赖批次 G |
+| blueprints | 11 | ⬜ 待迁移（**下一步**） |
+| characters / roster | 3 | ✅ **已完成**（`69fc50c`）：`repositories/character_repository.rs` + `character_roster_repository.rs` + `character_role.rs`，`cargo test --lib` 94/94、0 告警 |
 | drafts | 16 | ⬜ 待迁移 |
 | revisions | 9 | ⬜ 待迁移 |
 | reviews | 5 | ⬜ 待迁移 |
@@ -122,7 +122,7 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 | import-run（批次 G） | 18 | ⬜ 待迁移 |
 | continuity / consistency-exemption / narrative-thread / plot-tree / recovery-candidate / finalization-link | 21 | ⬜ 待迁移（部分归批次 E/F） |
 
-**双栈互通约束（重要）**：Rust 侧建的 `project_core` DDL 必须与 Electron `electron/database.ts:67` 的**最终列集**结构一致（两边都开同一个 `.vela/vela.db`）；采用逐子域增量 DDL 是安全的（两边均 `CREATE TABLE IF NOT EXISTS`，Electron 下次 `initProjectDatabase` 会回填缺失列）。
+**双栈隔离约束（2026-10-06 第九次更新，取代早期「双栈同库」前提）**：Tauri 版命名为 **Lorekeeper（`com.tancan1998.lorekeeper`）**，与原项目**必须能在同一台机器同时运行**，且用户已确认**不需要复用同一 SQLite、不需要解码原项目 DB 数据**。因此：① 全局数据根 `AI_NOVEL_LOREKEEPER_HOME` / `~/.lorekeeper`（**不读** `AI_NOVEL_VELA_HOME`、**不回退** `~/.vela`）；② 项目库文件 `<root>/.vela/lorekeeper.db`（基线为 `.vela/vela.db`）；③ 安装标识、exe 名、窗口标题全独立。Rust 侧 DDL 仍与 Electron `electron/database.ts:67` 的**最终列集**保持一致，但目的已从「共库写入」变为「保留将来一次性导入的能力」；逐子域增量 DDL 依然安全（两栈均 `CREATE TABLE IF NOT EXISTS`，互不读写对方库文件）。`.vela` 目录本身仍共享（L3 押后）。
 
 ### 4.11 KnowledgeBaseChannels（15 + dialog 2）— controller: `kb-controller.ts` — 批次 F
 `kb:import-{document,folder}`（grantId 入口）、`kb:import-{text,planning-text,reference-text}`、`kb:search`、`kb:search-writing-context`、`kb:search-with-scope`、`kb:list-documents`、`kb:remove-document`、`kb:clear-all`、`kb:stats`、`kb:get-vectorless-count`、`kb:get-vector-rebuild-status`（纯本地状态读，不发 embedding 请求）、`kb:backfill-vectors`；`dialog:select-knowledge-{files,folder}`。

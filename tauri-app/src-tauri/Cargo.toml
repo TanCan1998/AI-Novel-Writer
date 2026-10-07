@@ -1,5 +1,5 @@
 [package]
-name = "ai-novel-writer"
+name = "lorekeeper"
 version = "1.1.0"
 description = "AI Novel Writer — 本地优先的长篇小说创作工作台（Tauri 2 后端）"
 edition = "2021"
@@ -9,7 +9,7 @@ edition = "2021"
 
 [lib]
 # lib.rs 独立于 main.rs，便于桌面/移动端复用与单元测试。
-name = "ai_novel_writer_lib"
+name = "lorekeeper_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

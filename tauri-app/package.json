@@ -1,5 +1,5 @@
 {
-  "name": "ai-novel-writer-tauri",
+  "name": "lorekeeper-tauri",
   "version": "1.1.0",
   "description": "AI Novel Writer — Tauri 2 迁移版前端（Electron 基线保留于仓库根，用于上游同步）",
   "author": "AI Novel Writer Maintainers",

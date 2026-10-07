@@ -18,18 +18,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ai-novel-writer"
-version = "1.1.0"
-dependencies = [
- "rusqlite",
- "serde",
- "serde_json",
- "sha2",
- "tauri",
- "tauri-build",
-]
-
-[[package]]
 name = "alloc-no-stdlib"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1781,6 +1769,18 @@ name = "log"
 version = "0.4.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
+
+[[package]]
+name = "lorekeeper"
+version = "1.1.0"
+dependencies = [
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tauri",
+ "tauri-build",
+]
 
 [[package]]
 name = "markup5ever"

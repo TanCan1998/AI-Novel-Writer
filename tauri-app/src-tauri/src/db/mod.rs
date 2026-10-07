@@ -1,7 +1,7 @@
 //! 项目数据库连接层 —— 等价于 `electron/database.ts` 的 init/close/get
 //!
 //! 一个进程同一时刻只持有一个项目库连接（与 Electron 基线一致），
-//! 库文件位于 `<projectRoot>/.vela/vela.db`，采用 WAL + 外键约束。
+//! 库文件位于 `<projectRoot>/.vela/lorekeeper.db`，采用 WAL + 外键约束。
 
 pub mod schema;
 
@@ -11,7 +11,10 @@ use std::path::{Path, PathBuf};
 /// 项目库目录名（相对项目根）
 pub const PROJECT_DIR_NAME: &str = ".vela";
 /// 项目库文件名
-pub const PROJECT_DB_FILE_NAME: &str = "vela.db";
+///
+/// **刻意与 Electron 基线不同**（基线为 `vela.db`）：两个应用可同时在同一台
+/// 机器上运行，同一个小说文件夹里各写各的库，物理上不会互相破坏。
+pub const PROJECT_DB_FILE_NAME: &str = "lorekeeper.db";
 
 /// 已打开的项目数据库（连接 + 归属项目根）
 #[derive(Debug)]
@@ -86,7 +89,7 @@ mod tests {
         let db = ProjectDatabase::open(&root).expect("打开项目库失败");
 
         let db_path = project_database_path(&root);
-        assert!(db_path.exists(), "应在 .vela/vela.db 建库");
+        assert!(db_path.exists(), "应在 .vela/lorekeeper.db 建库");
 
         // project_core 表已建好
         let count: i64 = db

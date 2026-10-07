@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    ai_novel_writer_lib::run()
+    lorekeeper_lib::run()
 }

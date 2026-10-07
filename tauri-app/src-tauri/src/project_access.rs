@@ -643,7 +643,8 @@ mod tests {
         std::fs::create_dir_all(root.join(".vela")).unwrap();
         {
             // 构造旧版指纹：5 张必需表 + project_core 必需列，且无清单
-            let conn = rusqlite::Connection::open(root.join(".vela").join("vela.db")).unwrap();
+            let conn =
+                rusqlite::Connection::open(crate::db::project_database_path(&root)).unwrap();
             conn.execute_batch(
                 "CREATE TABLE project_core (id TEXT, project_name TEXT, genre TEXT, total_chapters INTEGER, character_states TEXT);
                  CREATE TABLE blueprints (chapter_number INTEGER);
