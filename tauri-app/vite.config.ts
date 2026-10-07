@@ -39,7 +39,11 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version),
   },
   optimizeDeps: {
-    entries: ['index.html', 'src/**/*.{ts,tsx}'],
+    // 仅从 index.html 入口沿 import 图扫描：
+    // 若把 `src/**/*.{ts,tsx}` 全量当入口，会扫到 `__tests__/**` 与 `*.integration.test.ts`，
+    // 它们经 `@baseline/controllers|database` 触达 electron 主进程代码（`import ... from 'electron'`），
+    // 导致 "Failed to run dependency scan. Skipping dependency pre-bundling" 而跳过预打包。
+    entries: ['index.html'],
   },
   test: {
     // Test copy must not follow the operating-system locale of a CI runner.
