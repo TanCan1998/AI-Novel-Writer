@@ -214,6 +214,34 @@ CREATE TABLE IF NOT EXISTS finalization_outbox (
 CREATE INDEX IF NOT EXISTS idx_finalization_outbox_status ON finalization_outbox(publication_status);
 "#;
 
+/// revisions —— 修稿（基于某版草稿的探索分支；`pending` → `merged` / `discarded`）
+///
+/// 生成时会冻结源稿快照（章号/版本/状态/正文），合并时据此拒绝与源稿不一致的覆盖。
+pub const CREATE_REVISIONS: &str = r#"
+CREATE TABLE IF NOT EXISTS revisions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  base_draft_id INTEGER NOT NULL,
+  revision_index INTEGER NOT NULL,
+  revision_type TEXT NOT NULL,
+  status TEXT DEFAULT 'pending',
+  merged_to_draft_id INTEGER,
+  user_prompt TEXT DEFAULT '',
+  review_source_id INTEGER,
+  source_draft_chapter_number INTEGER,
+  source_draft_version INTEGER,
+  source_draft_status TEXT,
+  source_content TEXT,
+  content_id INTEGER NOT NULL,
+  word_count INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  FOREIGN KEY (base_draft_id) REFERENCES drafts(id) ON DELETE CASCADE,
+  FOREIGN KEY (content_id) REFERENCES contents(id) ON DELETE RESTRICT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_revisions_draft_index
+  ON revisions(base_draft_id, revision_index);
+"#;
+
 /// character_roster —— 结构化角色名单的并发控制/迁移/投影元数据
 ///
 /// 角色条目本体始终留在 `characters` 表，这里绝不建并列 JSON 事实源。
@@ -253,6 +281,7 @@ pub fn create_tables(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(CREATE_CHARACTERS)?;
     conn.execute_batch(CREATE_CONTENTS)?;
     conn.execute_batch(CREATE_DRAFTS)?;
+    conn.execute_batch(CREATE_REVISIONS)?;
     conn.execute_batch(CREATE_FINALIZATION_OUTBOX)?;
     migrate_project_core_legacy_columns(conn)?;
     migrate_character_roster_schema(conn)?;

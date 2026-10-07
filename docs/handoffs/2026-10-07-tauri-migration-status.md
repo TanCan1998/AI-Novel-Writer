@@ -7,18 +7,18 @@
 
 ---
 
-## 快照（最后更新：2026-10-07 · 第十四次）
+## 快照（最后更新：2026-10-07 · 第十五次）
 
 | 项 | 值 |
 |---|---|
 | 仓库 | **`TanCan1998/Lorekeeper`**（原名 `AI-Novel-Writer`；仍为 `EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork） |
 | 分支 | `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm 包 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 当前阶段 | **批次 C 进行中**：`project_core` ✅、`characters/roster` ✅（`69fc50c`）、`blueprints` 11 频道 ✅、**`drafts` 12/16 频道 ✅（S3-a；余 4 频道随批次 E）**；下一步 **`revisions`（9 频道）** |
-| 已注册命令 | **64**（骨架 1 + A 11 + B 22 + C project_core 4 + characters 3 + blueprints 11 + drafts 12） |
+| 当前阶段 | **批次 C 进行中**：`project_core` ✅、`characters/roster` ✅（`69fc50c`）、`blueprints` 11 频道 ✅、`drafts` 12/16 频道 ✅、**`revisions` 9 频道 ✅（2026-10-07）**；下一步 **`reviews`（5 频道）** |
+| 已注册命令 | **73**（骨架 1 + A 11 + B 22 + C project_core 4 + characters 3 + blueprints 11 + drafts 12 + revisions 9） |
 | 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后 |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`） |
-| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **128/128** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 |
+| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **140/140** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 |
 
 ---
 
@@ -232,24 +232,67 @@
 
 ---
 
-## 下一步：`revisions`（9 频道）与 drafts 余项
+## 本次更新（第十五次：`revisions` S3-b — 修稿 9 频道）
 
-- **`drafts` 余 4 频道**（`db:draft-authority-sequence`、`db:draft-export-snapshot`、
-  `db:draft-export-authority-current`、`db:draft-import-finalized-batch`）依赖
-  `FinalizationRepository` / `FinalizedDraftImportRepository`，**随批次 E** 落地（盘点文档亦将其归入 E）。
-- **下一子域 `revisions`（9 频道）**：`db:revision-{create,replace-pending,list,get-pending,get-full,next-index,merge,mark-merged,mark-discarded}`；
-  `create`/`replace-pending` 支持 `expectedSource` 守卫（`errorCode: SOURCE_DRAFT_CHANGED`），
-  `merge` 返回幂等收据；需移植 `electron/repositories/draft-source-guard.ts` 的守门语义。
+### 1. `db/schema.rs`：新增 `CREATE_REVISIONS`
+
+按 `electron/database.ts` 的最终列集建 `revisions` 表（含 `source_draft_*` 冻结源稿四列、
+`idx_revisions_draft_index` 唯一索引、指向 `drafts` 的 `ON DELETE CASCADE` 与 `contents` 的 `ON DELETE RESTRICT`）。
+
+### 2. `src-tauri/src/draft_source_guard.rs`（新，模块级非仓储）
+
+平移 `electron/repositories/draft-source-guard.ts`：`ExpectedDraftSource`（冻结源稿身份）、
+`assert_expected_draft_source`（id/章号/版本/状态/正文全等校验）、`SOURCE_DRAFT_CHANGED` 常量与固定文案。
+
+### 3. `repositories/revision_repository.rs`（新，本子域核心）
+
+| 内容 | 要点 |
+|---|---|
+| `RevisionMeta` / `RevisionFull` | `RevisionFull` 用 `#[serde(flatten)]` + `rename_all` 扁平序列化；`sourceDraft` 可为 null |
+| `create` / `replace_pending` | 单事务：源守卫（缺失即判源稿变化）→ 原子分配 `revision_index` → 写 contents → 写 revisions；后者额外把其它 pending 改为 `discarded` |
+| `merge_into_draft` | 单事务；`revisionId` 为幂等身份；6 类拒绝分支逐条对齐基线（不属于目标草稿 / 非 pending / 目标不可修改 / 正文已变化 / 缺冻结源稿 / 源稿不一致） |
+| `mark_merged` / `mark_discarded` | 仅 `pending` → 目标态；`changes == 0` 时回基线原文案（含 `[RevisionRepository]` 前缀） |
+| 读 API | `list_by_draft` / `get_pending` / `get_full` / `get_next_index` |
+
+### 4. 接线
+
+- 9 命令（`create` / `replace-pending` / `merge` / `mark-merged` / `mark-discarded` 为 MUTATING）；
+  `create`/`replace-pending` 失败时按守卫文案同时回填 `errorCode: SOURCE_DRAFT_CHANGED` 与 `error`（`String(err)` 形态）。
+- `lib.rs` 注册（**64 → 73**）；`ipc-client.ts` 登记 9 个频道参数名。
+
+### 5. 验证与测试
+
+新增 Rust 测试 **12 个**（守卫 1 + 仓储 10 + 命令 1）：序号分配与源稿冻结、守卫三重校验、
+`replace_pending` 弃用语义、合并写入与幂等重放、**6 类合并拒绝分支**、旧修订稿缺源稿、
+标记的 pending 门槛、`RevisionFull` 序列化形状、命令层端到端（含 `errorCode` 回填）。
+
+途中修了一个真实缺陷：`RevisionFull` 缺 `rename_all = "camelCase"`，导致 `sourceDraft` 字段名漂移（已加）。
+
+结果：`cargo check --all-targets` **0 告警** · `cargo test --lib` **140/140** ·
+`pnpm typecheck` / `pnpm run lint` 均 exit 0。
+
+---
+
+## 下一步：`reviews`（5 频道）
+
+`db:review-{create,list,get-latest,get-full,next-index}`（`electron/repositories/review-repository.ts`）：
+
+- `create` 同样需要 `expectedSource` 源守卫（复用 `draft_source_guard`），返回
+  `{ success, id?, reviewIndex?, errorCode?, error? }`；
+- `reviews` 表建表也需补入 `db/schema.rs`（含 `idx_reviews_draft_index` 唯一索引）；
+- 注意 `reviewIndex` 在契约中为**可选**入参（`reviewIndex?: number`），需对照基线决定是否忽略。
 
 ---
 
 ## 遗留项（沿用 2026-10-06 快照）
 
-- 未验证：批次 C **GUI 实机验证**（打开真实项目读写 project_core/角色/蓝图/草稿）、
+- 未验证：批次 C **GUI 实机验证**（打开真实项目读写 project_core/角色/蓝图/草稿/修稿）、
   双栈同库行为对照、`vitest` 全量超时定位、`cargo fmt --check` 未纳入验收。
 - 押后：L3（`.vela` → `.lorekeeper`）、可见品牌（`brand.ts` / i18n 标题）。
 - 未迁频道的错误文案友好化（遗留项 12）。
 - 批次 G 需要的 `BlueprintRepository.getCommittedRangeOperation`（无 IPC 频道，被
   `import-run-repository.ts` 使用）尚未移植，随批次 G 一并落地。
 - `DraftRepository.clearAll`（服务 `db:project-clear-generated-data`）尚未移植；依赖的
-  `revisions` / `reviews` / `post_process_*` / `summary_snapshots` 建表也待相应子域补充。
+  `reviews` / `post_process_*` / `summary_snapshots` 建表也待相应子域补充。
+- `drafts` 余 4 频道（`authority-sequence` / `export-snapshot` / `export-authority-current` /
+  `import-finalized-batch`）依赖 finalization 仓储，随批次 E 落地。

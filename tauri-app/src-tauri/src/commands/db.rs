@@ -18,6 +18,7 @@ use crate::repositories::character_repository as characters;
 use crate::repositories::character_roster_repository as roster;
 use crate::repositories::draft_repository as drafts;
 use crate::repositories::project_core_repository as project_core;
+use crate::repositories::revision_repository as revisions;
 use crate::security::{
     assert_current_project_context, assert_required_expected_project_path, guard_message,
     ProjectSessionContext,
@@ -1094,6 +1095,331 @@ pub fn db_draft_delete(
     )
 }
 
+// ===== 修稿（revisions 子域 S3-b，9 频道） =====
+
+/// `db:revision-create` / `-replace-pending` 的 IPC 信封（对齐 `{ success, id?, revisionIndex?, errorCode?, error? }`）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevisionCreateResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision_index: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// `db:revision-merge` 的 IPC 信封（对齐 `{ success, receipt?, error? }`）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RevisionMergeResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt: Option<revisions::MergeRevisionReceipt>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// 创建/替换修稿的公共实现：源稿守卫失败额外回填 `errorCode`
+fn revision_create_result(outcome: Result<revisions::RevisionCreated, String>) -> RevisionCreateResult {
+    match outcome {
+        Ok(created) => RevisionCreateResult {
+            success: true,
+            id: Some(created.id),
+            revision_index: Some(created.revision_index),
+            error_code: None,
+            error: None,
+        },
+        Err(message) => {
+            // 基线的源守卫失败同时带 `errorCode` 与 `error`（`String(err)` 形态）
+            let error_code = (message == crate::draft_source_guard::SOURCE_DRAFT_CHANGED_MESSAGE)
+                .then(|| crate::draft_source_guard::SOURCE_DRAFT_CHANGED.to_string());
+            RevisionCreateResult {
+                success: false,
+                id: None,
+                revision_index: None,
+                error_code,
+                error: Some(mutating_error(message)),
+            }
+        }
+    }
+}
+
+pub(crate) fn revision_create_inner(
+    state: &AppState,
+    params: &revisions::RevisionCreateParams,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> RevisionCreateResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| revisions::create(conn, params)));
+    revision_create_result(outcome)
+}
+
+pub(crate) fn revision_replace_pending_inner(
+    state: &AppState,
+    params: &revisions::RevisionCreateParams,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> RevisionCreateResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| revisions::replace_pending(conn, params)));
+    revision_create_result(outcome)
+}
+
+pub(crate) fn revision_list_inner(
+    state: &AppState,
+    base_draft_id: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Vec<revisions::RevisionMeta>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| revisions::list_by_draft(conn, base_draft_id))
+}
+
+pub(crate) fn revision_get_pending_inner(
+    state: &AppState,
+    base_draft_id: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Vec<revisions::RevisionMeta>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| revisions::get_pending(conn, base_draft_id))
+}
+
+pub(crate) fn revision_get_full_inner(
+    state: &AppState,
+    id: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Option<revisions::RevisionFull>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| revisions::get_full(conn, id))
+}
+
+pub(crate) fn revision_next_index_inner(
+    state: &AppState,
+    base_draft_id: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<i64, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| revisions::get_next_index(conn, base_draft_id))
+}
+
+pub(crate) fn revision_merge_inner(
+    state: &AppState,
+    request: &revisions::MergeRevisionRequest,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> RevisionMergeResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| revisions::merge_into_draft(conn, request)));
+    match outcome {
+        Ok(receipt) => RevisionMergeResult {
+            success: true,
+            receipt: Some(receipt),
+            error: None,
+        },
+        Err(error) => RevisionMergeResult {
+            success: false,
+            receipt: None,
+            error: Some(mutating_error(error)),
+        },
+    }
+}
+
+pub(crate) fn revision_mark_merged_inner(
+    state: &AppState,
+    id: i64,
+    merged_to_draft_id: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> SimpleResult {
+    let outcome = guard_read(state, expected_project_path, session).and_then(|()| {
+        state.with_project_db(|conn| revisions::mark_merged(conn, id, merged_to_draft_id))
+    });
+    match outcome {
+        Ok(()) => SimpleResult {
+            success: true,
+            error: None,
+        },
+        Err(error) => SimpleResult {
+            success: false,
+            error: Some(mutating_error(error)),
+        },
+    }
+}
+
+pub(crate) fn revision_mark_discarded_inner(
+    state: &AppState,
+    id: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> SimpleResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| revisions::mark_discarded(conn, id)));
+    match outcome {
+        Ok(()) => SimpleResult {
+            success: true,
+            error: None,
+        },
+        Err(error) => SimpleResult {
+            success: false,
+            error: Some(mutating_error(error)),
+        },
+    }
+}
+
+/// `db:revision-create` —— 创建修稿（MUTATING）
+#[tauri::command]
+pub fn db_revision_create(
+    state: State<'_, AppState>,
+    params: revisions::RevisionCreateParams,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> RevisionCreateResult {
+    revision_create_inner(
+        state.inner(),
+        &params,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:revision-replace-pending` —— 原子替换 pending 修稿（MUTATING）
+#[tauri::command]
+pub fn db_revision_replace_pending(
+    state: State<'_, AppState>,
+    params: revisions::RevisionCreateParams,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> RevisionCreateResult {
+    revision_replace_pending_inner(
+        state.inner(),
+        &params,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:revision-list` —— 列出草稿的全部修稿
+#[tauri::command]
+pub fn db_revision_list(
+    state: State<'_, AppState>,
+    base_draft_id: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<revisions::RevisionMeta>, String> {
+    revision_list_inner(
+        state.inner(),
+        base_draft_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:revision-get-pending` —— 列出草稿的 pending 修稿
+#[tauri::command]
+pub fn db_revision_get_pending(
+    state: State<'_, AppState>,
+    base_draft_id: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<revisions::RevisionMeta>, String> {
+    revision_get_pending_inner(
+        state.inner(),
+        base_draft_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:revision-get-full` —— 读取修稿（含正文与冻结源稿）
+#[tauri::command]
+pub fn db_revision_get_full(
+    state: State<'_, AppState>,
+    id: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Option<revisions::RevisionFull>, String> {
+    revision_get_full_inner(
+        state.inner(),
+        id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:revision-next-index` —— 下一个修稿序号
+#[tauri::command]
+pub fn db_revision_next_index(
+    state: State<'_, AppState>,
+    base_draft_id: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<i64, String> {
+    revision_next_index_inner(
+        state.inner(),
+        base_draft_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:revision-merge` —— 合并修稿到目标草稿（MUTATING，幂等）
+#[tauri::command]
+pub fn db_revision_merge(
+    state: State<'_, AppState>,
+    request: revisions::MergeRevisionRequest,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> RevisionMergeResult {
+    revision_merge_inner(
+        state.inner(),
+        &request,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:revision-mark-merged` —— 标记修稿已合并（MUTATING）
+#[tauri::command]
+pub fn db_revision_mark_merged(
+    state: State<'_, AppState>,
+    id: i64,
+    merged_to_draft_id: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> SimpleResult {
+    revision_mark_merged_inner(
+        state.inner(),
+        id,
+        merged_to_draft_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:revision-mark-discarded` —— 标记修稿已弃用（MUTATING）
+#[tauri::command]
+pub fn db_revision_mark_discarded(
+    state: State<'_, AppState>,
+    id: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> SimpleResult {
+    revision_mark_discarded_inner(
+        state.inner(),
+        id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1728,6 +2054,169 @@ mod tests {
             read_only.error.as_deref(),
             Some("Error: 已定稿正文为只读内容，不能再修改")
         );
+
+        cleanup(&root);
+    }
+
+    fn revision_params(
+        base_draft_id: i64,
+        content: &str,
+        source: crate::draft_source_guard::ExpectedDraftSource,
+    ) -> revisions::RevisionCreateParams {
+        revisions::RevisionCreateParams {
+            base_draft_id,
+            revision_type: "refine".to_string(),
+            user_prompt: Some("润色".to_string()),
+            review_source_id: None,
+            content: content.to_string(),
+            word_count: content.chars().count() as i64,
+            expected_source: Some(source),
+        }
+    }
+
+    #[test]
+    fn revision_channels_test() {
+        use crate::draft_source_guard::ExpectedDraftSource;
+
+        let (state, root, session) = activated_state("revision");
+
+        // 读频道门禁
+        assert_eq!(
+            revision_list_inner(&state, 1, &root, None).unwrap_err(),
+            "缺少项目会话上下文，已拒绝操作"
+        );
+
+        // 建草稿
+        let draft = draft_create_inner(
+            &state,
+            &drafts::DraftCreateParams {
+                chapter_number: 1,
+                version: None,
+                source: "write".to_string(),
+                content: "基础正文".to_string(),
+                word_count: 4,
+                source_dependencies: None,
+            },
+            &root,
+            Some(&session),
+        );
+        let draft_id = draft.id.expect("应返回草稿 ID");
+        let source = ExpectedDraftSource {
+            id: draft_id,
+            chapter_number: 1,
+            version: 1,
+            status: "draft".to_string(),
+            content: "基础正文".to_string(),
+        };
+        let params = revision_params(draft_id, "修稿正文", source.clone());
+
+        // create（MUTATING）
+        let created = revision_create_inner(&state, &params, &root, Some(&session));
+        assert!(created.success, "创建修稿应成功：{:?}", created.error);
+        let revision_id = created.id.expect("应返回修稿 ID");
+        assert_eq!(created.revision_index, Some(1));
+
+        // 源守卫失败 → 同时带 errorCode 与 error（`String(err)` 形态）
+        let mut missing_source = params.clone();
+        missing_source.expected_source = None;
+        let denied = revision_create_inner(&state, &missing_source, &root, Some(&session));
+        assert!(!denied.success);
+        assert_eq!(denied.error_code.as_deref(), Some("SOURCE_DRAFT_CHANGED"));
+        assert_eq!(denied.error.as_deref(), Some("Error: SOURCE_DRAFT_CHANGED"));
+
+        // 读频道
+        let list = revision_list_inner(&state, draft_id, &root, Some(&session)).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(
+            revision_get_pending_inner(&state, draft_id, &root, Some(&session))
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            revision_next_index_inner(&state, draft_id, &root, Some(&session)).unwrap(),
+            2
+        );
+        let full = revision_get_full_inner(&state, revision_id, &root, Some(&session))
+            .unwrap()
+            .expect("应读到修稿");
+        assert_eq!(full.content, "修稿正文");
+        assert_eq!(full.source_draft.as_ref().unwrap().id, draft_id);
+
+        // replace-pending：新修稿取代旧 pending
+        let replaced = revision_replace_pending_inner(&state, &params, &root, Some(&session));
+        assert!(replaced.success, "替换应成功：{:?}", replaced.error);
+        let replaced_id = replaced.id.expect("应返回修稿 ID");
+        assert_eq!(replaced.revision_index, Some(2));
+        let pending = revision_get_pending_inner(&state, draft_id, &root, Some(&session)).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, replaced_id);
+
+        // merge（幂等）
+        let request = revisions::MergeRevisionRequest {
+            revision_id: replaced_id,
+            target_draft_id: draft_id,
+            expected_draft_content: "基础正文".to_string(),
+            merged_content: "合并后正文".to_string(),
+            word_count: 5,
+        };
+        let merged = revision_merge_inner(&state, &request, &root, Some(&session));
+        assert!(merged.success, "合并应成功：{:?}", merged.error);
+        let receipt = merged.receipt.expect("应返回合并回执");
+        assert!(!receipt.idempotent);
+        assert_eq!(receipt.status, "revised");
+        let replay = revision_merge_inner(&state, &request, &root, Some(&session));
+        assert!(
+            replay.receipt.expect("重放应返回回执").idempotent,
+            "同一 revisionId 重放必须幂等"
+        );
+
+        // 基于合并后的草稿事实新建修稿，再测「目标正文已变化」
+        let merged_source = ExpectedDraftSource {
+            id: draft_id,
+            chapter_number: 1,
+            version: 1,
+            status: "revised".to_string(),
+            content: "合并后正文".to_string(),
+        };
+        let another = revision_create_inner(
+            &state,
+            &revision_params(draft_id, "后续修稿", merged_source),
+            &root,
+            Some(&session),
+        );
+        let another_id = another.id.expect("应返回修稿 ID");
+        let mismatch = revision_merge_inner(
+            &state,
+            &revisions::MergeRevisionRequest {
+                revision_id: another_id,
+                target_draft_id: draft_id,
+                expected_draft_content: "不是当前正文".to_string(),
+                merged_content: "x".to_string(),
+                word_count: 1,
+            },
+            &root,
+            Some(&session),
+        );
+        assert!(!mismatch.success);
+        assert_eq!(
+            mismatch.error.as_deref(),
+            Some("Error: 目标草稿正文已变化，请重新打开修订对比")
+        );
+
+        // 非 pending 修稿不得再标记（MUTATING 文案）
+        let failed = revision_mark_discarded_inner(&state, replaced_id, &root, Some(&session));
+        assert!(!failed.success);
+        let expected_error = format!(
+            "Error: [RevisionRepository] 无法弃用修稿 #{replaced_id}：不存在或非 pending 状态"
+        );
+        assert_eq!(failed.error.as_deref(), Some(expected_error.as_str()));
+
+        // mark-discarded 成功路径
+        assert!(revision_mark_discarded_inner(&state, another_id, &root, Some(&session)).success);
+        assert!(revision_get_pending_inner(&state, draft_id, &root, Some(&session))
+            .unwrap()
+            .is_empty());
 
         cleanup(&root);
     }

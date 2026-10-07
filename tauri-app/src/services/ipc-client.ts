@@ -96,6 +96,16 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'db:draft-update-status': ['id', 'status', 'wordCount', 'expectedProjectPath'],
   'db:draft-update-content': ['id', 'content', 'wordCount', 'expectedProjectPath'],
   'db:draft-delete': ['id', 'expectedProjectPath'],
+  // 批次 C：修稿（revisions 子域 S3-b）
+  'db:revision-create': ['params', 'expectedProjectPath'],
+  'db:revision-replace-pending': ['params', 'expectedProjectPath'],
+  'db:revision-list': ['baseDraftId', 'expectedProjectPath'],
+  'db:revision-get-pending': ['baseDraftId', 'expectedProjectPath'],
+  'db:revision-get-full': ['id', 'expectedProjectPath'],
+  'db:revision-next-index': ['baseDraftId', 'expectedProjectPath'],
+  'db:revision-merge': ['request', 'expectedProjectPath'],
+  'db:revision-mark-merged': ['id', 'mergedToDraftId', 'expectedProjectPath'],
+  'db:revision-mark-discarded': ['id', 'expectedProjectPath'],
 }
 
 /** 频道 → Tauri 命令名（`channel:seg-name` → `channel_seg_name`）。 */

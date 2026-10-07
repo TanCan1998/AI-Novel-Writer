@@ -8,6 +8,7 @@
 mod character_role;
 mod commands;
 mod db;
+mod draft_source_guard;
 mod project_access;
 mod repositories;
 mod security;
@@ -96,6 +97,16 @@ pub fn run() {
             commands::db_draft_update_status,
             commands::db_draft_update_content,
             commands::db_draft_delete,
+            // 批次 C：修稿（revisions 子域 S3-b）
+            commands::db_revision_create,
+            commands::db_revision_replace_pending,
+            commands::db_revision_list,
+            commands::db_revision_get_pending,
+            commands::db_revision_get_full,
+            commands::db_revision_next_index,
+            commands::db_revision_merge,
+            commands::db_revision_mark_merged,
+            commands::db_revision_mark_discarded,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");
