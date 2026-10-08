@@ -12,23 +12,147 @@
 
 ---
 
-## 快照（最后更新：2026-10-08 · 第二十三次）
+## 快照（最后更新：2026-10-08 · 第二十四次）
 | 项 | 值 |
 |---|---|
 | 仓库 | **`TanCan1998/Lorekeeper`**（原名 `AI-Novel-Writer`；仍为 `EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork） |
 | 分支 | `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm 包 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 当前阶段 | **批次 C 数据库层子域全部完成 ✅** + **批次 D1（`llm:*` 模型管理 7 频道）完成 ✅** + **批次 D2-a（生成参数策略 + 模型执行租约 2 频道）完成 ✅** + **批次 D2-b（生成 / 流式 / 取消 3 频道 + 3 事件）完成 ✅**：`project_core` / `characters` / `blueprints` / `drafts`（12/16）/ `revisions` / `reviews` / `post-process` / `llm 日志与摘要` / `project 清理` / **D1 模型管理** / **D2-a 租约** / **D2-b HTTP 生成链**；`llm:*` 仅剩 2 频道（`discover-models` / `test-connection`）归 **D2-c**。依赖已落地：`reqwest 0.13`（`default-features = false` + `native-tls` + `socks`）；**`futures-util` 未引入**（取消改用 `JoinHandle::abort()`） |
-| 已注册命令 | **102**（骨架 1 + A 11 + B 22 + C 子域 56 + D1 7 + D2-a 2 + D2-b 3） |
-| GUI 冒烟 | ✅ **已做**（2026-10-07 起 **五轮**，末轮 2026-10-08 `pnpm tauri dev`）：窗口标题 `Lorekeeper`、vite@5190、cargo 353/353、`lorekeeper.exe` **内存 42.6 MB**（首轮）/ **30.1 MB**（D1 轮）/ D2-a 轮 vite `482 ms` / **D2-b 轮 vite `468 ms` + cargo `24.99s`**，均无 panic、渲染层 `ipc-client` 已联通 |
-| 自动化回归 | `cargo test --lib` **279/279**（243 → +36；含 3 个**磁盘级**端到端：真实 `.vela/lorekeeper.db` + WAL + 外键 + 跨重开持久化）；`pnpm run check:channels` 校验契约↔命令映射（未迁移 93 → **90** 频道，`llm=` 剩 2）；`vitest` 频道覆盖 6/6 |
+| 当前阶段 | **批次 C 数据库层子域全部完成 ✅** + **批次 D1 ✅** + **批次 D2-a ✅** + **批次 D2-b ✅** + **批次 D2-c ✅（`llm:*` 收口）**：`project_core` / `characters` / `blueprints` / `drafts`（12/16）/ `revisions` / `reviews` / `post-process` / `llm 日志与摘要` / `project 清理` / **D1 模型管理** / **D2-a 租约** / **D2-b HTTP 生成链** / **D2-c 模型发现 + 连通性探测**。**`llm:` 前缀下 14 个 invoke 频道已全部迁移**（不再有 `llm=` 未迁项）。依赖仍为 `reqwest 0.13`（`default-features = false` + `native-tls` + `socks`）；**`futures-util` / `tokio` 未引入**（D2-c 的 15s 总超时改由 `reqwest::Client::timeout` 承担） |
+| 已注册命令 | **104**（骨架 1 + A 11 + B 22 + C 子域 56 + D1 7 + D2-a 2 + D2-b 3 + D2-c 2） |
+| GUI 冒烟 | ✅ **已做**（2026-10-07 起 **六轮**，末轮 2026-10-08 `pnpm tauri dev`）：窗口标题 `Lorekeeper`、vite@5190、cargo 390/390、`lorekeeper.exe` **内存 42.6 MB**（首轮）/ **30.1 MB**（D1 轮）/ D2-a 轮 vite `482 ms` / D2-b 轮 vite `468 ms` + cargo `24.99s` / **D2-c 轮 `Running target\debug\lorekeeper.exe` + 内存 44.1 MB**，均无 panic、渲染层 `ipc-client` 已联通 |
+| 自动化回归 | `cargo test --lib` **306/306**（279 → +27；含 3 个**磁盘级**端到端：真实 `.vela/lorekeeper.db` + WAL + 外键 + 跨重开持久化）；`pnpm run check:channels` 校验契约↔命令映射（104 命令覆盖 103 invoke 频道，未迁移 90 → **88** 频道，`llm=` **已清零**，orphan 空）；`vitest` 相关用例 7/7 |
 | 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后。D1 起 `~/.lorekeeper/{config.json,models.json,recent-projects.json}` 为**真实持久化**（此前 config 仅内存态） |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`） |
-| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test`（全目标）**279/279** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 · ✅ `check:channels` orphan 空 · ✅ D2-b GUI 冒烟（启动路径无 `Command ... not found` / 无 panic） |
+| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test`（全目标）**306/306** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 · ✅ `check:channels` orphan 空 · ✅ D2-c GUI 冒烟（启动路径无 `Command ... not found` / 无 panic） |
 
 ---
 
-## 本次更新（第二十三次：批次 D2-b — LLM 生成 / 流式 / 取消 3 频道 + 3 事件）
+## 本次更新（第二十四次：批次 D2-c — `llm:*` 收口：模型发现 + 连通性探测 2 频道）
+
+### 0. 范围与依赖
+
+`llm:*` 前缀下最后 2 个未迁频道：
+
+| 频道 | 命令 | 基线来源 |
+|---|---|---|
+| `llm:discover-models` | `llm_discover_models` | `electron/services/model-discovery-service.ts`（204 行） |
+| `llm:test-connection` | `llm_test_connection` | `llm-controller.ts` handler + `electron/embedding.ts`（调用面） |
+
+**零新增依赖**：D2-b 引入的 `reqwest` 直接承担全部网络职责；基线的
+`AbortController` 15s 总超时改由 `reqwest::Client::timeout` 表达（同样是
+「含 body 读取」的总时长语义），因此**不需要** `tokio` 直接依赖，也无需
+`futures-util`。测试亦不依赖异步运行时（见 §3 的纯函数切分）。
+
+### 1. `llm/discovery.rs`（新，204 行基线的逐支复刻）
+
+| 项 | 对齐基线 |
+|---|---|
+| `resolve_openai_models_url()` | 剥 `/chat/completions` → 剥 `/chat` → 空路径回落 `/v1` → 拼 `/models`；清 query/fragment/凭据 |
+| `resolve_gemini_models_url()` | `/v1beta/models` 原样 / `/v1beta` 补 `/models` / 其余补 `/v1beta/models` |
+| `url_contains_credential()` | 原文 → `encodeURIComponent` 形态 → `decodeURIComponent` 后形态三档命中；空凭据恒假；解码失败按未命中 |
+| `safe_provider_text()` | ≤512 **字节**（`Buffer.byteLength` = UTF-8 字节）、无控制字符（`<=0x1f` 与 `0x7f..=0x9f`）、`trim` 后非空、不含凭据 |
+| `parse_openai_models()` / `parse_gemini_models()` | 条目上限 500；**任一条目非法 → 整体 `invalid_response`**（不是跳过该条）；`id` 去重后保序 |
+| `classify_http_failure()` | 401/403 → `auth`；408/425/429/5xx → `network`；其余 → `unsupported` |
+| `interpret_discovery_response()` | 空列表 → `empty`；载荷坏 → `invalid_response`；body 读取失败分「超时 → network / 否则 invalid_response」 |
+
+**两处刻意的环境差异**（均已注释）：
+
+1. **重定向语义**：基线 `redirect: 'error'` 会让 fetch **reject**（→ `network`）；
+   Rust 侧用 `redirect::Policy::none()`，若直接落进 `classify_http_failure(302)`
+   会得到 `unsupported`（**语义错误**）—— 故在 `fetch_models()` 中**先**判
+   `status.is_redirection()` 并强制归为 `network`。这条差异是最容易写错的一处。
+2. **URL 规范化**：`URL.toString()` vs `url::Url::to_string()` 在极端形态上可能
+   有百分号编码差异；端点语义一致，已在测试中固定关键形态。
+
+### 2. `llm/embedding.rs`（新，**刻意收窄**的迁移范围）
+
+`electron/embedding.ts` 共 360 行，本批次**只迁移调用面**：
+
+| 基线片段 | 迁移 | 理由 |
+|---|---|---|
+| `embedOpenAI` / `embedGemini` / `generateEmbeddings` | ✅ | `llm:test-connection` 的 embedding 分支 |
+| `validate*Embeddings` / `validateEmbeddingVectors` | ✅ | 响应合法性就是「连接可用」判据 |
+| `ollamaOpenAIEmbeddingBaseUrl` / `buildOpenAIEmbeddingUrl` | ✅ | URL 构造属调用语义 |
+| `releaseSmokeEmbeddings` | ❌ | Electron 安装包冒烟专用（需环境变量 + 唯一 argv 令牌） |
+| `chunkText` | ❌ | 文本分块属 RAG 侧（批次 F），本批次无调用面 |
+| `normalizeEmbeddingOptions` 的 `batchSize` 归一 | ❌ | 仅在显式传入 `configuredBatchSize` 时生效，当前无调用面 |
+
+**`String(error)` 的三档前缀逐字复刻**（含一个此前未注意到的细节）：
+
+- `new Error(msg)` → `Error: msg`；
+- `EmbeddingResponseValidationError` → **`EmbeddingResponseValidationError: `**（不是 `Error: `！
+  该类在构造器里把 `this.name` 改成了类名，`String(error)` 走 `name: message`）；
+- `fetch` 失败的 `TypeError` → Rust 侧无法逐字复刻异常类名，退化为 `Error: …`（已注明）。
+
+同时复刻了两个**容易被简化掉**的细节：
+
+1. Gemini 侧基地址只去**一个**尾斜杠（`replace(/\/$/, '')`），OpenAI 侧去**全部**
+   （`replace(/\/+$/, '')`）—— 两者不可混用，已各自单测；
+2. OpenAI 响应校验在「条目缺 `embedding`」时 `continue` 后**仍会汇总**
+   「`index` 覆盖不完整」错误，最终文案是 `A；B` 拼接（测试逐条固定该拼接结果）。
+
+### 3. `commands/llm_management.rs`（新，2 频道）
+
+| 频道 | 行为 |
+|---|---|
+| `llm:test-connection` | 先同步决议探测参数（失败即返回 `Error: ` 文案）→ 构建客户端 → `purposes` 含 `embedding` 走 Embedding 端点，否则发一条 `Say "hello" and nothing else.` 探测 |
+| `llm:discover-models` | 构建 `Policy::none()` + 15s 超时的客户端 → 交 `llm::discovery::discover_models` |
+
+**探测与生成链共用同一策略缝**：`maxTokens = 1024`（`CONNECTION_TEST_MAX_TOKENS`，
+推理模型需要足够预算才不会被误判为截断失败）、`reasoningStage = 'general'`、
+`conversationId` **恒为 `None`**（探测不是创作会话，不得共享网关粘性）——
+三条都有测试锁定。
+
+**测试可离线运行的关键切分**：把「请求前同步判定」抽成纯函数，避免为单测引入
+异步运行时：
+
+- `discovery::resolve_discovery_request()`（端点解析 + 凭据回显守卫）；
+- `discovery::interpret_discovery_response()`（传输结果 → 结果档位）；
+- `llm_management::resolve_connection_options()`（参数决议，含 Kimi 温度校验）；
+- `embedding::embedding_batches()`（批量切分）。
+
+### 4. 小重构（消除第二份定义）
+
+- `is_gemini()` 上移到 `llm/chat.rs` 作为单源；`commands/llm_generation.rs` 的私有
+  副本删除并改为引用（其测试保留，注释标注实现单源位置）；
+- `llm/chat.rs` 新增 `build_client_with_timeout()`，`build_client()` 改为它的
+  `None` 特例（行为不变，仍是「无总超时」）。
+
+### 5. 接线
+
+- `llm/mod.rs`：新增 `pub mod discovery; pub mod embedding;`；
+- `commands/mod.rs`：新增 `mod llm_management;` + glob 再导出；
+- `lib.rs`：注册 2 命令（102 → **104**）；
+- `src/shared/migrated-channels.ts`：由 `pnpm run check:channels:emit` 重新生成（103 频道）；
+- `src/services/ipc-client.ts`：登记 `llm:test-connection` → `['model','creativeStrategy']`、
+  `llm:discover-models` → `['request']`（渲染层实际恒传 2 个实参，`creativeStrategy` 有 `?? 'auto'` 兜底）；
+- `test/channel-migration-coverage.test.ts`：未迁移样本改指 `kb:search` / `update:get-state`，
+  并断言 2 个新频道已迁移。
+
+### 6. 验证与测试
+
+| 检查 | 结果 |
+|---|---|
+| `cargo check --all-targets` | **0 告警** |
+| `cargo test --lib` | **306/306**（279 → +27） |
+| `pnpm typecheck` | exit 0 |
+| `pnpm run lint` | exit 0（`--max-warnings 0`） |
+| `pnpm run check:channels` | 104 命令、未迁移 **88**（90 → -2，`llm=` 清零）、orphan 空 |
+| `vitest`（频道覆盖 + 发现边界） | 7/7 |
+| GUI 冒烟（第六轮） | `Running BeforeDevCommand (pnpm dev)` → `Running DevCommand (cargo run …)` → `Running target\debug\lorekeeper.exe`，内存 44.1 MB，无 panic / 无编译告警；进程树已清理 |
+
+新增单测覆盖：端点解析全分支（含 `/chat/completions` / `/chat` / 空路径 / query+fragment+凭据清除 / 非法 URL）、
+凭据回显三档形态、`safe_provider_text` 六类拒绝、OpenAI/Gemini 载荷严格解析（含条目上限与去重）、
+HTTP 分类五档、传输解释六分支、结果序列化的键存在性（成功不含 `errorCode`、失败不含 `models`）、
+Ollama 原生 `/api` 九类不命中形态、Embedding URL 推断七例、Gemini 单斜杠剥除、
+向量维度/有限性校验、OpenAI `index` 覆盖性与拼接文案、Gemini 顺序语义、
+错误文案三档前缀、批量切分、探测参数意图、探测温度（档案唯一来源 / Kimi 固定采样省略）、
+Kimi 越界文案、探测不带会话粘性、探测复用已验证推理指令。
+
+---
+
+## 上一次更新（第二十三次：批次 D2-b — LLM 生成 / 流式 / 取消 3 频道 + 3 事件）
 
 ### 0. 依赖决策（推翻了「`default-tls` = native-tls」的假设）
 
@@ -194,15 +318,18 @@ URL 用字符串拼接（`{base}/v1beta/models/{name}:generateContent` / `…:st
 
 ## 建议的下一步
 
-1. **批次 D2-c（`llm:*` 收口，2 频道）**：`discover-models` / `test-connection`
-   （后者含 embedding 分支，需评估是否同步移植 `electron/embedding.ts` 的 416 行），
-   并补登 `ipc-client.ts` 参数名（`llm:discover-models` → `['request']`、
-   `llm:test-connection` → `['model','creativeStrategy']`）—— 防线测试会强制这一点。
-   `llm:` 前缀下现已**只剩这 2 个**未迁移频道（`generate` / `generate-stream` / `cancel` 已于 D2-b 落地）。
+1. **⚙️ 先补 G5 压测**（本轮之后最短的债务）：`llm:stream-chunk` 已接通但「高频 chunk
+   跨 webview 桥的吞吐/延迟」仍无实测数据。建议写一个不带网络的本地回放（例如直接循环
+   `emit` N 次）测出 chunk/s 上限，再决定是否需要批量合并（inventory §G5 已预留该选项）。
 2. **双栈同库行为对照**：同目录下 Electron（`vela.db`）与 Tauri（`lorekeeper.db`）各写各库，
    确认互不影响；顺带对照 `~/.vela/config.json` 与 `~/.lorekeeper/config.json` 的读写形态差异。
 3. **`vitest` 全量超时定位**（遗留项 7）。
-4. 之后进入 **批次 E**（定稿不可逆 + 删除生命周期，ADR 0003/0011 等量测试）。
+4. **批次 E**（定稿不可逆 + 删除生命周期，ADR 0003/0011 等量测试）：`finalization`（2，需补契约 G1）、
+   `chapter-lifecycle`（4）、`continuity`（4）、`recovery-candidate`（4）、
+   `drafts` 余 4（`authority-sequence` / `export-snapshot` / `export-authority-current` /
+   `import-finalized-batch`）、`finalization-link`（1）。
+5. **或批次 F**（16 频道，零新依赖：一致性豁免 3 / 叙事线程 6 / 派生树 3 / 恢复候选 3 +
+   `kb:*` 需先定 LanceDB 取舍）。
 
 ---
 
@@ -217,7 +344,12 @@ URL 用字符串拼接（`{base}/v1beta/models/{name}:generateContent` / `…:st
 - ✅ **批次 D2 依赖已批准并落地**（第二十三次，批次 D2-b）：`reqwest 0.13`
   （`default-features = false` + `native-tls` + `socks`）；**`futures-util` 未引入**（改用 `JoinHandle::abort()`）。
 - ⚠️ **G5（流式事件经 webview 桥的性能实测）仍未做**：D2-b 已把 3 个事件接通，
-  但「高频 chunk 下跨 IPC 桥的吞吐/延迟」尚无实测数据；建议在 D2-c 或批次 E 前补一次压测。
+  但「高频 chunk 下跨 IPC 桥的吞吐/延迟」尚无实测数据；D2-c 也未触及该缝
+  （探测与发现均为低频调用）—— 建议在批次 E 前补一次压测。
+- ⚠️ **D2-c 刻意未移植的基线片段**（均无调用面，非欠账）：`embedding.ts` 的
+  `releaseSmokeEmbeddings`（Electron 安装包冒烟专用）、`chunkText`（属 RAG 侧）与
+  `normalizeEmbeddingOptions` 的 `batchSize` 归一；若批次 F 接入知识库，
+  `chunkText` 与 `batchSize` 归一需随该批次一并落地。
 - 未验证：双栈同库行为对照、`vitest` 全量超时定位、`cargo fmt --check` 未纳入验收
   （`src-tauri/` 全域存在 rustfmt 差异，需单独提交）。
 - 押后：L3（`.vela` → `.lorekeeper`）、可见品牌（`brand.ts` / i18n 标题）。
