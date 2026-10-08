@@ -12,23 +12,236 @@
 
 ---
 
-## 快照（最后更新：2026-10-08 · 第二十五次）
+## 快照（最后更新：2026-10-08 · 第二十六次）
 | 项 | 值 |
 |---|---|
 | 仓库 | **`TanCan1998/Lorekeeper`**（原名 `AI-Novel-Writer`；仍为 `EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork） |
 | 分支 | `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm 包 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 当前阶段 | **批次 C 数据库层子域全部完成 ✅** + **批次 D1 ✅** + **批次 D2-a ✅** + **批次 D2-b ✅** + **批次 D2-c ✅（`llm:*` 收口）** + **批次 B 遗留补齐 ✅（`dialog:select-folder` 真实化）**：`project_core` / `characters` / `blueprints` / `drafts`（12/16）/ `revisions` / `reviews` / `post-process` / `llm 日志与摘要` / `project 清理` / **D1 模型管理** / **D2-a 租约** / **D2-b HTTP 生成链** / **D2-c 模型发现 + 连通性探测** / **目录选择弹窗**。**`llm:` 前缀下 14 个 invoke 频道已全部迁移**（不再有 `llm=` 未迁项）。依赖：`reqwest 0.13`（`default-features = false` + `native-tls` + `socks`）+ **`tauri-plugin-dialog 2`（本轮新增，Cargo.lock 锁 2.8.1）**；**`futures-util` / `tokio` 未引入** |
-| 已注册命令 | **104**（A 11 + B 22 + C 子域 56 + D1 7 + D2-a 2 + D2-b 3 + D2-c 2 + **剩余骨架 1**）—— 骨架项由 `dialog:select-folder` **换为** `dialog:select-export-directory`（阻塞于批次 H 的 grant 域，见下） |
+| 当前阶段 | **批次 C 数据库层子域全部完成 ✅** + **批次 D1 ✅** + **批次 D2-a ✅** + **批次 D2-b ✅** + **批次 D2-c ✅（`llm:*` 收口）** + **批次 B 遗留补齐 ✅（`dialog:select-folder` 真实化）** + **批次 F1 ✅（一致性豁免 / 叙事线索 / 剧情树 3 子域 12 频道）**：`project_core` / `characters` / `blueprints` / `drafts`（12/16）/ `revisions` / `reviews` / `post-process` / `llm 日志与摘要` / `project 清理` / **D1 模型管理** / **D2-a 租约** / **D2-b HTTP 生成链** / **D2-c 模型发现 + 连通性探测** / **目录选择弹窗** / **F1 三子域**。**`llm:` 前缀下 14 个 invoke 频道已全部迁移**（不再有 `llm=` 未迁项）。**批次 F 已按用户决策拆分**：F1 = 12 个纯 SQLite 频道（本轮完成，**零新依赖**）；F2（`kb:*` 15 + dialog 2）走 **SQLite FTS5 + Rust 向量存储** 方案（用户决策，**开工前先做专项评估**）。依赖：`reqwest 0.13`（`default-features = false` + `native-tls` + `socks`）+ **`tauri-plugin-dialog 2`（Cargo.lock 锁 2.8.1）**；**`futures-util` / `tokio` 未引入**；**本轮未新增任何依赖** |
+| 已注册命令 | **116**（A 11 + B 22 + C 子域 56 + D1 7 + D2-a 2 + D2-b 3 + D2-c 2 + **F1 12** + **剩余骨架 1**）—— 骨架项为 `dialog:select-export-directory`（阻塞于批次 H 的 grant 域，见下） |
 | GUI 冒烟 | ✅ **已做**（2026-10-07 起 **七轮**，末轮 2026-10-08 `pnpm tauri dev`）：窗口标题 `Lorekeeper`、vite@5190、cargo 390/390、`lorekeeper.exe` **内存 42.6 MB**（首轮）/ **30.1 MB**（D1 轮）/ D2-a 轮 vite `482 ms` / D2-b 轮 vite `468 ms` + cargo `24.99s` / D2-c 轮 `Running target\debug\lorekeeper.exe` + 内存 44.1 MB / **本轮（dialog）vite `453 ms` + cargo `24.91s` + `Running target\debug\lorekeeper.exe`**，均无 panic、渲染层 `ipc-client` 已联通 |
-| 自动化回归 | `cargo test --lib` **310/310**（279 → +27 → **+4**；含 3 个**磁盘级**端到端：真实 `.vela/lorekeeper.db` + WAL + 外键 + 跨重开持久化）；`pnpm run check:channels` 校验契约↔命令映射（104 命令覆盖 103 invoke 频道，未迁移 90 → **88** 频道，`llm=` **已清零**，orphan 空）；`vitest` 相关用例 7/7 |
+| 自动化回归 | `cargo test --lib` **385/385**（310 → **+75**：F1 三子域仓储 / 剧情树校验 / 命令层跨层测试，含 **`serde_json` ↔ `JSON.stringify` 黄金哈希对齐测试**）；`pnpm run check:channels` 校验契约↔命令映射（**116 命令覆盖 115 invoke 频道**，未迁移 88 → **76**，`db=44 → 32`（恰好 −12）、`kb=15` 未动，orphan 空）；`vitest` 频道覆盖 / 剧情树 / 一致性预检 / 叙事线索用例 **70/72 通过**（2 个失败为**阶段 0 起就失效的既有测试**，见本次更新 §6） |
 | 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后。D1 起 `~/.lorekeeper/{config.json,models.json,recent-projects.json}` 为**真实持久化**（此前 config 仅内存态）。本轮新增能力**均在 Rust 侧**，未触碰基线数据根 |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
-| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test`（全目标）**310/310** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 · ✅ `check:channels` orphan 空 · ✅ 启动路径冒烟（本轮第七轮：无 `Command ... not found` / 无 panic） · ✅ **弹窗交互人工点验通过**（系统原生对话框正常弹出、不被遮挡、路径回填正确、取消静默） · ➕ 新增提交消息卫生检查（`scripts/check-commit-msg.mjs` + 单测 15 例 + `commit-message-ci.yml`） |
+| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **385/385** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0（`--max-warnings 0`） · ✅ `check:channels` **116 命令 / 115 频道 / 76 未迁移 / orphan 空** · ✅ 启动路径冒烟（第七轮：无 `Command ... not found` / 无 panic） · ✅ **弹窗交互人工点验通过**（系统原生对话框正常弹出、不被遮挡、路径回填正确、取消静默） · ✅ 提交消息卫生检查（`scripts/check-commit-msg.mjs` + 单测 15 例 + `commit-message-ci.yml`） · ⚠️ **F1 尚未 GUI 人工点验**（叙事线索编辑器 / 剧情树面板交互未实机点击，仅自动化层验证） |
 
 ---
 
-## 本次更新（第二十五次：批次 B 遗留补齐 —— `tauri-plugin-dialog` 接入，`dialog:select-folder` 真实化）
+## 本次更新（第二十六次：批次 F1 —— 一致性豁免 / 叙事线索 / 剧情树 3 子域 12 频道）
+
+> 与第二十五次同属 2026-10-08（一个工作日内第三次更新，按 §9 规则写入同一份当日文件）。
+> **⚠️ 本轮改动已完成但尚未提交**（用户选择「先验证、提交前停下等人工核验」，见 §8）。
+
+### 0. 范围重定界（**修正快照中的过时数字**）
+
+第二十五次快照的「批次 F（16 频道）」是**过时估算**。以 `check:channels` 未迁移清单重盘，
+批次 F 实际为 **29 个频道**，且两半的**风险特征完全不同**：
+
+| 分组 | 频道数 | 依赖特征 |
+|---|---|---|
+| `db:plot-tree-{read,save,clear}` | 3 | 纯 SQLite（`project_core.plot_tree_snapshot` 列**早已存在**） |
+| `db:narrative-thread-*` | 6 | 需**新增 2 张表** |
+| `db:consistency-exemption-{list,save,revoke}` | 3 | 需**新增 1 张表** |
+| `kb:*` | 15 | ⚠️ LanceDB 向量存储 + embedding + grant 域 |
+| `dialog:select-knowledge-{files,folder}` | 2 | 同上 |
+
+**用户决策（Ask first，三项均已答复）**：
+1. **拆分**：本轮只做 **F1 = 12 个纯 SQLite 频道**（前 3 组），零新依赖；
+2. **授权**：同意在 `schema.rs` **新增 3 张表**（仅新增、不改现有表）；
+3. **向量存储路线**：`kb` 走 **SQLite FTS5 + Rust 侧向量存储**，
+   **明确否决 `lancedb` Rust crate**；开工前先出**专项评估**（见 §8）。
+
+### 1. 为何否决 `lancedb` Rust crate（本机实测取证）
+
+| 项 | 实测结果 |
+|---|---|
+| MSRV | crate 要求 **rustc ≥ 1.91**（本机 1.99.0 ✅ 满足） |
+| **构建链** | 官方 CI 与 R 包 configure 均需 **`protoc`**（Windows 另需 `ninja` / `nasm`）；**本机 `protoc` / `cmake` / `nasm` / `ninja` 全部未安装**（`cl` / `link` 也不在 PATH，但 MSVC BuildTools 存在于 `D:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools`，故 `rusqlite bundled` 可编） |
+| 依赖树 | 必拉 **`arrow 58` + `datafusion 54`**（含大量传递依赖） |
+| 与迁移目标冲突 | 本迁移的**首要动因就是减少内存占用**；引入 datafusion 系重型查询引擎与该目标直接相背 |
+| 行为忠实度 | 基线 `electron/vector-store.ts` **2010 行** LanceDB 封装（embedding space 注册表 / 重建计划 / FTS 索引 / 混合检索）——直接照搬成本极高 |
+
+**替代方案（用户采纳）**：`rusqlite`（已 bundled）+ SQLite **FTS5** + Rust 侧向量存储。
+代价是 FTS / 混合检索行为需**自研对齐基线**，差异须逐项记录。
+
+### 2. ⚠️ 新发现的隔离风险（**L2 扩展，须在 F2 开工前解决**）
+
+基线 LanceDB **不在 SQLite 内**，而是落在**共享目录**：
+
+| 基线路径 | 代码位置 |
+|---|---|
+| `<project>/.vela/lancedb/` | `electron/vector-store.ts:123` |
+| `<project>/.vela/<EMBEDDING_REGISTRY_FILE>` | `electron/vector-store.ts:127` |
+| `<project>/.vela/<LEGACY_MIGRATION_JOURNAL_FILE>` | `electron/vector-store.ts:131` |
+| `<project>/.vela/vectors.json` | `electron/vector-store.ts:1875` |
+
+Tauri 侧若照搬 `.vela/lancedb`，会与 Electron 基线**互相覆盖向量数据**，
+违反「双栈可在同一机器同时运行」的既定前提（AGENTS.md 双栈隔离红线）。
+**F2 必须把这组文件名改成 Tauri 专属**（与 `<root>/.vela/lorekeeper.db` 的命名风格一致）。
+**L3（`.vela` 目录改名）仍押后。**
+
+### 3. Schema 新增（Ask first —— 已获授权）
+
+`db/schema.rs` 新增两个 DDL 常量，**逐字对齐** `electron/database.ts` 的最终列集：
+
+| 表 | 基线位置 | 要点 |
+|---|---|---|
+| `narrative_thread_plans` | `database.ts:388` | `type` 列**无 CHECK**（基线即如此，不补，避免拒绝既有数据） |
+| `narrative_thread_confirmations` | `database.ts:399` | `UNIQUE(plan_id, draft_id, event_type, evidence)` 做重复确认幂等键；两条 `ON DELETE CASCADE` |
+| `consistency_exemptions` | `database.ts:670` | 以 `revoked` **软删除**（撤销后仍可列出）；基线**无** `created_at` 列 |
+
+索引：`idx_narrative_thread_confirmations_plan(plan_id, draft_id, id)`。
+建表入口 `create_tables()` 在 `finalization_outbox` 之后追加两行 `execute_batch`，保持幂等。
+
+### 4. Rust 侧新增（4 个文件，1 个新模块）
+
+| 文件 | 规模 | 内容 |
+|---|---|---|
+| `src/plot_tree.rs`（**新模块**） | ~1300 行 | `src/shared/plot-tree.ts` 的 Rust 单源：快照结构校验 + 来源存在性 + 章节边界 |
+| `src/repositories/consistency_exemption_repository.rs` | ~250 行 | `list` / `save`（upsert 复位 `revoked`）/ `revoke`（软删除） |
+| `src/repositories/narrative_thread_repository.rs` | ~700 行 | 计划 CRUD + 事件确认 + 列表派生投影 + 相关性过滤 |
+| `src/repositories/plot_tree_repository.rs` | ~600 行 | 来源收集 + `sourceRevision` 乐观锁 + 快照读写清除 |
+
+**为何 `plot_tree.rs` 放在 crate 根而非 `repositories/`**：它是**纯函数校验模块**，
+不依赖数据库（`expected_revision` 由仓储层算好传入），与 `src/shared/plot-tree.ts`
+「一个基线文件 ↔ 一个 Rust 模块」的映射关系也更直白。
+
+### 5. 三处值得记录的实现要点
+
+**① JS/Python 语义对齐的两个隐形坑（本轮新发现）**
+
+- **`String.prototype.length` → `encode_utf16().count()`**：基线所有长度上限（120/60/1000/240/500）
+  都是 **UTF-16 码元数**。含 emoji 的标题用 `chars().count()` 会**放行超长输入**。
+  （先例：`draft_repository.rs:203`；本轮 5 处长度校验全部沿用）
+- **JS `\s` ≠ Rust `\s`**：叙事线索确认时要把 `evidence` 与定稿正文去空白后做包含判定。
+  **Rust `regex` 的 `\s` = `\p{White_Space}`，而 ECMAScript 的集合不同**：
+  JS **含 `U+FEFF`（ZWNBSP）**、Rust 不含；Rust **含 `U+0085`（NEL）**、JS 不含。
+  差异会直接导致「证据到底在不在正文里」的误判，故 `strip_js_whitespace()`
+  **显式枚举 ECMAScript 集合**，并在单测里锁定这两个反例。
+
+**② `sourceRevision` 的字节口径必须与 `JSON.stringify` 逐字节一致**
+
+`sourceRevision = SHA-256(JSON.stringify(来源事实集))` 是乐观锁的判据。
+`serde_json` 与 `JSON.stringify` 在**键顺序**上默认不同（前者按字段声明序，后者按插入序），
+而 Rust 的 `serde_json::Map` 默认是 `BTreeMap`（**字母序**）——一旦写错，版本号会静默错位。
+因此：
+
+- `PlotTreeSourceFacts` 的**字段声明顺序 = JSON 键顺序**，注释标注**不可调整**；
+- 新增 **黄金测试** `source_revision_golden_test`：直接用**基线实测**的 `JSON.stringify`
+  输出串逐字节断言；
+- 另配 `json_escaping_matches_json_stringify_test` 锁定转义口径：
+  控制字符用短转义（`\b\t\n\f\r`）+ 其余 `\uXXXX` 小写四位、非 ASCII **一律不转义**
+  （含增补平面 emoji、`U+FEFF`、`U+2028/2029`、`U+0085`）、**正斜杠不转义**。
+
+**③ 信封 vs reject 严格镜像基线**
+
+本轮 12 频道中，哪些返回信封、哪些**直接 reject**，全部按基线**有无 try/catch** 决定：
+
+| 行为 | 频道 |
+|---|---|
+| 返回信封（失败填 `error`，带 `"Error: "` 前缀） | `db:consistency-exemption-{save,revoke}`、`db:plot-tree-save` |
+| **直接 reject**（基线无 try/catch，`{success:false}` 分支实际不可达） | `db:narrative-thread-plan-{create,update,delete}`、`db:narrative-thread-event-confirm`、`db:consistency-exemption-list`、`db:plot-tree-{read,clear}` |
+
+已核对前端消费方式：`NarrativeThreadEditor.tsx` 在**无抛出**时也写 `if (!result.success)`、
+但只有 `db:narrative-thread-event-confirm` 的短证据校验失败会被读 `error` 文案
+（提示「请粘贴所选定稿章节中实际出现的短原文」）——该路径**有** try/catch，故正常。
+
+**④ 一处测试写法教训（已写进测试注释）**
+
+断言 JSON **键顺序**必须用 `serde_json::to_string`，**不能用 `to_value`**：
+后者内部是 `BTreeMap`，会把键**按字母序重排**，曾经让 3 个测试误报失败。
+真实序列化路径（及黄金哈希）走的是 `to_string`，保留字段声明顺序。
+
+### 6. ⚠️ 核实：2 个 vitest 失败为**既有问题**，非本轮引入
+
+定向跑 8 个相关测试文件得 **70/72 通过**，2 个失败均在
+`src/services/__tests__/ipc-client-project-session.test.ts`，报
+`TypeError: Cannot read properties of undefined (reading 'invoke')`
+（栈：`@tauri-apps/api/core.js:328` ← `ipc-client.ts:199`）。
+
+**三重取证结论（该测试在 `HEAD` 就已失效）**：
+
+1. `git show HEAD:tauri-app/src/services/ipc-client.ts` 已含
+   `import { invoke as tauriInvoke } from '@tauri-apps/api/core'` 且 `invokeCommand` **只调 `tauriInvoke`**；
+2. 该测试文件**自阶段 0（`a0fd2f4`）起**就只 mock 已废弃的 Electron `window.velaAPI`，
+   从未注入 `__TAURI_INTERNALS__`；
+3. 归档快照历次 vitest 记录（**6/6 → 7/7**）**从未包含过这个文件** ——
+   即它一直未被定向跑过，是「未被验证」而非「一直通过」。
+
+机理：`invokeCommand` 里 `window.velaAPI` 已**无任何读取点**，故 `vi.fn()` 永不被调用；
+`tauriInvoke` 在 node 环境找不到 `__TAURI_INTERNALS__` → 读 `undefined.invoke` 抛错 → 测试失败。
+
+**定性**：属 Tauri 化改造后遗留的**过期测试**，与 F1 无关，**本轮不改**（避免在迁移 PR 里混入
+无关测试重写）；已记入遗留项，建议随「`vitest` 全量超时定位」（遗留项 7）一并修。
+
+### 7. 验证与测试（**提交前基线**）
+
+| 检查 | 结果 |
+|---|---|
+| `cargo check --all-targets` | ✅ **0 告警** |
+| `cargo test --lib` | ✅ **385/385**（310 → **+75**） |
+| `pnpm typecheck` | ✅ exit 0 |
+| `pnpm run lint` | ✅ exit 0（`--max-warnings 0`） |
+| `pnpm run check:channels:emit` | ✅ **116 命令 / 覆盖 115 频道 / 未迁移 76**（88 → 76；`db=44 → 32` 恰好 −12）/ orphan 空 / 已重新生成 `migrated-channels.ts`（115 频道） |
+| 定向 `vitest`（8 文件） | ✅ **70/72**（2 个既有失败，见 §6） |
+
+**⚠️ 本轮的验证边界（不得当作已验收）**：
+
+- 未做 **GUI 人工点验**：叙事线索编辑器（`NarrativeThreadEditor.tsx`）与剧情树面板的
+  **实机交互未点击验证**（与批次 C 的同类遗留一致）。
+- 未做 **Electron ↔ Tauri 行为对照**：同一剧本两侧跑同一操作的输出对比未做。
+- `cargo fmt --check` 未纳入验收（`src-tauri/` 全域存在既有 rustfmt 差异）。
+
+### 8. 交接给下次会话（**从这里接**）
+
+**当前工作区状态**：`master` 上有 **7 个已修改 + 4 个新增文件**，均属 F1，**自检全绿**，
+**尚未提交**（用户选择 `verify_first`：先交人工核验，再由用户决定是否提交）。
+
+| 状态 | 文件 |
+|---|---|
+| M | `tauri-app/src-tauri/src/db/schema.rs`（+3 表） |
+| M | `tauri-app/src-tauri/src/commands/db.rs`（+12 命令 + 3 信封 + 跨层测试） |
+| M | `tauri-app/src-tauri/src/lib.rs`（+`mod plot_tree` +12 命令注册） |
+| M | `tauri-app/src-tauri/src/repositories/mod.rs`（+3 模块） |
+| M | `tauri-app/src/services/ipc-client.ts`（+12 条 `CHANNEL_ARG_NAMES`） |
+| M | `tauri-app/src/shared/migrated-channels.ts`（**生成物**，需随 `lib.rs` 同提交） |
+| M | `tauri-app/test/channel-migration-coverage.test.ts`（+F1 频道断言） |
+| **A** | `tauri-app/src-tauri/src/plot_tree.rs` |
+| **A** | `tauri-app/src-tauri/src/repositories/consistency_exemption_repository.rs` |
+| **A** | `tauri-app/src-tauri/src/repositories/narrative_thread_repository.rs` |
+| **A** | `tauri-app/src-tauri/src/repositories/plot_tree_repository.rs` |
+
+**建议的提交拆分（3 个主题，勿合一）**：
+
+1. `feat(tauri): 批次 F1 — 一致性豁免子域（3 频道）`：`CREATE_CONSISTENCY_EXEMPTIONS` + 仓储 + 3 命令 + 测试；
+2. `feat(tauri): 批次 F1 — 叙事线索子域（6 频道）`：2 张表 + 仓储 + 6 命令 + 测试；
+3. `feat(tauri): 批次 F1 — 剧情树子域（3 频道 + 乐观锁）`：`plot_tree.rs` + 仓储 + 3 命令
+   + 黄金哈希测试 + 生成物/前端登记/频道覆盖测试。
+
+**接续步骤（建议顺序）**：
+
+1. **人工核验本轮 diff**（用户已选择先核验再提交）；核验通过后按上表 3 个主题提交
+   （提交消息用 `git commit -m` 或 Node `fs.writeFileSync`，**禁止** PowerShell 5.1 的
+   `Set-Content -Encoding UTF8`；自检 `node scripts/check-commit-msg.mjs --range <base>..HEAD`）。
+2. **F1 GUI 人工点验**：`pnpm tauri dev` → 打开项目 → 叙事线索面板增删改查 + 事件确认
+   （试一个「证据不在正文中」的反例，验前端提示文案）→ 剧情树面板生成 / 保存 / 清空。
+3. **F2 开工前先出专项评估**（用户 `kb_next: assess` 决策）：
+   `electron/vector-store.ts`（2010 行）行为对照清单 + FTS/混合检索差异项 + **隔离路径改名方案**
+   （必须避开 `.vela/lancedb` 等共享路径，见 §2）+ 改动量估算。
+4. **批次 E**（定稿不可逆 + 删除生命周期）：**仍需先获批**在 `schema.rs` 新增
+   `recovery_candidates` / `continuity_projection_meta` / `chapter_deletion_operations` 三张表
+   （**此授权至今未答复**，F1 的授权只覆盖上表 3 张）。
+
+**红线提醒（每次接手都要过一遍）**：Tauri 侧禁止读 `AI_NOVEL_VELA_HOME`、禁止回退 `~/.vela`、
+禁止写 `.vela/vela.db`；项目库 = `<root>/.vela/lorekeeper.db`；全局数据根 =
+`AI_NOVEL_LOREKEEPER_HOME` 或 `~/.lorekeeper`；失败文案按基线 MUTATING 规则带 `"Error: "` 前缀
+（`commands/db.rs::mutating_error`）；前端只经自研命令、**不直调插件 API**；
+**新增的向量存储路径必须 Tauri 专属（不得复用 `.vela/lancedb`）**。
+
+---
+
+## 上一次更新（第二十五次：批次 B 遗留补齐 —— `tauri-plugin-dialog` 接入，`dialog:select-folder` 真实化）
 
 > 与第二十四次同属 2026-10-08（一个工作日内两次更新，按 §9 规则写入同一份当日文件）。
 
@@ -476,30 +689,43 @@ URL 用字符串拼接（`{base}/v1beta/models/{name}:generateContent` / `…:st
 
 ## 建议的下一步
 
-1. **🖱️ 先做弹窗人工点验**（本轮唯一未完成的验收项，见第二十五次 §5）：
-   `pnpm tauri dev` → 新建项目 → 「选择文件夹」，验三条（弹出/回填/取消静默），
-   结果补回快照。顺手提交本轮的 5 个改动文件。
-2. **⚙️ 再补 G5 压测**：`llm:stream-chunk` 已接通但「高频 chunk 跨 webview 桥的吞吐/延迟」
+1. **🧑‍⚖️ 先人工核验 F1 的 diff 并提交**（本轮改动**已完成未提交**，见第二十六次 §8）：
+   7 个修改 + 4 个新增文件；核验通过后按 3 个主题拆分提交（一致性豁免 / 叙事线索 / 剧情树）。
+2. **🖱️ F1 GUI 人工点验**：叙事线索面板增删改查 + 事件确认（含「证据不在正文中」反例）、
+   剧情树面板生成 / 保存 / 清空。
+3. **📄 F2 专项评估**（用户 `kb_next: assess` 决策）：
+   `electron/vector-store.ts`（2010 行）行为对照 + FTS/混合检索差异清单 +
+   **向量存储路径 Tauri 专属命名方案**（不得复用 `.vela/lancedb`）+ 改动量估算；
+   评估通过后再实现 `kb:*` 15 频道 + `dialog:select-knowledge-*` 2 频道。
+4. **⚙️ 再补 G5 压测**：`llm:stream-chunk` 已接通但「高频 chunk 跨 webview 桥的吞吐/延迟」
    仍无实测数据。建议写一个不带网络的本地回放（例如直接循环 `emit` N 次）测出 chunk/s 上限，
    再决定是否需要批量合并（inventory §G5 已预留该选项）。
-3. **双栈同库行为对照**：同目录下 Electron（`vela.db`）与 Tauri（`lorekeeper.db`）各写各库，
+5. **双栈同库行为对照**：同目录下 Electron（`vela.db`）与 Tauri（`lorekeeper.db`）各写各库，
    确认互不影响；顺带对照 `~/.vela/config.json` 与 `~/.lorekeeper/config.json` 的读写形态差异。
-4. **`vitest` 全量超时定位**（遗留项 7）。
-5. **批次 E**（定稿不可逆 + 删除生命周期，ADR 0003/0011 等量测试）：`finalization`（2，需补契约 G1）、
+6. **`vitest` 全量超时定位 + 过期测试修复**（遗留项 7，已含新核实的 2 个失败）。
+7. **批次 E**（定稿不可逆 + 删除生命周期，ADR 0003/0011 等量测试）：`finalization`（2，需补契约 G1）、
    `chapter-lifecycle`（4）、`continuity`（4）、`recovery-candidate`（4）、
    `drafts` 余 4（`authority-sequence` / `export-snapshot` / `export-authority-current` /
    `import-finalized-batch`）、`finalization-link`（1）。
    **⚠️ 阻塞**：需先获批在 `schema.rs` 新增 `recovery_candidates` / `continuity_projection_meta` /
    `chapter_deletion_operations` 三张表。
-6. **或批次 F**（16 频道，零新依赖：一致性豁免 3 / 叙事线程 6 / 派生树 3 / 恢复候选 3 +
-   `kb:*` 需先定 LanceDB 取舍）。该批次可顺带用本轮新增的 `file_path_to_string()`
-   落地两个文件选择频道（`dialog:select-novel-files` / `dialog:select-knowledge-files`）。
-7. **`dialog:select-export-directory` 真实化** 与 **`fs:grant-*` 三命令** 一并归入**批次 H**
-   （`tauri-plugin-fs 2.6.0` 已随本轮连带引入，届时**勿重复添加**）。
+8. **`dialog:select-export-directory` 真实化** 与 **`fs:grant-*` 三命令** 一并归入**批次 H**
+   （`tauri-plugin-fs 2.6.0` 已随 dialog 插件连带引入，届时**勿重复添加**）。
 
 ---
 
 ## 遗留项（沿用 2026-10-06 快照）
+
+- ⚠️ **【本轮新记】`ipc-client-project-session.test.ts` 2 例失败为既有问题**（非 F1 引入，已三重取证）：
+  该测试自阶段 0（`a0fd2f4`）起只 mock 已废弃的 Electron `window.velaAPI`，从未注入
+  `__TAURI_INTERNALS__`；而 `HEAD` 版 `ipc-client.ts` 的 `invokeCommand` **只调 `tauriInvoke`**，
+  `velaAPI` 已无读取点 → node 环境下 `undefined.invoke` 抛 `TypeError`。
+  历史快照的 vitest 记录（6/6 → 7/7）**从未包含该文件**。修它需重写为 Tauri 语义
+  （或注入 `__TAURI_INTERNALS__` 桩），建议随遗留项 7 一并做。
+- ⚠️ **【本轮新记】批次 F2 的向量存储路径必须 Tauri 专属**：基线 LanceDB 落在共享的
+  `{project}/.vela/lancedb/` 与 `.vela/<registry>.json` / `.vela/vectors.json`；
+  Tauri 侧不得复用（否则与 Electron 基线互覆向量数据）。见第二十六次 §2。
+- ⚠️ **【本轮新记】F1 未做 GUI 人工点验**：叙事线索 / 剧情树面板的实机交互未验证。
 
 - ✅ **批次 B 的 dialog 骨架缺口已补齐（第二十五次）**：`dialog:select-folder` 由「恒返回 `None`
   的占位」改为**真实原生目录选择**（`tauri-plugin-dialog 2`，纯 Rust 侧，capabilities 未放开），

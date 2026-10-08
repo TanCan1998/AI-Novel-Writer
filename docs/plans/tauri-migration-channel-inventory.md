@@ -137,13 +137,14 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 | post-process | 6 | ⬜ 待迁移 |
 | llm 日志 / 摘要 | 5 | ⬜ 待迁移 |
 | import-run（批次 G） | 18 | ⬜ 待迁移 |
-| continuity / consistency-exemption / narrative-thread / plot-tree / recovery-candidate / finalization-link | 21 | ⬜ 待迁移（部分归批次 E/F） |
+| continuity / consistency-exemption / narrative-thread / plot-tree / recovery-candidate / finalization-link | 21 | 🟡 **部分完成 12/21**（批次 F1，2026-10-08）：`consistency-exemption-{list,save,revoke}`（3）、`narrative-thread-{list,list-relevant,plan-create,plan-update,plan-delete,event-confirm}`（6）、`plot-tree-{read,save,clear}`（3）已完成（`cargo test --lib` 385/385）剩余：`continuity-*`（4）、`recovery-candidate-*`（4）、`finalization-link-knowledge-document`（1）→ 归批次 E |
 
 **双栈隔离约束（2026-10-06 第九次更新，取代早期「双栈同库」前提）**：Tauri 版命名为 **Lorekeeper（`com.tancan1998.lorekeeper`）**，与原项目**必须能在同一台机器同时运行**，且用户已确认**不需要复用同一 SQLite、不需要解码原项目 DB 数据**。因此：① 全局数据根 `AI_NOVEL_LOREKEEPER_HOME` / `~/.lorekeeper`（**不读** `AI_NOVEL_VELA_HOME`、**不回退** `~/.vela`）；② 项目库文件 `<root>/.vela/lorekeeper.db`（基线为 `.vela/vela.db`）；③ 安装标识、exe 名、窗口标题全独立。Rust 侧 DDL 仍与 Electron `electron/database.ts:67` 的**最终列集**保持一致，但目的已从「共库写入」变为「保留将来一次性导入的能力」；逐子域增量 DDL 依然安全（两栈均 `CREATE TABLE IF NOT EXISTS`，互不读写对方库文件）。`.vela` 目录本身仍共享（L3 押后）。
 
 ### 4.11 KnowledgeBaseChannels（15 + dialog 2）— controller: `kb-controller.ts` — 批次 F
 `kb:import-{document,folder}`（grantId 入口）、`kb:import-{text,planning-text,reference-text}`、`kb:search`、`kb:search-writing-context`、`kb:search-with-scope`、`kb:list-documents`、`kb:remove-document`、`kb:clear-all`、`kb:stats`、`kb:get-vectorless-count`、`kb:get-vector-rebuild-status`（纯本地状态读，不发 embedding 请求）、`kb:backfill-vectors`；`dialog:select-knowledge-{files,folder}`。
-返回多为 `AppResult<T>`★。LanceDB → Rust `lancedb` crate 或降级 SQLite FTS（评估项）。
+返回多为 `AppResult<T>`★。**向量存储路线（2026-10-08 用户决策）**：`rusqlite`（bundled）+ **SQLite FTS5** + Rust 侧向量存储（**否决 `lancedb` crate**）；基线封装为 `electron/vector-store.ts`（2010 行，含 embedding space 注册表 / 重建计划 / FTS 索引 / 混合检索），开工前需出专项评估逐项对齐差异。
+**⚠️ 隔离前提**：基线向量数据在 `{project}/.vela/lancedb/` 与 `.vela/<registry>.json` / `.vela/vectors.json`（**共享目录**），Tauri 侧须改用专属路径，否则与 Electron 基线互覆数据。
 
 ### 4.12 ImportChannels（1）— controller: `import-controller.ts` — 批次 G
 `dialog:select-novel-files(request?, projectSession?)`（选择 + 检查 + 准备一体；不注入自动 session★，显式收 `projectSession`）。
@@ -179,7 +180,7 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 | **C** | db 子域逐步：project-core → blueprints → characters/roster → drafts → revisions → reviews → post-process → summary/llm-stats | B | 🟡 **进行中（2026-10-06 第八次更新）**：`project_core` 子域**已完成并提交**（`ff7fbd8` + `a8d742a`，Rust 64/64、0 告警）；剩余子域按上方进度表逐个迁移（入口见 `docs/handoffs/2026-10-06-tauri-migration-status.md` 第八次快照「下一子域接续入口」）。一域一仓；行为与 Electron 对照 |
 | **D** | llm 全部 + 3 个流事件（G5 性能实测） | C | generation-parameter-policy 复刻；finishReason 显式终态。**2026-10-07 拆分**：**D1 ✅** 模型管理 7 频道（零新增依赖）+ config 真实持久化；**2026-10-08 完成 D2-a/b/c ✅**：生成参数策略与执行租约（D2-a）、HTTP 生成/流式/取消（D2-b）、`llm:*` 收口——模型发现与连通性探测（D2-c）。`llm:` 前缀下 14 个 invoke 频道已**全部迁移** |
 | **E** | finalization(G1 补契约)、chapter-lifecycle、continuity、recovery-candidate、draft-import-finalized-batch | C, D | 定稿不可逆 + 删除生命周期（ADR 0003/0011）等量测试 |
-| **F** | kb 全部、plot-tree、narrative-thread、consistency-exemption | C | AppResult 错误码对齐；LanceDB 评估 |
+| **F** | kb 全部、plot-tree、narrative-thread、consistency-exemption | C | AppResult 错误码对齐；LanceDB 评估。**2026-10-08 拆分为 F1/F2**：**F1 ✅** 已完成——`plot-tree`（3）/ `narrative-thread`（6）/ `consistency-exemption`（3）共 **12 频道**，**零新依赖**（纯 SQLite 平移；`project_core.plot_tree_snapshot` 列早已存在，新增 3 张叙事/豁免表）；剧情树 `sourceRevision` 有**黄金哈希测试**锁定与 `JSON.stringify` 逐字节一致。**F2（未开工，先出专项评估）**：`kb:*` 15 频道 + `dialog:select-knowledge-*` 2 频道。**向量存储路线已定**：`rusqlite`（bundled）+ **SQLite FTS5** + Rust 侧向量存储，**否决 `lancedb` Rust crate**（需 `protoc`，本机未装；且必拉 `arrow 58` + `datafusion 54`，与本迁移「减内存」动因相背）。**⚠️ F2 必须先解决隔离**：基线向量目录为共享的 `.vela/lancedb/` + `.vela/<registry>.json`，Tauri 侧须改为专属命名 |
 | **G** | import-run 全套（18 频道状态机）、dialog:select-novel-files、import-global-facts | C | 执行租约 `ImportRunExecutionLease`；断点恢复语义 |
 | **H** | update（updater 插件，G3）、mcp、prompt/skills、**fs:grant-\* 三命令 + `dialog:select-export-directory`**（第二十五次归入） | 任意 | macOS 更新 = 仅打开 Release 页；`tauri-plugin-fs 2.6.0` **已随 dialog 插件连带引入**，勿重复添加；grant 签发只回传 `grantId`（ADR 0002） |
 
