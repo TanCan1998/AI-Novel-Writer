@@ -203,8 +203,13 @@ pub async fn chapter_finalize(
 **格式**：`type(scope): 描述`。
 
 - `type` ∈ `feat` / `fix` / `chore` / `docs` / `refactor` / `test` / `perf` / `build` / `ci` /
-  `style` / `revert`；
+  `style` / `revert`（白名单与 `scripts/check-commit-msg.mjs` 的 `COMMIT_TYPES`、`AGENTS.md`
+  「Git 工作流」**同源**：改一处必须同步其余两处）；
 - `scope` 小写字母/数字/连字符，Tauri 迁移统一用 `tauri`（如 `feat(tauri): migrate config controller`）；
+- **CI / 工作流类改动统一写 `chore(ci): 描述`**：`ci` 只作 scope，不写裸 `ci:` 类型前缀；
+  与仓库 Gitleaks 系列提交（`chore(ci): 新增 Gitleaks 秘密扫描工作流` 等）保持一致。
+  上游既存的裸 `ci:` 提交不追溯改写（2026-10-09 已将本 fork 最后一条 `53c54c7` 重写为
+  `5ef8d64 chore(ci): 修复 Gitleaks 配置位置并添加排除规则`）；
 - 描述用中文；首行与正文之间**必须留一个空行**；首行显示宽度 ≤ 120 列（CJK 计 2 列）。
 - **编码硬约束**：提交消息**无 BOM、无 CRLF、无行尾空白**。
 - `Merge ` / `Revert ` / `fixup! ` / `squash! ` 开头的首行只做编码检查
