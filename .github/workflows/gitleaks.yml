@@ -1,0 +1,71 @@
+name: Gitleaks
+
+# Secret scanning policy:
+#   - pull_request: only the commits introduced by the PR (origin/<base_ref>..HEAD),
+#     so pre-existing history leaks do not block unrelated changes.
+#   - push: the whole history of the pushed branch.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+concurrency:
+  group: gitleaks-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitleaks:
+    name: Secret Scan (Gitleaks v8.30.1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Gitleaks v8.30.1
+        run: |
+          set -euo pipefail
+          GITLEAKS_VERSION=8.30.1
+          curl -sSfL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          sudo tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
+          rm -f /tmp/gitleaks.tar.gz
+          gitleaks version | grep -F "${GITLEAKS_VERSION}"
+
+      - name: Scan changed commits (pull request)
+        if: github.event_name == 'pull_request'
+        run: |
+          gitleaks git --log-opts="origin/${{ github.base_ref }}..HEAD" \
+            --redact \
+            --report-format sarif \
+            --report-path gitleaks.sarif \
+            --exit-code 1
+
+      - name: Scan full history (push)
+        if: github.event_name == 'push'
+        run: |
+          gitleaks git \
+            --redact \
+            --report-format sarif \
+            --report-path gitleaks.sarif \
+            --exit-code 1
+
+      - name: Upload SARIF to Code Scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: gitleaks.sarif
+
+      - name: Upload Gitleaks report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-report
+          path: gitleaks.sarif
+          if-no-files-found: ignore
