@@ -195,3 +195,67 @@ pub async fn chapter_finalize(
 
 > 首次按本规则产生的快照：`docs/handoffs/2026-10-08-tauri-migration-status.md`
 > （第二十三次，批次 D2-b）；同时 `2026-10-07-*.md` 已回退为冻结态并加前向指针。
+
+---
+
+## 10. Git 提交消息规范与提交前自检
+
+**格式**：`type(scope): 描述`。
+
+- `type` ∈ `feat` / `fix` / `chore` / `docs` / `refactor` / `test` / `perf` / `build` / `ci` /
+  `style` / `revert`；
+- `scope` 小写字母/数字/连字符，Tauri 迁移统一用 `tauri`（如 `feat(tauri): migrate config controller`）；
+- 描述用中文；首行与正文之间**必须留一个空行**；首行显示宽度 ≤ 120 列（CJK 计 2 列）。
+- **编码硬约束**：提交消息**无 BOM、无 CRLF、无行尾空白**。
+- `Merge ` / `Revert ` / `fixup! ` / `squash! ` 开头的首行只做编码检查
+  （上游历史与合并提交不受本仓库前缀规范约束）。
+
+### 10.1 事故记录：提交消息混入 UTF-8 BOM（2026-10-08，已修复）
+
+批次 D2-c 的两个提交（`7105b13` / `612002b`）在消息文件写入时用了 PowerShell 5.1 的
+`Set-Content -Encoding UTF8`，而**该版本默认写 UTF-8 BOM**，于是提交对象的消息首 3 字节
+成了 `EF BB BF`：
+
+| 现象 | 说明 |
+|---|---|
+| `git log` 渲染 | `612002b ﻿docs(tauri): …` —— 前缀前多一个不可见字符，肉眼极易漏看 |
+| 首行真实内容 | `"\uFEFFfeat(tauri): …"`，类型前缀实为 `"\uFEFFfeat"`，**不是** `"feat"` |
+| 影响 | 任何按 `type(scope):` 解析的工具都识别不到；`check:channels` 之类的自检也发现不了 |
+| 定位方式 | 仅 `git cat-file commit <sha>` 的**字节级**比对可得（`git log --format=%B` 的渲染结果不可信） |
+| 修复 | 两个提交当时均未推送，用 `git commit-tree` 重放剥离 BOM：`tree` / 作者 / 提交者 / 时间戳**逐字节保留**，仅 SHA 变化（`867cbba` / `d4a9ff3`） |
+
+**正确写法**（任选）：
+
+```bash
+git commit -m "feat(tauri): 描述"        # 首选，最简单
+```
+
+```js
+// 需要多行正文时：用 Node 写消息文件（Node 的 'utf8' 不写 BOM），再以 -F 读入
+fs.writeFileSync(messageFile, message, 'utf8')
+```
+
+```bash
+git commit -F "$messageFile"
+```
+
+**禁止**：用 PowerShell 5.1 的 `Set-Content -Encoding UTF8` / `Out-File -Encoding UTF8`
+写提交消息文件（二者默认带 BOM）。需要无 BOM 时用 `-Encoding utf8NoBOM`（PowerShell 6+）
+或改用 Node。
+
+### 10.2 自动检查
+
+| 场景 | 命令 |
+|---|---|
+| 本地 hook（可选，不入库） | `printf '#!/bin/sh\nexec node scripts/check-commit-msg.mjs "$1"\n' > .git/hooks/commit-msg && chmod +x .git/hooks/commit-msg` |
+| 手动检查一段范围 | `node scripts/check-commit-msg.mjs --range <base>..HEAD` |
+| 检查单条消息 | `node scripts/check-commit-msg.mjs <msgfile>` |
+
+CI 侧由 `.github/workflows/commit-message-ci.yml` 承担：push 检查 `before..after`，
+pull_request 检查 `base..HEAD`。**该 workflow 刻意不设 `paths-ignore`** ——
+纯文档 PR 也必须检查，因为本次事故恰好发生在 docs 提交上。
+
+**只审计增量**：上游 `EthanYoQ/AI-Novel-Writer` 的历史里有大量不符合本规范的提交
+（`Update README.md` 等，共 38 条），因此检查范围必须是 `base..HEAD` 这类增量区间，
+**不要**用 `--range HEAD`（会遍历全部历史）。若分支合并了上游并带入那些提交，
+用 `--ignore-author <email>` 跳过。

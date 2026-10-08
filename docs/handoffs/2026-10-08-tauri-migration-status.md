@@ -24,7 +24,7 @@
 | 自动化回归 | `cargo test --lib` **310/310**（279 → +27 → **+4**；含 3 个**磁盘级**端到端：真实 `.vela/lorekeeper.db` + WAL + 外键 + 跨重开持久化）；`pnpm run check:channels` 校验契约↔命令映射（104 命令覆盖 103 invoke 频道，未迁移 90 → **88** 频道，`llm=` **已清零**，orphan 空）；`vitest` 相关用例 7/7 |
 | 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后。D1 起 `~/.lorekeeper/{config.json,models.json,recent-projects.json}` 为**真实持久化**（此前 config 仅内存态）。本轮新增能力**均在 Rust 侧**，未触碰基线数据根 |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
-| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test`（全目标）**310/310** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 · ✅ `check:channels` orphan 空 · ✅ 启动路径冒烟（本轮第七轮：无 `Command ... not found` / 无 panic） · ⚠️ **弹窗交互本身仍需人工点验**（见遗留项） |
+| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test`（全目标）**310/310** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 · ✅ `check:channels` orphan 空 · ✅ 启动路径冒烟（本轮第七轮：无 `Command ... not found` / 无 panic） · ⚠️ **弹窗交互本身仍需人工点验**（见遗留项） · ➕ 新增提交消息卫生检查（`scripts/check-commit-msg.mjs` + 单测 15 例 + `commit-message-ci.yml`） |
 
 ---
 
@@ -157,6 +157,38 @@ Windows 绝对路径透传、**空路径按取消处理**、`file:///F:/…%20�
 禁止写 `.vela/vela.db`；项目库 = `<root>/.vela/lorekeeper.db`；全局数据根 =
 `AI_NOVEL_LOREKEEPER_HOME` 或 `~/.lorekeeper`；失败文案按基线 MUTATING 规则带 `"Error: "` 前缀
 （`commands/db.rs::mutating_error`）；前端只经自研命令、**不直调插件 API**。
+
+### 7. 收尾：提交、历史修正与规则变更
+
+**提交清单**（已推送 `origin/master`）：
+
+| 提交 | 内容 |
+|---|---|
+| `867cbba` | `feat(tauri)`: 批次 D2-c — 模型发现 / 连通性探测，`llm:*` 收口 |
+| `d4a9ff3` | `docs(tauri)`: 第二十四次快照 — 批次 D2-c 完成 |
+| `f892e47` | `feat(tauri)`: 接入 `tauri-plugin-dialog`，`dialog:select-folder` 返回真实目录 |
+| `e74ce13` | `docs(tauri)`: 第二十五次快照 — 批次 B 遗留补齐 |
+| 本轮追加 | `ci`: 提交消息卫生检查（脚本 + 单测 + workflow）；`docs`: 快照收尾与规范记录 |
+
+**历史修正（BOM 事故）**：`867cbba` / `d4a9ff3` 的前身（`7105b13` / `612002b`）
+提交消息首 3 字节带 UTF-8 BOM（`EF BB BF`），在**推送前**用 `git commit-tree` 重放剥除
+（`tree` / 作者 / 提交者 / 时间戳逐字节保留，仅 SHA 变化），因此本轮先本地重写再一次性推送。
+事故成因、后果与正确写法见 [`docs/agents/pi-development.md`](../agents/pi-development.md) §10.1。
+
+**规则变更**：
+
+- 新增 [`scripts/check-commit-msg.mjs`](../../scripts/check-commit-msg.mjs)：BOM / CRLF / 行尾空白 /
+  语义化前缀检查，支持 hook 单文件模式与 CI `--range` 模式（后者读 `git cat-file commit`
+  **原始字节**，而非 `git log` 的渲染结果）；配 15 例单测
+  [`scripts/__tests__/check-commit-msg.test.ts`](../../scripts/__tests__/check-commit-msg.test.ts)。
+- 新增 [`.github/workflows/commit-message-ci.yml`](../../.github/workflows/commit-message-ci.yml)：
+  push 检查 `before..after`、pull_request 检查 `base..HEAD`，**刻意不设 `paths-ignore`** ——
+  本次事故正好发生在 docs-only 提交上，若挂在 `pr-ci.yml` 下会被其 `paths-ignore` 漏掉。
+- `docs/agents/pi-development.md` 新增 §10「Git 提交消息规范与提交前自检」。
+- 根 `AGENTS.md`「Git 工作流」补充 BOM 硬约束与自检命令
+  （该文件被 `.gitignore` 忽略，属本地 agent 指引，不入库）。
+
+**工作区清理**：脚本无残留产物；测试仓库用 `mkdtemp` 创建并在 `afterEach` 删除。
 
 ---
 
