@@ -10,10 +10,13 @@ name: Commit message CI
 #     so it stays fast and independent from the desktop build.
 #
 # Scope: only the commits that a push or pull request adds
-# (`before..after` on push, `base..HEAD` on pull_request). Upstream history imported
-# from EthanYoQ/AI-Novel-Writer is deliberately not audited — it contains plenty of
-# pre-convention subjects. If a branch merges upstream and drags those commits into
-# the range, add `--ignore-author <email>` to the invocation below.
+# (`before..after` on push, `base..HEAD` on pull_request). `workflow_dispatch` takes an
+# explicit `range` input for manual audits; an empty input means nothing to check.
+#
+# Upstream history imported from EthanYoQ/AI-Novel-Writer is deliberately not audited —
+# it contains plenty of pre-convention subjects (38 commits when this check was added).
+# If a branch merges upstream and drags those commits into the range, pass `ignore_authors`
+# (on workflow_dispatch) or `--ignore-author <email>` (locally).
 
 on:
   push:
@@ -22,6 +25,17 @@ on:
     branches: [master]
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
+    inputs:
+      range:
+        description: 'Revision range to audit, e.g. d973c19..HEAD (empty = nothing to check)'
+        required: false
+        default: ''
+        type: string
+      ignore_authors:
+        description: 'Comma-separated author emails to skip (upstream history)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -53,6 +67,8 @@ jobs:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PUSH_BEFORE: ${{ github.event.before }}
           PUSH_AFTER: ${{ github.event.after }}
+          DISPATCH_RANGE: ${{ inputs.range }}
+          DISPATCH_IGNORE_AUTHORS: ${{ inputs.ignore_authors }}
         run: |
           set -euo pipefail
 
@@ -66,6 +82,14 @@ jobs:
                 exit 0
               fi
               range="${PUSH_BEFORE}..${PUSH_AFTER}"
+              ;;
+            workflow_dispatch)
+              range="${DISPATCH_RANGE}"
+              if [ -z "${range}" ]; then
+                echo "workflow_dispatch without a 'range' input: nothing to check."
+                echo "Re-run this workflow with range = origin/master..HEAD (or any A..B range)."
+                exit 0
+              fi
               ;;
             *)
               echo "No automatic range for ${EVENT_NAME}; run"
@@ -81,5 +105,17 @@ jobs:
             exit 0
           fi
 
+          node_args=(scripts/check-commit-msg.mjs --range "${range}")
+          if [ -n "${DISPATCH_IGNORE_AUTHORS}" ]; then
+            # Emails carry no whitespace, so stripping every blank is a safe trim.
+            IFS=',' read -r -a raw_authors <<< "${DISPATCH_IGNORE_AUTHORS}"
+            for author in "${raw_authors[@]}"; do
+              author="${author//[[:space:]]/}"
+              if [ -n "${author}" ]; then
+                node_args+=(--ignore-author "${author}")
+              fi
+            done
+          fi
+
           echo "Range under check: ${range}"
-          node scripts/check-commit-msg.mjs --range "${range}"
+          node "${node_args[@]}"
