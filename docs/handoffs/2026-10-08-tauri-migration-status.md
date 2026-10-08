@@ -12,23 +12,155 @@
 
 ---
 
-## 快照（最后更新：2026-10-08 · 第二十四次）
+## 快照（最后更新：2026-10-08 · 第二十五次）
 | 项 | 值 |
 |---|---|
 | 仓库 | **`TanCan1998/Lorekeeper`**（原名 `AI-Novel-Writer`；仍为 `EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork） |
 | 分支 | `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm 包 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 当前阶段 | **批次 C 数据库层子域全部完成 ✅** + **批次 D1 ✅** + **批次 D2-a ✅** + **批次 D2-b ✅** + **批次 D2-c ✅（`llm:*` 收口）**：`project_core` / `characters` / `blueprints` / `drafts`（12/16）/ `revisions` / `reviews` / `post-process` / `llm 日志与摘要` / `project 清理` / **D1 模型管理** / **D2-a 租约** / **D2-b HTTP 生成链** / **D2-c 模型发现 + 连通性探测**。**`llm:` 前缀下 14 个 invoke 频道已全部迁移**（不再有 `llm=` 未迁项）。依赖仍为 `reqwest 0.13`（`default-features = false` + `native-tls` + `socks`）；**`futures-util` / `tokio` 未引入**（D2-c 的 15s 总超时改由 `reqwest::Client::timeout` 承担） |
-| 已注册命令 | **104**（骨架 1 + A 11 + B 22 + C 子域 56 + D1 7 + D2-a 2 + D2-b 3 + D2-c 2） |
-| GUI 冒烟 | ✅ **已做**（2026-10-07 起 **六轮**，末轮 2026-10-08 `pnpm tauri dev`）：窗口标题 `Lorekeeper`、vite@5190、cargo 390/390、`lorekeeper.exe` **内存 42.6 MB**（首轮）/ **30.1 MB**（D1 轮）/ D2-a 轮 vite `482 ms` / D2-b 轮 vite `468 ms` + cargo `24.99s` / **D2-c 轮 `Running target\debug\lorekeeper.exe` + 内存 44.1 MB**，均无 panic、渲染层 `ipc-client` 已联通 |
-| 自动化回归 | `cargo test --lib` **306/306**（279 → +27；含 3 个**磁盘级**端到端：真实 `.vela/lorekeeper.db` + WAL + 外键 + 跨重开持久化）；`pnpm run check:channels` 校验契约↔命令映射（104 命令覆盖 103 invoke 频道，未迁移 90 → **88** 频道，`llm=` **已清零**，orphan 空）；`vitest` 相关用例 7/7 |
-| 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后。D1 起 `~/.lorekeeper/{config.json,models.json,recent-projects.json}` 为**真实持久化**（此前 config 仅内存态） |
-| Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`） |
-| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test`（全目标）**306/306** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 · ✅ `check:channels` orphan 空 · ✅ D2-c GUI 冒烟（启动路径无 `Command ... not found` / 无 panic） |
+| 当前阶段 | **批次 C 数据库层子域全部完成 ✅** + **批次 D1 ✅** + **批次 D2-a ✅** + **批次 D2-b ✅** + **批次 D2-c ✅（`llm:*` 收口）** + **批次 B 遗留补齐 ✅（`dialog:select-folder` 真实化）**：`project_core` / `characters` / `blueprints` / `drafts`（12/16）/ `revisions` / `reviews` / `post-process` / `llm 日志与摘要` / `project 清理` / **D1 模型管理** / **D2-a 租约** / **D2-b HTTP 生成链** / **D2-c 模型发现 + 连通性探测** / **目录选择弹窗**。**`llm:` 前缀下 14 个 invoke 频道已全部迁移**（不再有 `llm=` 未迁项）。依赖：`reqwest 0.13`（`default-features = false` + `native-tls` + `socks`）+ **`tauri-plugin-dialog 2`（本轮新增，Cargo.lock 锁 2.8.1）**；**`futures-util` / `tokio` 未引入** |
+| 已注册命令 | **104**（A 11 + B 22 + C 子域 56 + D1 7 + D2-a 2 + D2-b 3 + D2-c 2 + **剩余骨架 1**）—— 骨架项由 `dialog:select-folder` **换为** `dialog:select-export-directory`（阻塞于批次 H 的 grant 域，见下） |
+| GUI 冒烟 | ✅ **已做**（2026-10-07 起 **七轮**，末轮 2026-10-08 `pnpm tauri dev`）：窗口标题 `Lorekeeper`、vite@5190、cargo 390/390、`lorekeeper.exe` **内存 42.6 MB**（首轮）/ **30.1 MB**（D1 轮）/ D2-a 轮 vite `482 ms` / D2-b 轮 vite `468 ms` + cargo `24.99s` / D2-c 轮 `Running target\debug\lorekeeper.exe` + 内存 44.1 MB / **本轮（dialog）vite `453 ms` + cargo `24.91s` + `Running target\debug\lorekeeper.exe`**，均无 panic、渲染层 `ipc-client` 已联通 |
+| 自动化回归 | `cargo test --lib` **310/310**（279 → +27 → **+4**；含 3 个**磁盘级**端到端：真实 `.vela/lorekeeper.db` + WAL + 外键 + 跨重开持久化）；`pnpm run check:channels` 校验契约↔命令映射（104 命令覆盖 103 invoke 频道，未迁移 90 → **88** 频道，`llm=` **已清零**，orphan 空）；`vitest` 相关用例 7/7 |
+| 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后。D1 起 `~/.lorekeeper/{config.json,models.json,recent-projects.json}` 为**真实持久化**（此前 config 仅内存态）。本轮新增能力**均在 Rust 侧**，未触碰基线数据根 |
+| Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
+| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test`（全目标）**310/310** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 · ✅ `check:channels` orphan 空 · ✅ 启动路径冒烟（本轮第七轮：无 `Command ... not found` / 无 panic） · ⚠️ **弹窗交互本身仍需人工点验**（见遗留项） |
 
 ---
 
-## 本次更新（第二十四次：批次 D2-c — `llm:*` 收口：模型发现 + 连通性探测 2 频道）
+## 本次更新（第二十五次：批次 B 遗留补齐 —— `tauri-plugin-dialog` 接入，`dialog:select-folder` 真实化）
+
+> 与第二十四次同属 2026-10-08（一个工作日内两次更新，按 §9 规则写入同一份当日文件）。
+
+### 0. 缺口来源（**补录**：第二十四次快照漏记）
+
+批次 B 交付时留下了一处**自洽但在 UI 上表现为「点了没反应」**的缺口：
+
+- `dialog:select-folder` / `dialog:select-export-directory` 两频道在
+  `src/shared/migrated-channels.ts` 中**已登记为「已迁移」**，`lib.rs` 中也已注册同名命令
+  → 因此**不报「未迁移」提示**；但两个 Rust 命令当时是**恒返回 `None` 的骨架**，
+  而 `None` 与基线的 `result.canceled` 同义 → 用户观感是「弹窗没出现 / 选了等于取消」。
+- 同族的 `dialog:select-novel-files`（`ImportNovelDialog.tsx:198`）与
+  `dialog:select-knowledge-files`（`knowledge-service.ts:137`）**既未登记也未注册**，
+  属**批次 F / G**（需带 `ImportPurpose` 与 `projectSession` 语义），本轮**不动**。
+- 定性：这**不是新功能开发**，而是「契约已声称迁移、实现却是占位」的**诚实性缺口**，
+  故优先补齐，并借此把 dialog 能力一次性接好，供批次 F/G/H 复用。
+
+### 1. 依赖决策（Ask first —— 已获用户授权）
+
+| 方案 | 内容 | 结论 |
+|---|---|---|
+| **A（采纳）** | 只引 Rust crate `tauri-plugin-dialog`，前端**不加** `@tauri-apps/plugin-dialog` | ✅ 采纳 |
+| B | 同时加 npm 包，前端 `import { open } from '@tauri-apps/plugin-dialog'` 直调 | ❌ 否决：需在 `capabilities/default.json` 放开 `dialog:allow-open` 等 ACL，**扩大 webview 攻击面**，且破坏「前端只经自研命令、不直调插件」的既有约定 |
+
+**本机实测增量**（`cargo tree` 对照，Windows x64）：
+
+| 项 | 值 |
+|---|---|
+| 版本 | `tauri-plugin-dialog 2.8.1`（`Cargo.toml` 写 `"2"`，`Cargo.lock` 锁 2.8.1） |
+| 新增编译单元 | **8 个**（`tauri-plugin`、`tauri-plugin-fs`、`rfd 0.16.0`、`serde_repr`、`windows-sys 0.60.2`、`windows-targets` + 2 个 arch 包） |
+| `Cargo.lock` 新条目 | **14 个**（含 aarch64/i686/gnu 等**其他目标平台**的 `windows_*` 变体，本机不编译） |
+| 下载量 | ≈ 3.5 MB（**本轮为 0 下载**：crate 已在 `CARGO_HOME` 缓存） |
+| release 二进制约 | +0.1–0.3 MB（社区实测 plugins-workspace#1085 为 +0.13 MB） |
+| 常驻内存 | ≈ 0（无后台线程/轮询） |
+| 编译耗时 | 增量首次约 **+20–40 s**（本轮 `cargo check` 全量 10.2 s，dev 轮 24.91 s） |
+| 唯一真实成本 | `rfd 0.16` 把 `windows-sys` 锁在 **0.60**，与项目既有 `windows 0.62` **版本分叉**（各编一份）——由上游锁定，换方案也躲不掉 |
+| 连带收益 | 硬依赖 **`tauri-plugin-fs 2.6.0`** 被一并引入 → **批次 H 的 fs 授权域将来直接复用，勿重复引入**（注意届时保持版本一致） |
+| MSRV | 插件要求 **rustc ≥ 1.90**（本机 1.99.0 满足）；**CI 最低版本需相应抬高** |
+
+`Cargo.toml` 保留插件默认 features（`gtk3`）：该 feature 只影响 **Linux/BSD** 的 rfd 后端，
+Windows / macOS 无差异。
+
+### 2. Rust 侧四处改动
+
+| 文件 | 改动 |
+|---|---|
+| `src-tauri/Cargo.toml` | 新增 `tauri-plugin-dialog = "2"`（附决策注释）；按需清单中把 `fs` 从「待引入」移除 |
+| `src-tauri/src/lib.rs` | `.plugin(tauri_plugin_dialog::init())`；命令注册注释更新（`select-folder` 真实化 / `select-export-directory` 仍骨架） |
+| `src-tauri/src/commands/project.rs` | `dialog_select_folder()` **骨架 → 真实实现**；新增可复用纯函数 `file_path_to_string()`；新增 4 个单测 |
+| `src-tauri/src/commands/external_file_grant.rs` | **不改行为**（仍返回 `None`），仅把「为何此刻仍不实现」的**理由写进模块头与函数文档** |
+
+**`dialog_select_folder` 的关键实现取舍**（迁移自 `electron/controllers/project-controller.ts:801`
+的 `showOpenDialog({ properties: ['openDirectory','createDirectory'] })`）：
+
+1. **必须 `async`**：非 async 的 `#[tauri::command]` 在**主线程**执行，而插件文档明确
+   `blocking_*` 族**禁止在主线程调用**（会与事件循环死锁）。改 `async` 后命令跑在
+   `tauri::async_runtime` 线程上，主线程保持自由以驱动对话框消息循环。
+2. **`spawn_blocking` + `recv_timeout(600s)`**：等待放在阻塞线程池；超时按「取消」(`None`)
+   返回 —— 与基线 `result.canceled` 同义。之所以自己加超时：插件 `run_on_main_thread`
+   的结果被 `let _ =` 丢弃，极端情形（主线程已退出）下其 `blocking_*` 会**永久阻塞**。
+3. **显式父窗口**：基线的 `showOpenDialog` 默认以调用窗口为父；Tauri 侧需手动
+   `set_parent(&window)`（标签 `main`，对齐 `tauri.conf.json`），否则对话框会被
+   `decorations: false` 的无边框主窗口**遮挡**。
+4. **返回值净化**：`file_path_to_string()` 把 `FilePath` 归一为字符串 ——
+   `into_path()` 失败（如 Android `content://`）或结果为空串时一律按「取消」返回 `None`，
+   **绝不回传无法使用的值**。该函数为 `pub`，供批次 F/G 的文件选择复用。
+
+### 3. `capabilities/default.json` **未改动**（保持 `["core:default"]`）
+
+Rust 侧内部调用插件 API **不经过 webview ACL**，故**无需**追加 `dialog:default` / `dialog:allow-open`
+（这一判断修正了本轮开工前的预判方案）。同理 `migrated-channels.ts` 与前端 **零改动**：
+频道集合未变（`dialog:select-folder` 本就是已登记频道），命令签名也未变（无参、返回 `Option<String>`）。
+
+### 4. 为何 `dialog:select-export-directory` **仍**返回 `None`
+
+其返回类型是 **`ExternalDirectoryGrant`（grantId + 展示名，绝对路径不得越界回传，ADR 0002）**，
+而非路径 —— 签发 grant 需要 **grant 注册表**，该表与 `fs:grant-*` 三命令同在**批次 H**。
+若此刻就地签发一个**假 grantId**，界面会显示「已选择导出目录」而后续写入必然失败，
+**反而不如当前语义诚实**（`None` 与基线「用户取消」严格同义，`ExportDialog.tsx` 对 `null`
+即静默返回，无契约偏差）。**弹窗能力本轮已就绪**：待批次 H 落地 grant 域后，
+只需把选择结果喂给 grant 签发，插件侧无需再改。
+
+### 5. 验证与测试
+
+| 检查 | 结果 |
+|---|---|
+| `cargo check --all-targets` | **0 告警**（10.20 s） |
+| `cargo test --lib` | **310/310**（306 → +4） |
+| `pnpm typecheck` | exit 0 |
+| `pnpm run lint` | exit 0（`--max-warnings 0`） |
+| `pnpm run check:channels` | 104 命令、未迁移 **88**（不变）、orphan 空 |
+| GUI 冒烟（第七轮） | vite `453 ms` @5190 → cargo `Finished dev profile in 24.91s` → `Running target\debug\lorekeeper.exe`；**无 panic**、无编译告警；仅历史 `[ipc-client] setZoomFactor … Tauri …` 警告；进程树已清理 |
+
+**新增 4 个单测**（`commands/project.rs`，全部为纯函数、无 GUI 依赖）：
+Windows 绝对路径透传、**空路径按取消处理**、`file:///F:/…%20…` **百分号解码**、
+`content://` 等非 `file://` URI **拒绝转为路径**。
+
+> ⚠️ **仍未验证**：弹窗本身的**人工交互**（点「选择文件夹」是否真的弹出系统对话框、
+> 返回路径是否回填表单、取消是否静默）。自动化部分只能证明「编译通过 + 命令能注册 + 纯函数语义正确」。
+
+### 6. 交接给下次会话（**从这里接**）
+
+**当前工作区状态**：`master` 上有 **5 个未提交的已修改文件**（`Cargo.lock` / `Cargo.toml` /
+`lib.rs` / `commands/project.rs` / `commands/external_file_grant.rs`），全部属于本轮 dialog 接入，
+**自检全绿**（见 §5），**尚未提交**。
+
+**接续步骤（建议顺序）**：
+
+1. **提交本轮** —— 建议拆两个提交或合一：
+   `feat(tauri): 接入 tauri-plugin-dialog，dialog:select-folder 返回真实目录`；
+   提交说明用中文，注明「Ask first 依赖已获批准 + capabilities 未放开」。（**若不想提交，
+   也可先做第 2 步人工验证**。）
+2. **人工点验弹窗（唯一未完成的验收项）**：在 `tauri-app/` 下跑 `pnpm tauri dev`，
+   从「新建项目」入口点「选择文件夹」，确认：① 弹出系统原生目录对话框且**不被主窗口遮挡**；
+   ② 选中后路径回填正确；③ 点「取消」不报错、不写入。完成后把结果补进本快照。
+3. **再决定下一步批次**（二选一，与原建议一致）：
+   - **批次 E**（定稿不可逆 + 删除生命周期）—— 需**先获批**在 `schema.rs` 新增 3 张表：
+     `recovery_candidates`、`continuity_projection_meta`、`chapter_deletion_operations`；
+   - **或批次 F**（16 频道，零新依赖）。
+4. **`dialog:select-export-directory` 真实化随批次 H 一起做**（不要单独提前做，理由见 §4）。
+
+**⚠️ 待授权的决策点（阻塞项）**：`recovery-candidate`（4 频道）需在 `schema.rs` 新增
+`recovery_candidates` 表（+ 状态索引）—— **此授权用户尚未答复**（此前的「按照建议」只针对 dialog）。
+
+**红线提醒（每次接手都要过一遍）**：Tauri 侧禁止读 `AI_NOVEL_VELA_HOME`、禁止回退 `~/.vela`、
+禁止写 `.vela/vela.db`；项目库 = `<root>/.vela/lorekeeper.db`；全局数据根 =
+`AI_NOVEL_LOREKEEPER_HOME` 或 `~/.lorekeeper`；失败文案按基线 MUTATING 规则带 `"Error: "` 前缀
+（`commands/db.rs::mutating_error`）；前端只经自研命令、**不直调插件 API**。
+
+---
+
+## 上一次更新（第二十四次：批次 D2-c — `llm:*` 收口：模型发现 + 连通性探测 2 频道）
 
 ### 0. 范围与依赖
 
@@ -152,7 +284,7 @@ Kimi 越界文案、探测不带会话粘性、探测复用已验证推理指令
 
 ---
 
-## 上一次更新（第二十三次：批次 D2-b — LLM 生成 / 流式 / 取消 3 频道 + 3 事件）
+## 更早更新（第二十三次：批次 D2-b — LLM 生成 / 流式 / 取消 3 频道 + 3 事件）
 
 ### 0. 依赖决策（推翻了「`default-tls` = native-tls」的假设）
 
@@ -318,23 +450,46 @@ URL 用字符串拼接（`{base}/v1beta/models/{name}:generateContent` / `…:st
 
 ## 建议的下一步
 
-1. **⚙️ 先补 G5 压测**（本轮之后最短的债务）：`llm:stream-chunk` 已接通但「高频 chunk
-   跨 webview 桥的吞吐/延迟」仍无实测数据。建议写一个不带网络的本地回放（例如直接循环
-   `emit` N 次）测出 chunk/s 上限，再决定是否需要批量合并（inventory §G5 已预留该选项）。
-2. **双栈同库行为对照**：同目录下 Electron（`vela.db`）与 Tauri（`lorekeeper.db`）各写各库，
+1. **🖱️ 先做弹窗人工点验**（本轮唯一未完成的验收项，见第二十五次 §5）：
+   `pnpm tauri dev` → 新建项目 → 「选择文件夹」，验三条（弹出/回填/取消静默），
+   结果补回快照。顺手提交本轮的 5 个改动文件。
+2. **⚙️ 再补 G5 压测**：`llm:stream-chunk` 已接通但「高频 chunk 跨 webview 桥的吞吐/延迟」
+   仍无实测数据。建议写一个不带网络的本地回放（例如直接循环 `emit` N 次）测出 chunk/s 上限，
+   再决定是否需要批量合并（inventory §G5 已预留该选项）。
+3. **双栈同库行为对照**：同目录下 Electron（`vela.db`）与 Tauri（`lorekeeper.db`）各写各库，
    确认互不影响；顺带对照 `~/.vela/config.json` 与 `~/.lorekeeper/config.json` 的读写形态差异。
-3. **`vitest` 全量超时定位**（遗留项 7）。
-4. **批次 E**（定稿不可逆 + 删除生命周期，ADR 0003/0011 等量测试）：`finalization`（2，需补契约 G1）、
+4. **`vitest` 全量超时定位**（遗留项 7）。
+5. **批次 E**（定稿不可逆 + 删除生命周期，ADR 0003/0011 等量测试）：`finalization`（2，需补契约 G1）、
    `chapter-lifecycle`（4）、`continuity`（4）、`recovery-candidate`（4）、
    `drafts` 余 4（`authority-sequence` / `export-snapshot` / `export-authority-current` /
    `import-finalized-batch`）、`finalization-link`（1）。
-5. **或批次 F**（16 频道，零新依赖：一致性豁免 3 / 叙事线程 6 / 派生树 3 / 恢复候选 3 +
-   `kb:*` 需先定 LanceDB 取舍）。
+   **⚠️ 阻塞**：需先获批在 `schema.rs` 新增 `recovery_candidates` / `continuity_projection_meta` /
+   `chapter_deletion_operations` 三张表。
+6. **或批次 F**（16 频道，零新依赖：一致性豁免 3 / 叙事线程 6 / 派生树 3 / 恢复候选 3 +
+   `kb:*` 需先定 LanceDB 取舍）。该批次可顺带用本轮新增的 `file_path_to_string()`
+   落地两个文件选择频道（`dialog:select-novel-files` / `dialog:select-knowledge-files`）。
+7. **`dialog:select-export-directory` 真实化** 与 **`fs:grant-*` 三命令** 一并归入**批次 H**
+   （`tauri-plugin-fs 2.6.0` 已随本轮连带引入，届时**勿重复添加**）。
 
 ---
 
 ## 遗留项（沿用 2026-10-06 快照）
 
+- ✅ **批次 B 的 dialog 骨架缺口已补齐（第二十五次）**：`dialog:select-folder` 由「恒返回 `None`
+  的占位」改为**真实原生目录选择**（`tauri-plugin-dialog 2`，纯 Rust 侧，capabilities 未放开）。
+  **补录**：该缺口此前**未被记录**在任何快照里 —— 因为频道登记齐全、命令已注册，
+  表面无异常，仅表现为「点了没反应」；排查此类问题时须**核对命令实现是否为骨架**，
+  而非只看 `check:channels` 的 orphan 是否为空。
+- ⚠️ **`dialog:select-export-directory` 仍为取消骨架**（**有意为之**，非欠账）：弹窗能力已就绪，
+  阻塞点是**批次 H 的 grant 签发**（须回传 `grantId` 而非绝对路径，ADR 0002）。
+  详见第二十五次 §4。
+- ⚠️ **弹窗交互仍未人工验证**：`dialog:select-folder` 只完成「编译 + 注册 + 纯函数单测 + 启动冒烟」，
+  **真实点击行为（是否弹窗 / 是否被无边框主窗口遮挡 / 路径回填 / 取消静默）待下次会话人工点验**。
+- ⚠️ **`dialog:select-novel-files`（`ImportNovelDialog.tsx:198`）与
+  `dialog:select-knowledge-files`（`knowledge-service.ts:137`）既未登记也未注册** → 批次 F/G
+  （需带 `ImportPurpose` 与 `projectSession` 语义），本期未动。
+- ⚠️ **CI 最低 Rust 版本需抬高到 ≥ 1.90**（`tauri-plugin-dialog 2.8.1` 的 MSRV）；
+  本机 1.99.0 不受影响。
 - ✅ **批次 C GUI 实机验证（自动化部分已完成）**：三轮 `pnpm tauri dev` 冒烟通过；
   核心读写链路已由 `disk_e2e.rs` 用真实 `.vela/lorekeeper.db` 断言覆盖。
   **仍未人工验证**：界面交互本身（按钮触发、表单回显、错误提示的 UI 形式）。

@@ -68,11 +68,20 @@
 `project:get-runtime-context`、`project:create(config, requestToken, rendererProjectPath)`、`project:open(projectPath, requestToken, rendererProjectPath)`、`project:save`★、`project:update-config`★、`project:recent-list`、`project:recent-remove`、`project:delete`★（返回含 `directoryDeleted`/`databaseRestored`，须事务性恢复）、`project:smoke-open-request`、`project:smoke-open-confirm`、`dialog:select-folder`。
 核心语义：requestToken / rendererProjectPath 防陈旧窗口写入；`sessionLease` 由主进程签发冻结。
 **状态（2026-10-06 第八次更新）**：批次 B 已把这 10 频道接线完成（后 5 个当时为骨架）；批次 C 已将 `project:create/open/save/update-config/delete` **全部真实化**（项目清单探测/创建、rusqlite 打开 `.vela/vela.db`、租约签发、ProjectData 回传），已编译验证（`cargo test --lib` 64/64）并提交（`a8d742a`）。
+**状态（2026-10-08 第二十五次更新）**：`dialog:select-folder` 已由「恒返回 `None` 的骨架」改为**真实原生目录选择**（`tauri-plugin-dialog 2`，`async` + `spawn_blocking` + 主窗口 `set_parent`，返回**绝对路径**）。注意：该频道在迁移后仍**不接收 `projectSession` 尾参**（属能力域，见上文 §2），返回路径仅作父目录输入，随后由 `project:create`/`project:open` 做项目根校验。**弹窗交互待人工点验**。
 
 ### 4.7 FileChannels（7 + grant 3 + dialog 1）— controller: `fs-controller.ts` + `external-file-grant-controller.ts` — 批次 B
 基础（全部带 `expectedProjectPath`★）：`fs:read-file`、`fs:write-file`（返回 `commitState`）、`fs:list-dir`、`fs:mkdir`、`fs:check-exists`、`fs:read-json`、`fs:write-json`。
 授权域（ADR 0002，只带 `grantId`+相对路径，不暴露绝对路径）：`fs:grant-read-file`、`fs:grant-write-file`、`fs:grant-mkdir`；`dialog:select-export-directory` 返回 `ExternalDirectoryGrant`。
 Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不得绕过**。
+
+**状态（2026-10-08 第二十五次更新）**：`tauri-plugin-dialog 2.8.1` 已获批接入，其**硬依赖
+`tauri-plugin-fs 2.6.0` 已随之连带引入** —— 本批次将来落地 `fs:grant-*` 与
+`dialog:select-export-directory` 时**直接复用，勿重复添加**（注意保持版本一致）。
+`dialog:select-export-directory` 目前**仍返回 `None`（取消语义）**：弹窗能力已就绪，
+但该频道必须回传 `ExternalDirectoryGrant`（`grantId` + 受限相对路径，**绝不暴露绝对路径**，ADR 0002），
+而 grant 注册表尚未迁移 —— 若此刻签发假 `grantId`，界面会显示「已选择导出目录」而后续写入必然失败。
+故该频道**随 `fs:grant-*` 三命令一并归入批次 H**。
 
 ### 4.8 AppDataChannels（7）— controller: `app-data-controller.ts` — 批次 H
 `prompt:load-global`（返回 `AppPromptLoadReceipt` 含 diagnostics）、`prompt:save-global`、`prompt:delete-global`；`skills:list-user`、`skills:inspect-github`、`skills:install-github`、`skills:uninstall-user`。固定 app-data 位置，渲染进程不决定路径。
@@ -166,12 +175,12 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 |---|---|---|---|
 | **0** | Tauri 脚手架（Ask first：新增 `src-tauri/` + 依赖）、AppState + invoke_handler 骨架 | — | 不动 Electron 代码 |
 | **A** | window(+G4 决策协议)、config、skin、official-homepage、model-provider-resource | 0 | 前端可见性最快，先打通 invoke/event 双通道 |
-| **B** | project、fs 基础、external-file-grant、dialog | 0 | 会话租约签发/校验（ADR 0001）、fs 授权（ADR 0002） |
+| **B** | project、fs 基础、external-file-grant、dialog | 0 | 会话租约签发/校验（ADR 0001）、fs 授权（ADR 0002）。**2026-10-08 补记**：批次 B 交付时 `dialog:select-folder` / `dialog:select-export-directory` 均为**恒返回 `None` 的骨架**（频道登记齐全、命令已注册，故 `check:channels` 不报异常，UI 仅表现为「点了没反应」——排查类似问题须核对**命令实现是否为骨架**）。**已补齐 ✅**：`dialog:select-folder` 真实化（`tauri-plugin-dialog 2`，Ask first 已批准）；`dialog:select-export-directory` 仍为取消骨架，**有意为之**，随批次 H 的 grant 域一并落地 |
 | **C** | db 子域逐步：project-core → blueprints → characters/roster → drafts → revisions → reviews → post-process → summary/llm-stats | B | 🟡 **进行中（2026-10-06 第八次更新）**：`project_core` 子域**已完成并提交**（`ff7fbd8` + `a8d742a`，Rust 64/64、0 告警）；剩余子域按上方进度表逐个迁移（入口见 `docs/handoffs/2026-10-06-tauri-migration-status.md` 第八次快照「下一子域接续入口」）。一域一仓；行为与 Electron 对照 |
 | **D** | llm 全部 + 3 个流事件（G5 性能实测） | C | generation-parameter-policy 复刻；finishReason 显式终态。**2026-10-07 拆分**：**D1 ✅** 模型管理 7 频道（零新增依赖）+ config 真实持久化；**2026-10-08 完成 D2-a/b/c ✅**：生成参数策略与执行租约（D2-a）、HTTP 生成/流式/取消（D2-b）、`llm:*` 收口——模型发现与连通性探测（D2-c）。`llm:` 前缀下 14 个 invoke 频道已**全部迁移** |
 | **E** | finalization(G1 补契约)、chapter-lifecycle、continuity、recovery-candidate、draft-import-finalized-batch | C, D | 定稿不可逆 + 删除生命周期（ADR 0003/0011）等量测试 |
 | **F** | kb 全部、plot-tree、narrative-thread、consistency-exemption | C | AppResult 错误码对齐；LanceDB 评估 |
 | **G** | import-run 全套（18 频道状态机）、dialog:select-novel-files、import-global-facts | C | 执行租约 `ImportRunExecutionLease`；断点恢复语义 |
-| **H** | update（updater 插件，G3）、mcp、prompt/skills | 任意 | macOS 更新 = 仅打开 Release 页 |
+| **H** | update（updater 插件，G3）、mcp、prompt/skills、**fs:grant-\* 三命令 + `dialog:select-export-directory`**（第二十五次归入） | 任意 | macOS 更新 = 仅打开 Release 页；`tauri-plugin-fs 2.6.0` **已随 dialog 插件连带引入**，勿重复添加；grant 签发只回传 `grantId`（ADR 0002） |
 
 每批次验收：Rust 单元测试 + `cargo test` + 前端 `pnpm typecheck`/相关 `pnpm test` + 与 Electron 版行为对照。
