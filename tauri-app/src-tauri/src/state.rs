@@ -47,6 +47,9 @@ pub struct AppState {
     pub(crate) fs_lock: Mutex<()>,
     /// 批次 D2：模型执行租约注册表（进程内存态，重启即失效）
     pub(crate) llm_leases: Mutex<crate::llm::lease::LlmLeaseStore>,
+    /// 批次 D2-b：活跃流式生成任务（`requestId` → 取消句柄）。
+    /// 进程内存态；重启即失效（对齐基线 `activeStreams`）。
+    pub(crate) llm_streams: Mutex<std::collections::HashMap<String, crate::commands::LlmStreamHandle>>,
 }
 
 impl AppState {
@@ -62,6 +65,7 @@ impl AppState {
             latest_open_token: Mutex::new(None),
             fs_lock: Mutex::new(()),
             llm_leases: Mutex::new(crate::llm::lease::LlmLeaseStore::new()),
+            llm_streams: Mutex::new(std::collections::HashMap::new()),
         }
     }
 

@@ -107,6 +107,13 @@ pub struct LeaseModelProfile<'a> {
     pub capabilities: Option<&'a serde_json::Value>,
     pub purposes: Option<&'a serde_json::Value>,
     pub embedding_options: Option<&'a serde_json::Value>,
+    /// 基线 `ModelProfile.reasoningOverride` 的逐字镜像。
+    ///
+    /// **刻意保留**：租约快照必须与基线 `ModelProfile` 字段集一致（快照是冻结的
+    /// 作者事实，不得因当前调用面未消费就删字段）。推理覆盖的**消费点**是
+    /// [`crate::llm::params::GenerationParameterModel::from_value`]，它直接读快照
+    /// JSON；[`Self::capability_profile`] 按基线语义只透传四项端点身份。
+    #[allow(dead_code)]
     pub reasoning_override: Option<&'a str>,
 }
 
@@ -432,7 +439,8 @@ impl LlmLeaseStore {
         }
     }
 
-    /// 自定义 TTL（仅测试使用）。
+    /// 以自定义 TTL 构造（仅测试需要；生产路径用 [`Self::new`] 的默认 TTL）。
+    #[cfg(test)]
     pub fn with_ttl(ttl_ms: u64) -> Self {
         LlmLeaseStore {
             ttl_ms,
@@ -506,7 +514,8 @@ impl LlmLeaseStore {
         self.tombstones.retain(|_, expires_at| *expires_at > now_ms);
     }
 
-    /// 当前存活租约数量（测试与诊断用）。
+    /// 当前存活租约数量（仅测试与诊断用）。
+    #[cfg(test)]
     pub fn live_lease_count(&self) -> usize {
         self.records.len()
     }

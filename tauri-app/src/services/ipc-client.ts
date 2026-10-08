@@ -141,6 +141,12 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   // 批次 D2：LLM 生成执行（租约 2 频道）
   'llm:begin-execution-lease': ['modelId'],
   'llm:close-execution-lease': ['leaseId'],
+  // 批次 D2-b：LLM 生成 / 流式 / 取消（3 频道）
+  // 注：`llm:generate-stream` 的 `requestId` 由渲染层生成后传入，与 Rust
+  // `llm_generate_stream(request_id, request)` 一一对应。
+  'llm:generate': ['request'],
+  'llm:generate-stream': ['requestId', 'request'],
+  'llm:cancel': ['requestId'],
 }
 
 /** 频道 → Tauri 命令名（`channel:seg-name` → `channel_seg_name`）。 */

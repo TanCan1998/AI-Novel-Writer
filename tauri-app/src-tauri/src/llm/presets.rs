@@ -101,6 +101,10 @@ pub struct ModelCapabilityProfile<'a> {
 
 impl<'a> ModelCapabilityProfile<'a> {
     /// 从模型 JSON 条目读取（非字符串字段按缺失处理，对齐基线的 `typeof x !== 'string'`）。
+    ///
+    /// 仅测试使用：生产路径由 [`crate::llm::lease::LeaseModelProfile::capability_profile`]
+    /// 直接从冻结快照构造，避免为「能力证据」再解析一次 JSON。
+    #[cfg(test)]
     pub fn from_value(model: &'a serde_json::Value) -> Self {
         ModelCapabilityProfile {
             provider: model.get("provider").and_then(|value| value.as_str()),

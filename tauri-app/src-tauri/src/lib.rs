@@ -13,10 +13,7 @@ mod db;
 mod disk_e2e;
 mod draft_source_guard;
 mod json_store;
-// 批次 D2：LLM 生成执行域（预设目录 / 推理策略 / 生成参数 / 执行租约）。
-// 其中「推理映射」与「生成参数」的调用面在 D2-b（HTTP 生成 / 流式）落地前仅由本模块
-// 测试使用，故暂以 allow(dead_code) 抑制“仅测试使用”告警；D2-b 接通后应移除本注解。
-#[allow(dead_code)]
+// 批次 D2：LLM 生成执行域（预设目录 / 推理策略 / 生成参数 / 执行租约 / HTTP 生成链）。
 mod llm;
 mod project_access;
 mod repositories;
@@ -156,6 +153,10 @@ pub fn run() {
             // 批次 D2：LLM 生成执行（租约 2 频道）
             commands::llm_begin_execution_lease,
             commands::llm_close_execution_lease,
+            // 批次 D2-b：LLM 生成 / 流式 / 取消（3 频道 + 3 事件）
+            commands::llm_generate,
+            commands::llm_generate_stream,
+            commands::llm_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

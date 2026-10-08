@@ -127,14 +127,18 @@ describe('channel migration coverage', () => {
     }
   })
 
-  it('未迁移频道会被前置拦截（如批次 D2 的 llm:generate）', () => {
-    expect(MIGRATED_CHANNELS.has('llm:generate')).toBe(false)
+  it('未迁移频道会被前置拦截（如批次 D2 的 llm:discover-models）', () => {
+    expect(MIGRATED_CHANNELS.has('llm:discover-models')).toBe(false)
     expect(MIGRATED_CHANNELS.has('kb:search')).toBe(false)
     // 已迁频道不受影响
     expect(MIGRATED_CHANNELS.has('config:get')).toBe(true)
     expect(MIGRATED_CHANNELS.has('llm:list-models')).toBe(true)
     expect(MIGRATED_CHANNELS.has('llm:begin-execution-lease')).toBe(true)
     expect(MIGRATED_CHANNELS.has('llm:close-execution-lease')).toBe(true)
+    // 批次 D2-b：生成 / 流式 / 取消
+    expect(MIGRATED_CHANNELS.has('llm:generate')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('llm:generate-stream')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('llm:cancel')).toBe(true)
     expect(MIGRATED_CHANNELS.has('db:project-clear-generated-data')).toBe(true)
   })
 

@@ -23,6 +23,7 @@ mod external_file_grant; // 批次 B：外部文件授权
 mod db; // 批次 C：项目数据库
 mod llm; // 批次 D1：LLM 模型管理（配置读写 7 频道）
 mod llm_execution; // 批次 D2：LLM 生成执行（租约 2 频道）
+mod llm_generation; // 批次 D2-b：LLM 生成 / 流式 / 取消（3 频道 + 3 事件）
 
 /// 再导出各批次模块的全部公开项（含 Tauri 命令宏 `__cmd__*`），
 /// 供 `lib.rs` 的 `generate_handler![commands::xxx]` 与 `state.rs` 引用。
@@ -32,6 +33,7 @@ pub use external_file_grant::*;
 pub use fs::*;
 pub use llm::*;
 pub use llm_execution::*;
+pub use llm_generation::*;
 pub use model_provider_resource::*;
 pub use official_homepage::*;
 pub use project::*;

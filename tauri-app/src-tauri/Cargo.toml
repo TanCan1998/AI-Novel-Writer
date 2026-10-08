@@ -26,10 +26,25 @@ sha2 = "0.10"
 # WHATWG URL 解析 —— 批次 D2 对齐基线 `new URL()` 语义（端点规范化 / 指纹）。
 # 同样已在 Cargo.lock（tauri → reqwest 的传递依赖），声明为直接依赖不产生任何新下载。
 url = "2"
+# 基线 `stripThinking()` 的三条替换规则（`<think>` 剥离链）。
+# 已在 Cargo.lock（1.13.1），声明为直接依赖不产生任何新下载。
+regex = "1"
+# 批次 D2-b：LLM 生成 / 流式（对齐基线 `fetch` + 手写 SSE 行解析）。
+#
+# ⚠️ 必须 `default-features = false`：reqwest 0.13 的 `default = ["default-tls", ...]`，
+# 而 `default-tls = ["rustls"]` —— rustls 会拉 `aws-lc-rs`，本机无 CMake/C 构建链，
+# 必然编译失败。`native-tls` 在 Windows 走 `schannel`（纯 FFI），无需构建链。
+# 刻意不启用：`charset`（基线 Node `res.text()` 恒按 UTF-8 解码）、`http2`
+# （Node fetch/undici 为 HTTP/1.1）、`system-proxy`（代理在代码内显式装配）。
+reqwest = { version = "0.13", default-features = false, features = [
+    "json",
+    "stream",
+    "native-tls",
+    "socks",
+] }
 
 # 按需引入（不提前加，避免无用编译）：
 # - rusqlite（bundled feature，避免依赖系统 sqlite）→ 批次 C 数据库层
-# - reqwest                                 → 批次 D2 生成/流式/发现（需 Ask first 批准）
 # - tauri-plugin-{fs,updater,shell,notification} → 批次 B/H 按频道批准
 
 [profile.dev]
