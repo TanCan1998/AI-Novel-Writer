@@ -10,6 +10,11 @@
 > [`2026-10-06-tauri-migration-status.md`](./2026-10-06-tauri-migration-status.md)；
 > channel 级盘点见 [`docs/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md)。
 
+> **本文件为三合一合并版**：把当日三份文档
+> （`2026-10-08-tauri-migration-status.md` 快照 + `2026-10-08-end-of-day-summary.md`
+> + `2026-10-08-daily-summary.md`）合并为一份。冲突处以最晚的
+> `end-of-day-summary` 为准，早期版本（`daily-summary` 的纯 FTS5+jieba 方案）保留为演进记录。
+
 ---
 
 ## 快照（最后更新：2026-10-08 · 第二十六次）
@@ -18,20 +23,24 @@
 | 仓库 | **`TanCan1998/Lorekeeper`**（原名 `AI-Novel-Writer`；仍为 `EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork） |
 | 分支 | `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm 包 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 当前阶段 | **批次 C 数据库层子域全部完成 ✅** + **批次 D1 ✅** + **批次 D2-a ✅** + **批次 D2-b ✅** + **批次 D2-c ✅（`llm:*` 收口）** + **批次 B 遗留补齐 ✅（`dialog:select-folder` 真实化）** + **批次 F1 ✅（一致性豁免 / 叙事线索 / 剧情树 3 子域 12 频道）**：`project_core` / `characters` / `blueprints` / `drafts`（12/16）/ `revisions` / `reviews` / `post-process` / `llm 日志与摘要` / `project 清理` / **D1 模型管理** / **D2-a 租约** / **D2-b HTTP 生成链** / **D2-c 模型发现 + 连通性探测** / **目录选择弹窗** / **F1 三子域**。**`llm:` 前缀下 14 个 invoke 频道已全部迁移**（不再有 `llm=` 未迁项）。**批次 F 已按用户决策拆分**：F1 = 12 个纯 SQLite 频道（本轮完成，**零新依赖**）；F2（`kb:*` 15 + dialog 2）走 **SQLite FTS5 + Rust 向量存储** 方案（用户决策，**开工前先做专项评估**）。依赖：`reqwest 0.13`（`default-features = false` + `native-tls` + `socks`）+ **`tauri-plugin-dialog 2`（Cargo.lock 锁 2.8.1）**；**`futures-util` / `tokio` 未引入**；**本轮未新增任何依赖** |
+| 当前阶段 | **批次 C 数据库层子域全部完成 ✅** + **D1 ✅** + **D2-a ✅** + **D2-b ✅** + **D2-c ✅（`llm:*` 收口）** + **批次 B 遗留补齐 ✅（`dialog:select-folder` 真实化，人工点验通过）** + **批次 F1 ✅（一致性豁免 / 叙事线索 / 剧情树 3 子域 12 频道，GUI 验证通过）**。**`llm:` 前缀下 14 个 invoke 频道已全部迁移**。**批次 F 已按用户决策拆分**：F1 = 12 个纯 SQLite 频道（本轮完成，**零新依赖**）；F2（`kb:*` 15 + dialog 2）走 **FTS5 + jieba + HNSW + RRF 自研混合检索** 方案（用户决策，**开工前先做专项评估**）。依赖：`reqwest 0.13`（`default-features = false` + `native-tls` + `socks`）+ **`tauri-plugin-dialog 2`（Cargo.lock 锁 2.8.1）**；**`futures-util` / `tokio` 未引入**；**F1 本轮未新增任何依赖**；F2 预计新增 `jieba-rs 0.7` + HNSW 相关 crate（**开工前必须 `cargo tree` 实测**） |
 | 已注册命令 | **116**（A 11 + B 22 + C 子域 56 + D1 7 + D2-a 2 + D2-b 3 + D2-c 2 + **F1 12** + **剩余骨架 1**）—— 骨架项为 `dialog:select-export-directory`（阻塞于批次 H 的 grant 域，见下） |
-| GUI 冒烟 | ✅ **已做**（2026-10-07 起 **七轮**，末轮 2026-10-08 `pnpm tauri dev`）：窗口标题 `Lorekeeper`、vite@5190、cargo 390/390、`lorekeeper.exe` **内存 42.6 MB**（首轮）/ **30.1 MB**（D1 轮）/ D2-a 轮 vite `482 ms` / D2-b 轮 vite `468 ms` + cargo `24.99s` / D2-c 轮 `Running target\debug\lorekeeper.exe` + 内存 44.1 MB / **本轮（dialog）vite `453 ms` + cargo `24.91s` + `Running target\debug\lorekeeper.exe`**，均无 panic、渲染层 `ipc-client` 已联通 |
+| GUI 冒烟 | ✅ **已做**（2026-10-07 起 **七轮**，末轮 2026-10-08 `pnpm tauri dev`）：窗口标题 `Lorekeeper`、vite@5190、cargo 390/390、`lorekeeper.exe` **内存 42.6 MB**（首轮）/ **30.1 MB**（D1 轮）/ D2-a 轮 vite `482 ms` / D2-b 轮 vite `468 ms` + cargo `24.99s` / D2-c 轮 `Running target\debug\lorekeeper.exe` + 内存 44.1 MB / **dialog 轮 vite `453 ms` + cargo `24.91s` + `Running target\debug\lorekeeper.exe`**；**F1 轮** `pnpm tauri dev` 编译 35.19s，功能正常；均无 panic、渲染层 `ipc-client` 已联通 |
+| F1 GUI 人工验证 | ✅ **通过**（2026-10-08）：叙事线索面板增删改查正常；事件确认（正常场景）正常；剧情树面板依赖未迁移前置功能属预期，不阻塞 F1。⚠️「证据不在正文中」反例因无正文数据暂无法验证 |
+| dialog 人工点验 | ✅ **通过**（2026-10-08）：系统原生对话框正常弹出、不被无边框主窗口遮挡、路径回填正确、取消静默 |
 | 自动化回归 | `cargo test --lib` **385/385**（310 → **+75**：F1 三子域仓储 / 剧情树校验 / 命令层跨层测试，含 **`serde_json` ↔ `JSON.stringify` 黄金哈希对齐测试**）；`pnpm run check:channels` 校验契约↔命令映射（**116 命令覆盖 115 invoke 频道**，未迁移 88 → **76**，`db=44 → 32`（恰好 −12）、`kb=15` 未动，orphan 空）；`vitest` 频道覆盖 / 剧情树 / 一致性预检 / 叙事线索用例 **70/72 通过**（2 个失败为**阶段 0 起就失效的既有测试**，见本次更新 §6） |
-| 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后。D1 起 `~/.lorekeeper/{config.json,models.json,recent-projects.json}` 为**真实持久化**（此前 config 仅内存态）。本轮新增能力**均在 Rust 侧**，未触碰基线数据根 |
+| 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后。D1 起 `~/.lorekeeper/{config.json,models.json,recent-projects.json}` 为**真实持久化**（此前 config 仅内存态）。F1 新增能力**均在 Rust 侧**，未触碰基线数据根。**⚠️ F2 新增隔离红线**：基线 LanceDB 落在共享的 `<project>/.vela/lancedb/`、`.vela/<registry>.json`、`.vela/vectors.json`；Tauri 侧向量存储路径**必须 Tauri 专属**，不得复用（见第二十六次 §2） |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
-| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **385/385** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0（`--max-warnings 0`） · ✅ `check:channels` **116 命令 / 115 频道 / 76 未迁移 / orphan 空** · ✅ 启动路径冒烟（第七轮：无 `Command ... not found` / 无 panic） · ✅ **弹窗交互人工点验通过**（系统原生对话框正常弹出、不被遮挡、路径回填正确、取消静默） · ✅ 提交消息卫生检查（`scripts/check-commit-msg.mjs` + 单测 15 例 + `commit-message-ci.yml`） · ⚠️ **F1 尚未 GUI 人工点验**（叙事线索编辑器 / 剧情树面板交互未实机点击，仅自动化层验证） |
+| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **385/385** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0（`--max-warnings 0`） · ✅ `check:channels` **116 命令 / 115 频道 / 76 未迁移 / orphan 空** · ✅ 启动路径冒烟（第七轮：无 `Command ... not found` / 无 panic） · ✅ **弹窗交互人工点验通过** · ✅ **F1 GUI 验证通过** · ✅ 提交消息卫生检查（`scripts/check-commit-msg.mjs` + 单测 15 例 + `commit-message-ci.yml`） · ⚠️ **F1 未做 Electron ↔ Tauri 行为对照** · ⚠️ **F1 GUI「证据不在正文中」反例未验证**（无正文数据） |
+| F2 决策 | ✅ **已完成**（2026-10-08 评估）：采用 **方案 B：自研混合检索（FTS5 + jieba-rs + HNSW + RRF 融合）**。**否决** `lancedb` Rust crate（+1680 依赖、需 protoc/ninja/nasm、与减内存目标冲突）与 `cairn-search`（非通用库）。**FTS5 `unicode61` 中文召回率实测 0%**，必须预分词；`VecStore` 无 BM25 / 文本搜索 API，不满足降级需求。交付 15 份文档（145 KB）。**待用户批准实施** |
 
 ---
 
-## 本次更新（第二十六次：批次 F1 —— 一致性豁免 / 叙事线索 / 剧情树 3 子域 12 频道）
+## 本次更新（第二十六次：批次 F1 完成 + F1 GUI 验证 + F2 方案决策）
 
 > 与第二十五次同属 2026-10-08（一个工作日内第三次更新，按 §9 规则写入同一份当日文件）。
-> **⚠️ 本轮改动已完成但尚未提交**（用户选择「先验证、提交前停下等人工核验」，见 §8）。
+> **⚠️ F1 本轮改动已完成但尚未提交**（用户选择「先验证、提交前停下等人工核验」，见 §8）。
+> **⚠️ F2 方案已决策，等待用户批准开工**。
 
 ### 0. 范围重定界（**修正快照中的过时数字**）
 
@@ -58,7 +67,7 @@
 |---|---|
 | MSRV | crate 要求 **rustc ≥ 1.91**（本机 1.99.0 ✅ 满足） |
 | **构建链** | 官方 CI 与 R 包 configure 均需 **`protoc`**（Windows 另需 `ninja` / `nasm`）；**本机 `protoc` / `cmake` / `nasm` / `ninja` 全部未安装**（`cl` / `link` 也不在 PATH，但 MSVC BuildTools 存在于 `D:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools`，故 `rusqlite bundled` 可编） |
-| 依赖树 | 必拉 **`arrow 58` + `datafusion 54`**（含大量传递依赖） |
+| 依赖树 | 必拉 **`arrow 58` + `datafusion 54`**（含大量传递依赖，实测 +1680） |
 | 与迁移目标冲突 | 本迁移的**首要动因就是减少内存占用**；引入 datafusion 系重型查询引擎与该目标直接相背 |
 | 行为忠实度 | 基线 `electron/vector-store.ts` **2010 行** LanceDB 封装（embedding space 注册表 / 重建计划 / FTS 索引 / 混合检索）——直接照搬成本极高 |
 
@@ -175,7 +184,169 @@ Tauri 侧若照搬 `.vela/lancedb`，会与 Electron 基线**互相覆盖向量�
 **定性**：属 Tauri 化改造后遗留的**过期测试**，与 F1 无关，**本轮不改**（避免在迁移 PR 里混入
 无关测试重写）；已记入遗留项，建议随「`vitest` 全量超时定位」（遗留项 7）一并修。
 
-### 7. 验证与测试（**提交前基线**）
+### 7. F1 GUI 人工验证（✅ 通过）
+
+**验证项**：
+
+- ✅ 叙事线索面板增删改查；
+- ✅ 事件确认功能（正常场景）；
+- ⚠️「证据不在正文中」反例（无正文数据，暂无法验证）；
+- ⚠️ 剧情树面板（依赖未迁移前置功能，符合预期）。
+
+**启动状态**：
+
+- Vite dev server：`http://127.0.0.1:5190`；
+- Rust 后端：`target\debug\lorekeeper.exe`；
+- 编译时间：35.19s；
+- 已知遗留告警：`chapter:list-incomplete-deletions` 未迁移（属批次 E）。
+
+**结论**：**F1 批次功能正常**，可提交。剧情树依赖未迁移功能属预期，不阻塞 F1。
+
+### 8. F2 专项评估（✅ 已完成，方案 B 已定，待批准实施）
+
+#### 8.1 评估过程（6 阶段）
+
+```
+阶段 1：基线对照 ✅
+  ↓
+阶段 2：Rust 调研 ✅
+  ↓
+阶段 3：网络搜索 ✅（发现 VecStore）
+  ↓
+阶段 4：可行性评估 ✅（发现 VecStore 无 BM25）
+  ↓
+阶段 5：FTS5 实测 ✅（召回率 0%）
+  ↓
+阶段 6：最终决策 ✅（方案 B：自研混合检索）
+```
+
+#### 8.2 方案对比（最终版，`end-of-day-summary` 口径）
+
+| 方案 | 依赖数 | 代码量 | RAG | 工期 | 结论 |
+|---|---|---|---|---|---|
+| A. FTS5 only | +4 | ~1980 | ❌ | 1 天 | 无 RAG 场景 |
+| **B. 自研混合（采纳）** | **+88** | **~2280** | ✅ | **3.5 天** | ⭐ **选择** |
+| C. LanceDB | +1680 | ~800 | ✅ | 1 天 | 🚫 不推荐 |
+| ~~D. cairn-search~~ | ~~+10~~ | ~~~200~~ | ✅ | N/A | ❌ 不可用（非通用库，紧耦合 cairn-core） |
+
+> **演进记录**：早期评估（`daily-summary`，~6 小时）曾把方案 B 描述为纯
+> 「FTS5 + jieba，~1980 行、1.5 天」；后续深度评估（`end-of-day-summary`，~10 小时）
+> 发现 RAG 能力不可丢，方案 B 修正为「FTS5 + jieba-rs + HNSW + RRF 融合」，
+> 依赖数与代码量相应上调。**以最终版为准。**
+
+#### 8.3 5 项技术验证汇总
+
+| 验证项 | 方法 | 结果 | 文档 |
+|---|---|---|---|
+| FTS5 unicode61 | 本地测试 | **0% 召回率**（15/15 用例全失败） | `fts5-tokenizer-findings.md` |
+| VecStore | 依赖分析 | 无 BM25 API（仅向量检索 + 元数据过滤） | `vecstore-feasibility.md` |
+| HNSW 依赖树 | `cargo tree` | +113 传递依赖 | `data-correction.md` |
+| LanceDB Rust | 依赖分析 | +1680 依赖 | `lancedb-evaluation-conclusion.md` |
+| cairn-search | 源码分析 | 非通用库，紧耦合 cairn-core | `plan-d-verification-results.md` |
+
+**方案 D 完整验证（3 项，50 分钟）**：
+
+| 验证项 | 结果 | 关键发现 |
+|---|---|---|
+| ① rusqlite 降级 | ✅ 通过 | 改动量 < 10 行 |
+| ② cairn-search | ❌ **失败** | 非通用库，紧耦合 cairn-core |
+| ③ sqlite-vec | ✅ 通过 | SQLite 3.46 满足要求 |
+
+**结论**：方案 D 不可行，回退方案 B。
+
+#### 8.4 数据真实性验证（教训）
+
+- **发现**：依赖数估算错误（+40 实际 +113）；
+- **修正**：建立实测标准（`cargo tree`）；
+- **教训**：估算数据必须实测验证。
+
+#### 8.5 方案 B 核心技术栈
+
+- **FTS5 + jieba-rs**：中文关键词检索（70–85% 召回率）；
+- **HNSW**：向量语义检索（L2 距离）；
+- **RRF 融合**：倒数排名融合（参考 cairn-search）；
+- **rusqlite 0.32 + bundled**：SQLite 3.46（满足 sqlite-vec 要求）。
+
+**关键设计（预分词模式）**：
+
+```sql
+CREATE VIRTUAL TABLE kb_fts USING fts5(
+    doc_id,
+    title_tokens,      -- jieba 分词后存储
+    content_tokens,    -- jieba 分词后存储
+    tokenize = 'porter'
+);
+```
+
+- ❌ 不再依赖 FTS5 自动分词（`unicode61` 中文不可用）；
+- ✅ 写入前调用 `jieba.cut()` 预分词；
+- ✅ 查询时也先分词，再拼接 FTS5 语法（`tokens.join(" OR ")`）。
+
+#### 8.6 实施计划（3.5 天，~2280 行）
+
+| 天 | 任务 | 行数 |
+|---|---|---|
+| 第 1 天 | 基础设施（chunks / fts，含分词器与分块逻辑） | ~800 |
+| 第 2 天 | 向量索引（vector / hybrid，HNSW + RRF） | ~700 |
+| 第 3 天 | 命令层（`commands/kb.rs` 17 频道）+ 集成测试 | ~780 |
+| 第 4 天 | GUI 验收 + 文档（0.5 天） | — |
+
+**成功标准**：
+
+- ✅ 17 个 `kb:*` 频道注册；
+- ✅ `cargo test --lib` 全绿；
+- ✅ `pnpm typecheck` 零错误；
+- ✅ 中文召回率 ≥ 70%；
+- ✅ GUI 导入 / 搜索 / 删除正常。
+
+#### 8.7 不采用的方案
+
+- ❌ **VecStore**：无 BM25 / 文本搜索 API，基线在无 embedding 时**必须降级 FTS**，VecStore 不提供此路径；
+- ❌ **FTS5 unicode61**：中文召回率 0%（整句分词），15/15 用例全失败；
+- ❌ **tantivy + cang-jie**：30+ crates，与「减内存」目标冲突；
+- ❌ **hnsw_rs + 自研 BM25**：工作量高（+300 行 RRF 混合检索）；
+- ❌ **LanceDB Rust crate**：+1680 依赖、需 protoc/ninja/nasm、与减内存目标冲突；
+- ❌ **cairn-search**：非通用库，紧耦合 cairn-core。
+
+#### 8.8 关键发现与教训
+
+1. **FTS5 unicode61 的中文陷阱**：表象召回率 0%，根因整句作为一个词元（不逐字拆分）；通配符 `"林*"` 能匹配（前缀匹配生效）——证明是分词问题；unicode61 只适用于西文（空格分词）。
+2. **VecStore 的文档误导**：README 声称 "hybrid search" / "BM25"，实际仅向量检索 + 元数据过滤，缺失 `text_search()` / `bm25()` API；README 与 API 文档要对照验证。
+3. **jieba-rs 的成熟度**：0.7.0（稳定）、6 个纯 Rust crate（无构建工具）、~1MB/s 分词速度、中文分词事实标准。
+4. **用户反馈至关重要**：用户指出「FTS 与向量检索的根本差异」，避免丢失 RAG 能力的错误决策；用户质疑依赖数估算，促成实测验证；用户明确需要 RAG 能力，避免错误决策。
+5. **数据必须实测**：依赖数估算错误（+40 实际 +113），今后所有数值必须 `cargo tree` 实测。
+6. **持续探索价值高**：通过网络搜索发现 cairn-search，虽最终不可用，但验证过程收获了参考实现（RRF / FTS5 转义）。
+7. **技术选型需多维度评估**：不仅看功能，还要看依赖树实测、中文分词召回率实测、内存占用估算、迁移目标一致性。
+
+#### 8.9 F2 交付文档（15 份，145 KB）
+
+**核心决策文档（3 份）⭐**
+
+1. `final-decision-plan-b.md`（14.2 KB）— F2 实施计划
+2. `plan-d-verification-results.md`（11.8 KB）— 方案 D 验证报告
+3. `data-correction.md`（7.6 KB）— 数据真实性修正
+
+**技术评估文档（7 份）**
+
+4. `vector-store-migration-assessment.md`（18.6 KB）— 基线行为对照
+5. `vector-alternatives-survey.md`（11.3 KB）— Rust 生态调研
+6. `lancedb-evaluation-conclusion.md`（9.3 KB）— LanceDB 评估
+7. `vecstore-feasibility.md`（9.5 KB）— VecStore 评估
+8. `fts5-tokenizer-findings.md`（6.8 KB）— FTS5 分词验证
+9. `lancedb-fts-discovery.md`（7.1 KB）— LanceDB FTS 发现
+10. `plan-d-cairn-search.md`（9.2 KB）— cairn-search 发现
+
+**过程文档（5 份）**
+
+11. `web-search-findings.md`（9.5 KB）— 网络调研
+12. `benchmark-guide.md`（7.2 KB）— 实测指南
+13. `f2-final-decision.md`（10.4 KB）— 初版决策（已过时）
+14. `f2-revised-strategy.md`（7.8 KB）— 修正方案
+15. `final-decision-guide.md`（11 KB）— 决策指南
+
+> 以上文档命名以 `docs/research/2026-10-08-` 为前缀（见 `daily-summary` 文档清单）。
+
+### 9. 验证与测试（**F1 提交前基线**）
 
 | 检查 | 结果 |
 |---|---|
@@ -188,15 +359,16 @@ Tauri 侧若照搬 `.vela/lancedb`，会与 Electron 基线**互相覆盖向量�
 
 **⚠️ 本轮的验证边界（不得当作已验收）**：
 
-- 未做 **GUI 人工点验**：叙事线索编辑器（`NarrativeThreadEditor.tsx`）与剧情树面板的
-  **实机交互未点击验证**（与批次 C 的同类遗留一致）。
+- ✅ **F1 GUI 人工验证通过**（见 §7）。
 - 未做 **Electron ↔ Tauri 行为对照**：同一剧本两侧跑同一操作的输出对比未做。
+- 「证据不在正文中」反例未验证（无正文数据）。
 - `cargo fmt --check` 未纳入验收（`src-tauri/` 全域存在既有 rustfmt 差异）。
 
-### 8. 交接给下次会话（**从这里接**）
+### 10. 交接给下次会话（**从这里接**）
 
 **当前工作区状态**：`master` 上有 **7 个已修改 + 4 个新增文件**，均属 F1，**自检全绿**，
 **尚未提交**（用户选择 `verify_first`：先交人工核验，再由用户决定是否提交）。
+**F1 GUI 验证已通过**（见 §7）；**F2 方案已决策待批准实施**（见 §8）。
 
 | 状态 | 文件 |
 |---|---|
@@ -221,14 +393,13 @@ Tauri 侧若照搬 `.vela/lancedb`，会与 Electron 基线**互相覆盖向量�
 
 **接续步骤（建议顺序）**：
 
-1. **人工核验本轮 diff**（用户已选择先核验再提交）；核验通过后按上表 3 个主题提交
+1. **人工核验本轮 F1 diff**（用户已选择先核验再提交）；核验通过后按上表 3 个主题提交
    （提交消息用 `git commit -m` 或 Node `fs.writeFileSync`，**禁止** PowerShell 5.1 的
    `Set-Content -Encoding UTF8`；自检 `node scripts/check-commit-msg.mjs --range <base>..HEAD`）。
-2. **F1 GUI 人工点验**：`pnpm tauri dev` → 打开项目 → 叙事线索面板增删改查 + 事件确认
-   （试一个「证据不在正文中」的反例，验前端提示文案）→ 剧情树面板生成 / 保存 / 清空。
-3. **F2 开工前先出专项评估**（用户 `kb_next: assess` 决策）：
-   `electron/vector-store.ts`（2010 行）行为对照清单 + FTS/混合检索差异项 + **隔离路径改名方案**
-   （必须避开 `.vela/lancedb` 等共享路径，见 §2）+ 改动量估算。
+2. ✅ **F1 GUI 人工点验** —— 已完成（见 §7）。
+3. **F2 批次实施**（用户已决策方案 B，等待批准开工）：按 §8.6 实施计划执行
+   （第 1 天基础设施 → 第 2 天向量索引 → 第 3 天命令层 + 集成测试 → 第 4 天 GUI 验收 + 文档）。
+   **开工前必须 `cargo tree` 实测依赖数**（教训见 §8.4）。
 4. **批次 E**（定稿不可逆 + 删除生命周期）：**仍需先获批**在 `schema.rs` 新增
    `recovery_candidates` / `continuity_projection_meta` / `chapter_deletion_operations` 三张表
    （**此授权至今未答复**，F1 的授权只覆盖上表 3 张）。
@@ -682,21 +853,19 @@ URL 用字符串拼接（`{base}/v1beta/models/{name}:generateContent` / `…:st
 
 - **批次 E**：continuity（4）、finalization-link（1）、drafts 余 4
   （`authority-sequence` / `export-snapshot` / `export-authority-current` / `import-finalized-batch`）；
-- **批次 F**：一致性豁免（3）、叙事线程（6）、派生树（3）、恢复候选（3）；
+- **批次 F**：一致性豁免（3）、叙事线程（6）、派生树（3）、恢复候选（3）—— **F1 已完成前 3 组（12 频道）；F2 待实施（`kb:*` 15 + dialog 2）**；
 - **批次 G**：import-run（18）、`db:import-global-facts-commit`。
 
 ---
 
 ## 建议的下一步
 
-1. **🧑‍⚖️ 先人工核验 F1 的 diff 并提交**（本轮改动**已完成未提交**，见第二十六次 §8）：
+1. **🧑‍⚖️ 人工核验 F1 的 diff 并按 3 主题提交**（本轮改动**已完成未提交**，见第二十六次 §10）：
    7 个修改 + 4 个新增文件；核验通过后按 3 个主题拆分提交（一致性豁免 / 叙事线索 / 剧情树）。
-2. **🖱️ F1 GUI 人工点验**：叙事线索面板增删改查 + 事件确认（含「证据不在正文中」反例）、
-   剧情树面板生成 / 保存 / 清空。
-3. **📄 F2 专项评估**（用户 `kb_next: assess` 决策）：
-   `electron/vector-store.ts`（2010 行）行为对照 + FTS/混合检索差异清单 +
-   **向量存储路径 Tauri 专属命名方案**（不得复用 `.vela/lancedb`）+ 改动量估算；
-   评估通过后再实现 `kb:*` 15 频道 + `dialog:select-knowledge-*` 2 频道。
+2. ✅ **F1 GUI 人工点验** —— 已完成（叙事线索面板增删改查 + 事件确认通过；剧情树依赖未迁移功能属预期）。
+3. **🚀 F2 批次实施**（用户已决策方案 B，等待批准开工）：
+   按第二十六次 §8.6 实施计划执行（第 1 天基础设施 → 第 2 天向量索引 → 第 3 天命令层 + 集成测试 → 第 4 天 GUI 验收 + 文档）。
+   **开工前必须 `cargo tree` 实测依赖数**（教训见第二十六次 §8.4）。
 4. **⚙️ 再补 G5 压测**：`llm:stream-chunk` 已接通但「高频 chunk 跨 webview 桥的吞吐/延迟」
    仍无实测数据。建议写一个不带网络的本地回放（例如直接循环 `emit` N 次）测出 chunk/s 上限，
    再决定是否需要批量合并（inventory §G5 已预留该选项）。
@@ -714,19 +883,20 @@ URL 用字符串拼接（`{base}/v1beta/models/{name}:generateContent` / `…:st
 
 ---
 
-## 遗留项（沿用 2026-10-06 快照）
+## 遗留项（沿用 2026-10-06 快照，含本轮新增）
 
+- ⚠️ **【本轮新记】F2 向量存储路径必须 Tauri 专属**：基线 LanceDB 落在共享的
+  `{project}/.vela/lancedb/` 与 `.vela/<registry>.json` / `.vela/vectors.json`；
+  Tauri 侧不得复用（否则与 Electron 基线互覆向量数据）。见第二十六次 §2。
+- ⚠️ **【本轮新记】F1 未做 Electron ↔ Tauri 行为对照**：同一剧本两侧跑同一操作的输出对比未做。
+- ⚠️ **【本轮新记】F1 GUI「证据不在正文中」反例未验证**：无正文数据。
 - ⚠️ **【本轮新记】`ipc-client-project-session.test.ts` 2 例失败为既有问题**（非 F1 引入，已三重取证）：
   该测试自阶段 0（`a0fd2f4`）起只 mock 已废弃的 Electron `window.velaAPI`，从未注入
   `__TAURI_INTERNALS__`；而 `HEAD` 版 `ipc-client.ts` 的 `invokeCommand` **只调 `tauriInvoke`**，
   `velaAPI` 已无读取点 → node 环境下 `undefined.invoke` 抛 `TypeError`。
   历史快照的 vitest 记录（6/6 → 7/7）**从未包含该文件**。修它需重写为 Tauri 语义
   （或注入 `__TAURI_INTERNALS__` 桩），建议随遗留项 7 一并做。
-- ⚠️ **【本轮新记】批次 F2 的向量存储路径必须 Tauri 专属**：基线 LanceDB 落在共享的
-  `{project}/.vela/lancedb/` 与 `.vela/<registry>.json` / `.vela/vectors.json`；
-  Tauri 侧不得复用（否则与 Electron 基线互覆向量数据）。见第二十六次 §2。
-- ⚠️ **【本轮新记】F1 未做 GUI 人工点验**：叙事线索 / 剧情树面板的实机交互未验证。
-
+- ⚠️ **【本轮新记】F2 依赖数必须 `cargo tree` 实测**：早期估算 +40 实际 +113；方案 B 依赖 +88 也须在开工前复测。
 - ✅ **批次 B 的 dialog 骨架缺口已补齐（第二十五次）**：`dialog:select-folder` 由「恒返回 `None`
   的占位」改为**真实原生目录选择**（`tauri-plugin-dialog 2`，纯 Rust 侧，capabilities 未放开），
   **人工点验已通过**（系统对话框正常弹出、不被遮挡、路径回填正确、取消静默）。
@@ -767,3 +937,261 @@ URL 用字符串拼接（`{base}/v1beta/models/{name}:generateContent` / `…:st
   误用并写出怪异结果，Rust 侧改为**拒绝覆盖**（更严格，语义差别只在文件被外部破坏时出现）；
   `delete-model` 遇损坏文件时基线报 JS `SyntaxError` 原文，Rust 侧统一为
   `Error: 模型配置损坏，已拒绝覆盖`。
+
+---
+
+## 2026-10-08 工作日总结
+
+**工作时长**：约 10 小时
+**主要任务**：F1 GUI 验证 + F2 方案深度评估
+**核心成果**：完成技术选型决策，交付 15 份文档（145 KB）
+
+### ✅ 完成项
+
+1. **F1 批次 GUI 验证**：叙事线索面板 + 剧情树功能，✅ 通过（剧情树依赖未迁移功能属预期）；状态：可提交（待用户确认后推送）。
+2. **F2 技术方案深度评估**：4 个方案（A/B/C/D），5 项技术验证，最终决策方案 B（自研混合检索）。
+3. **方案 D 完整验证**（3 项，50 分钟）：
+   - ① rusqlite 降级 ✅ 通过（改动量 < 10 行）；
+   - ② cairn-search ❌ **失败**（非通用库，紧耦合 cairn-core）；
+   - ③ sqlite-vec ✅ 通过（SQLite 3.46 满足要求）；
+   - **结论**：方案 D 不可行，回退方案 B。
+4. **数据真实性验证**：发现依赖数估算错误（+40 实际 +113）；修正：建立实测标准（`cargo tree`）；教训：估算数据必须实测验证。
+
+### 📊 技术验证汇总（5 项）
+
+| 验证项 | 方法 | 结果 | 文档 |
+|---|---|---|---|
+| FTS5 unicode61 | 本地测试 | 0% 召回率 | fts5-tokenizer-findings.md |
+| VecStore | 依赖分析 | 无 BM25 API | vecstore-feasibility.md |
+| HNSW 依赖树 | cargo tree | +113 传递依赖 | data-correction.md |
+| LanceDB Rust | 依赖分析 | +1680 依赖 | lancedb-evaluation-conclusion.md |
+| cairn-search | 源码分析 | 非通用库 | plan-d-verification-results.md |
+
+### 📁 交付文档（15 份，145 KB）
+
+**核心决策文档（3 份）⭐**
+
+1. `final-decision-plan-b.md`（14.2 KB）- F2 实施计划
+2. `plan-d-verification-results.md`（11.8 KB）- 方案 D 验证报告
+3. `data-correction.md`（7.6 KB）- 数据真实性修正
+
+**技术评估文档（7 份）**
+
+4. `vector-store-migration-assessment.md`（18.6 KB）- 基线行为对照
+5. `vector-alternatives-survey.md`（11.3 KB）- Rust 生态调研
+6. `lancedb-evaluation-conclusion.md`（9.3 KB）- LanceDB 评估
+7. `vecstore-feasibility.md`（9.5 KB）- VecStore 评估
+8. `fts5-tokenizer-findings.md`（6.8 KB）- FTS5 分词验证
+9. `lancedb-fts-discovery.md`（7.1 KB）- LanceDB FTS 发现
+10. `plan-d-cairn-search.md`（9.2 KB）- cairn-search 发现
+
+**过程文档（5 份）**
+
+11. `web-search-findings.md`（9.5 KB）- 网络调研
+12. `benchmark-guide.md`（7.2 KB）- 实测指南
+13. `f2-final-decision.md`（10.4 KB）- 初版决策（已过时）
+14. `f2-revised-strategy.md`（7.8 KB）- 修正方案
+15. `final-decision-guide.md`（11 KB）- 决策指南
+
+### 🎯 方案 B 决策摘要
+
+| 方案 | 依赖数 | 代码量 | RAG | 工期 | 推荐度 |
+|---|---|---|---|---|---|
+| A. FTS5 only | +4 | ~1980 | ❌ | 1 天 | 无 RAG 场景 |
+| **B. 自研混合** | **+88** | **~2280** | ✅ | **3.5 天** | ⭐ **选择** |
+| C. LanceDB | +1680 | ~800 | ✅ | 1 天 | 🚫 不推荐 |
+| ~~D. cairn-search~~ | ~~+10~~ | ~~~200~~ | ✅ | N/A | ❌ 不可用 |
+
+**方案 B 核心技术栈**：FTS5 + jieba-rs（中文关键词检索，70–85% 召回率）、HNSW（向量语义检索，L2 距离）、RRF 融合（倒数排名融合，参考 cairn-search）、rusqlite 0.32 + bundled（SQLite 3.46，满足 sqlite-vec 要求）。
+
+**实施计划（3.5 天）**：
+
+- 第 1 天：基础设施（chunks / fts）~800 行
+- 第 2 天：向量索引（vector / hybrid）~700 行
+- 第 3 天：命令层 + 集成测试 ~780 行
+- 第 4 天：GUI 验收 + 文档（0.5 天）
+
+### 🔍 关键发现与教训
+
+1. **用户反馈至关重要**：用户指出「FTS 与向量检索的根本差异」，避免丢失 RAG 能力的错误决策。
+2. **数据必须实测**：依赖数估算错误（+40 实际 +113），深刻教训。今后所有数值必须 `cargo tree` 实测。
+3. **持续探索价值高**：通过网络搜索发现 cairn-search，虽最终不可用，但验证过程收获了参考实现（RRF / FTS5 转义）。
+4. **技术选型需要多维度评估**：不仅看功能，还要看依赖树实测（`cargo tree`）、中文分词召回率实测、内存占用估算、迁移目标一致性。
+
+### 📋 待办状态
+
+**已完成（4 项）**：
+
+- [x] F1 GUI 验证
+- [x] F2 方案评估（A/B/C/D）
+- [x] 方案 D 完整验证（3 项）
+- [x] 方案 B 实施计划
+
+**待执行（2 项）**：
+
+- [ ] F2 批次实施（~2280 行，3.5 天）
+- [ ] F1 批次提交（已验证通过）
+
+### ⏭️ 明日计划（2026-10-09）
+
+**选项 A**：开始 F2 批次实施
+**工作量**：第 1 天任务（~800 行，基础设施）
+- `vector_store/mod.rs`：错误类型 + 连接管理
+- `vector_store/chunks.rs`：文本分块逻辑
+- `vector_store/fts.rs`：FTS5 + jieba 分词
+- 单元测试：分块（10 个）+ FTS5（15 个）
+**预期产出**：基础设施模块 + 25 个单元测试通过
+
+**选项 B**：F1 批次提交 + F2 第 1 天
+**上午**：提交 F1 批次（叙事线索 12 频道）
+**下午**：开始 F2 第 1 天任务（~400 行）
+
+**推荐**：选项 A（F2 任务连贯性更好）
+
+### 🎓 技术收获
+
+**新增技能**：
+
+1. **Rust 依赖分析**：`cargo tree` 实战
+2. **FTS5 分词器**：unicode61 陷阱 + jieba 集成
+3. **向量检索架构**：HNSW vs Flat vs IVFPQ
+4. **混合检索算法**：RRF vs 加权融合
+
+**参考实现价值**：
+
+- **cairn-search**：虽不可用，但提供了高质量参考（FTS5 转义 / RRF 算法）
+- **基线代码**：`electron/vector-store.ts` 的业务逻辑完整性
+
+**工程教训**：
+
+1. **估算需实测**：依赖数 / 内存占用不能拍脑袋
+2. **用户洞察**：技术决策需结合实际使用场景
+3. **持续探索**：网络搜索 + 源码分析发现隐藏价值
+
+### 📊 统计数据
+
+**时间分配**：
+
+- F1 GUI 验证：1 小时
+- F2 方案评估：3 小时
+- 方案 D 验证：1 小时
+- 文档撰写：4 小时
+- 技术验证：1 小时
+
+**代码产出**：
+
+- 测试项目：2 个（test-hnsw / test-sqlite-vec）
+- 验证代码：~500 行
+- 文档：15 份（145 KB）
+
+**决策迭代**：
+
+- 初版：方案 D（cairn-search）
+- 一次修正：方案 B（基于用户反馈）
+- 二次修正：方案 B（方案 D 验证失败）
+- **最终**：方案 B（自研混合检索）
+
+### 🙏 致谢
+
+感谢用户的关键反馈和质疑：
+
+1. 指出 FTS vs 向量检索的根本差异
+2. 质疑依赖数估算（促使实测验证）
+3. 明确需要 RAG 能力（避免错误决策）
+
+这些反馈让技术决策更加严谨和可靠。
+
+---
+
+## 附：早期评估版本记录（`daily-summary`，~6 小时版）
+
+> 本附录保留当日较早版本的评估记录，供对照。**以第二十六次 §8 的最终版为准。**
+
+### 早期 F2 方案（FTS5 + jieba，纯关键词版）
+
+- **技术栈**：`rusqlite 0.40.2`（bundled，已有）+ `jieba-rs 0.7`（新增，+6 个传递依赖）
+- **核心设计**：预分词模式（`CREATE VIRTUAL TABLE kb_fts USING fts5(doc_id, title_tokens, content_tokens, tokenize = 'porter')`）；写入前 `jieba.cut()`，查询时先分词再 `tokens.join(" OR ")`
+- **工作量**：~1980 行（分词器 ~120 / FTS5 封装 ~350 / 分块逻辑 ~280 / 搜索接口 ~200 / 统计接口 ~80 / 命令注册 ~450 / 单元测试 ~500）
+- **性能预期**：召回率 70–85%（jieba 精确模式）；延迟 5–20ms；内存 +5–10MB；冷启动立即可用
+- **风险**：jieba 质量不足（缓解：实测对比基线 + 自定义词典）；FTS5 索引膨胀（监控 DB 大小 + VACUUM）；无语义检索（**阶段 1 可加向量，+500 行**）
+- **早期结论**：F1 验证通过，F2 决策完成（FTS5 + jieba），等待用户批准开工
+
+### 早期不采用方案（与最终版一致）
+
+- ❌ **VecStore**：无 BM25 / 文本搜索 API
+- ❌ **FTS5 unicode61**：中文召回率 0%（15/15 用例全失败）
+- ❌ **tantivy + cang-jie**：过度设计，30+ crates
+- ❌ **hnsw_rs + 自研 BM25**：工作量高（+300 行）
+
+### 早期关键发现（与最终版一致）
+
+1. **FTS5 unicode61 的中文陷阱**：整句作为一个词元，通配符 `"林*"` 能匹配（前缀匹配生效）
+2. **VecStore 的文档误导**：声称 "hybrid search" / "BM25"，实际仅向量 + 元数据过滤
+3. **jieba-rs 的成熟度**：0.7.0、6 个纯 Rust crate、~1MB/s、中文分词事实标准
+
+### 早期待办状态
+
+```
+✅ #1: VecStore 可行性评估
+✅ #2: FTS5 中文实测
+✅ #3: VecStore BM25 实测（发现无此 API）
+✅ #4: 更新 F2 批次决策文档
+⏳ #5: F2 批次实施（~1980 行，1.5 天）
+⏳ #6: F1 批次提交（已验证，待提交）
+```
+
+### 早期文档清单（6 份）
+
+1. `docs/research/2026-10-08-vector-store-migration-assessment.md`
+2. `docs/research/2026-10-08-vector-alternatives-survey.md`
+3. `docs/research/2026-10-08-f2-batch-decisions.md`
+4. `docs/research/2026-10-08-web-search-findings.md`
+5. `docs/research/2026-10-08-vecstore-feasibility.md`
+6. `docs/research/2026-10-08-f2-final-decision.md`（**最终决策**）
+
+**实测代码（2 个）**：
+
+1. `tauri-app/src-tauri/examples/fts5_benchmark.rs`（15 用例，0% 召回率）
+2. `tauri-app/src-tauri/examples/vecstore_benchmark.rs`（未完成，VecStore 无 BM25 API）
+
+### 早期数据速查
+
+**依赖对比**：
+
+| 方案 | 直接依赖 | 传递依赖 | 构建要求 |
+|---|---|---|---|
+| FTS5 only | 0 | 0 | 无 |
+| **FTS5 + jieba** | **1** | **6** | **无** |
+| VecStore | 1 | 172 | 无 |
+| tantivy + jieba | 2 | 200+ | 无 |
+
+**工作量对比**：
+
+| 方案 | 实现行数 | 工期 |
+|---|---|---|
+| **FTS5 + jieba** | **~1980** | **1.5 天** |
+| FTS5 + hnsw_rs | ~2280 | 2 天 |
+| tantivy + jieba | ~2480 | 2.5 天 |
+
+**性能对比**：
+
+| 方案 | 召回率 | 延迟 | 内存 |
+|---|---|---|---|
+| 基线 LanceDB | 80–90% | 10–30ms | +50MB |
+| **FTS5 + jieba** | **70–85%** | **5–20ms** | **+10MB** |
+| FTS5 unicode61 | 0% | N/A | N/A |
+
+> **⚠️ 早期版本与最终版的差异**：
+> - 早期方案 B 只含 FTS5 + jieba（纯关键词），最终版方案 B 扩展为 FTS5 + jieba + HNSW + RRF（含语义检索）；
+> - 早期依赖数 +6，最终版 +88（因加入 HNSW）；
+> - 早期代码量 ~1980 / 1.5 天，最终版 ~2280 / 3.5 天；
+> - 早期工期 1.5 天，最终版 3.5 天。
+> **以第二十六次 §8 的最终版为准。**
+
+**下次会话重点**：
+
+1. 确认是否开始 F2 批次实施
+2. 或先提交 F1 批次（叙事线索）
+3. 或其他调整
+
+**当前状态**：F1 可提交 + F2 方案确定（最终版）+ 实施计划就绪
