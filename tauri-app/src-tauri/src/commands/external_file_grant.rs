@@ -4,9 +4,14 @@
 //! grantId 与受限相对路径，绝不暴露绝对路径。Tauri 映射为 tauri-plugin-dialog
 //!（选择入口）+ 自研 grant 校验。
 //!
-//! 本批次为骨架占位：`dialog:select-export-directory` 与三个 `fs:grant-*` 命令
-//! 依赖 tauri-plugin-dialog（新增插件依赖，AGENTS.md Ask first），接入前返回
-//! 契约形状的失败/取消结果；grant 校验框架批次后续填充。
+//! 状态（2026-10-08）：`tauri-plugin-dialog` 已于批次 B 遗留补齐中获批接入，
+//! 原生目录选择能力**已就绪**。但 `dialog:select-export-directory` 的返回值不是路径，
+//! 而是 `ExternalDirectoryGrant`（grantId + 展示名，绝对路径不得越界回传，ADR 0002），
+//! 其签发需要 grant 注册表 —— 该注册表与 `fs:grant-*` 三命令同在批次 H。
+//!
+//! 因此本命令**继续返回 `None`（取消语义）**：若此时就地签发一个假 grantId，
+//! 界面会显示「已选择导出目录」而后续写入必然失败，反而不如当前语义诚实。
+//! 待批次 H 落地 grant 域后，只需把下面的选择结果喂给 grant 签发，弹窗侧无需再改。
 
 use serde::Serialize;
 
@@ -92,8 +97,12 @@ pub fn fs_grant_mkdir(_grant_id: String, _relative_path: String) -> GrantSimpleR
     GrantSimpleResult { success: false, error: Some(GRANT_SKELETON_MESSAGE.to_string()) }
 }
 
-/// `dialog:select-export-directory` 骨架：返回 None（取消语义），等
-/// tauri-plugin-dialog 接入后返回真实 ExternalDirectoryGrant。
+/// `dialog:select-export-directory` —— 骨架：返回 None（取消语义）。
+///
+/// 原生目录选择已可用（见模块头状态说明），阻塞点是**批次 H 的 grant 签发**：
+/// 本命令必须回传 `grantId`（而非绝对路径）才能让渲染层后续经 `fs:grant-write-file`
+/// 写入导出目录，而 grant 注册表尚未迁移。当前返回 `None` 与基线的「用户取消」同义，
+/// 且 `ExportDialog.tsx` 对 `null` 的处理就是静默返回，无契约偏差。
 #[tauri::command]
 pub fn dialog_select_export_directory() -> Option<ExternalDirectoryGrant> {
     None

@@ -25,6 +25,10 @@ mod state;
 pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState::new())
+        // 批次 B 遗留补齐（2026-10-08）：原生目录/文件选择对话框。
+        // 仅供自研命令在 Rust 侧调用；webview 不直调插件的 `plugin:dialog|*` 命令，
+        // 故 `capabilities/default.json` 维持最小权限（不追加 `dialog:*`）。
+        .plugin(tauri_plugin_dialog::init())
         // 对齐基线 `ensureVelaHome()`：启动即保证 `~/.lorekeeper/{prompts,logs}` 存在。
         // 失败不阻断启动（首次写入时会再次建目录并给出可读错误）。
         .setup(|_app| {
@@ -71,7 +75,8 @@ pub fn run() {
             commands::project_delete,
             commands::project_smoke_open_request,
             commands::project_smoke_open_confirm,
-            // 批次 B：目录选择（骨架：插件接入前返回取消语义）
+            // 批次 B：目录选择（`select-folder` 已真实化；`select-export-directory`
+            // 弹窗能力已就绪，仍需批次 H 的 grant 签发，暂为取消骨架）
             commands::dialog_select_folder,
             commands::dialog_select_export_directory,
             // 批次 B：外部文件授权（骨架：等 tauri-plugin-dialog）

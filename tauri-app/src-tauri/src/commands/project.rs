@@ -10,10 +10,13 @@
 //! - 基线用「回滚边界快照 + 串行队列」处理并发打开；Rust 侧以请求令牌新鲜度检查 +
 //!   单活跃项目状态替代，不做旧项目自动还原；
 //! - 目录删除为 Rust 侧重试实现（对齐 `removeDirectoryWithWindowsRetry` 的退避语义）；
-//! - `dialog:select-folder` 仍待 `tauri-plugin-dialog`（Ask first）。
+//! - `dialog:select-folder` 已接入 `tauri-plugin-dialog`（2026-10-08，批次 B 遗留补齐）：
+//!   系统原生目录选择 + 主窗口父级绑定。插件文档明确 `blocking_*` 族**禁止在主线程调用**
+//!   （会与事件循环死锁），故命令改为 `async` + `spawn_blocking` 等待（详见该命令实现）。
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{Manager, State};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::commands::SimpleResult;
 use crate::project_access::{self, PROJECT_ROOT_REQUIRED_CODE, PROJECT_ROOT_REQUIRED_MESSAGE};
@@ -204,11 +207,63 @@ pub fn iso8601_utc_from_millis(millis: u64) -> String {
 
 // ===== dialog:select-folder =====
 
-/// `dialog:select-folder` 骨架：返回 null（取消语义），等 tauri-plugin-dialog
-/// 接入后返回真实目录路径（Ask first 决策点，见进度快照批次 B 章节）。
+/// 主窗口标签，与 `tauri.conf.json` 的 `app.windows[0].label` 一致。
+const MAIN_WINDOW_LABEL: &str = "main";
+/// 目录选择对话框标题 —— 对齐基线 `project-controller.ts` 的 `选择项目保存位置`。
+const SELECT_FOLDER_TITLE: &str = "选择项目保存位置";
+/// 等待用户操作的上限，仅作安全网：正常情况下用户交互远快于此。
+/// 插件 `run_on_main_thread` 的结果被 `let _ =` 丢弃，极端情形（主线程已退出）下
+/// 其自带的 `blocking_*` 会**永久阻塞**；此处改用自持超时，超时按「取消」（`null`）处理，
+/// 与基线 `result.canceled` 的返回同义。
+const SELECT_FOLDER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+
+/// `FilePath` → 路径字符串。
+///
+/// 桌面平台的选择结果恒为 `FilePath::Path`；`into_path()` 失败（例如 Android
+/// `content://` URI）或结果为空串时按「取消」返回 `None`，绝不回传无法使用的值。
+pub fn file_path_to_string(path: tauri_plugin_dialog::FilePath) -> Option<String> {
+    let resolved = path.into_path().ok()?;
+    let text = resolved.to_string_lossy().to_string();
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+/// `dialog:select-folder` —— 系统原生目录选择，返回绝对路径或 `null`（取消）。
+///
+/// 迁移自 `electron/controllers/project-controller.ts:801`：
+/// `dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })`。
+///
+/// 与基线的两点差异（均为 Tauri 侧的必然调整，语义等价）：
+/// 1. **`async`**：非 async 的 `#[tauri::command]` 在主线程执行，而 `blocking_pick_folder`
+///    在主线程调用会死锁（插件文档明示）。async 命令跑在 `tauri::async_runtime` 线程上，
+///    再用 `spawn_blocking` 承载等待，主线程保持自由以驱动对话框消息循环。
+/// 2. **显式父窗口**：基线 `showOpenDialog` 默认以调用窗口为父；Tauri 侧需手动 `set_parent`，
+///    否则对话框会被 `decorations: false` 的主窗口遮挡。
+///
+/// 本命令属**能力域**，按契约不接收 `projectSession` 尾参（`ipc-channels.ts` 无 args），
+/// 返回的路径仅作父目录输入，随后由 `project:create` / `project:open` 做项目根校验。
 #[tauri::command]
-pub fn dialog_select_folder() -> Option<String> {
-    None
+pub async fn dialog_select_folder(app: tauri::AppHandle) -> Option<String> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let mut builder = app.dialog().file().set_title(SELECT_FOLDER_TITLE);
+    if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
+        builder = builder.set_parent(&window);
+    }
+    // 非阻塞版本：内部把「创建对话框」投递到主线程后立即返回，回调在独立线程触发。
+    builder.pick_folder(move |selection| {
+        // 接收端已超时退出时 send 会失败，忽略即可（用户随后关闭对话框）。
+        let _ = sender.send(selection);
+    });
+    let picked = tauri::async_runtime::spawn_blocking(move || {
+        receiver.recv_timeout(SELECT_FOLDER_TIMEOUT).ok().flatten()
+    })
+    .await
+    .ok()
+    .flatten();
+    picked.and_then(file_path_to_string)
 }
 
 // ===== 骨架占位（批次 C 数据库层接入后启用）=====
@@ -928,5 +983,35 @@ mod tests {
         assert!(same_recent_project_path("F:\\Novel\\My", "f:/novel/my"));
         assert!(same_recent_project_path("F:/novel/my/", "F:/novel/my"));
         assert!(!same_recent_project_path("F:/novel/a", "F:/novel/b"));
+    }
+
+    #[test]
+    fn file_path_to_string_keeps_windows_absolute_path_test() {
+        use tauri_plugin_dialog::FilePath;
+        let picked = FilePath::Path(std::path::PathBuf::from(r"F:\Novel\My Book"));
+        assert_eq!(file_path_to_string(picked), Some(r"F:\Novel\My Book".to_string()));
+    }
+
+    #[test]
+    fn file_path_to_string_treats_empty_path_as_cancel_test() {
+        use tauri_plugin_dialog::FilePath;
+        // 空路径不得回传给渲染层（否则会被当成「选中了空目录」）。
+        assert_eq!(file_path_to_string(FilePath::Path(std::path::PathBuf::new())), None);
+    }
+
+    #[test]
+    fn file_path_to_string_maps_file_url_to_path_test() {
+        use tauri_plugin_dialog::FilePath;
+        let url = url::Url::parse("file:///F:/Novel/My%20Book").expect("合法 file URL");
+        // 百分号编码需被解码为普通路径（非桌面平台可能返回 Url 变体）。
+        assert_eq!(file_path_to_string(FilePath::Url(url)), Some(r"F:\Novel\My Book".to_string()));
+    }
+
+    #[test]
+    fn file_path_to_string_rejects_non_file_url_test() {
+        use tauri_plugin_dialog::FilePath;
+        let url = url::Url::parse("content://com.example.doc/1").expect("合法 content URL");
+        // 非 file:// URI 无法转为本地路径 → 按「取消」处理，不泄露不可用凭据。
+        assert_eq!(file_path_to_string(FilePath::Url(url)), None);
     }
 }

@@ -43,9 +43,21 @@ reqwest = { version = "0.13", default-features = false, features = [
     "socks",
 ] }
 
+# 批次 B 遗留补齐（2026-10-08，Ask first 已批准）：`dialog:select-folder` 的原生目录选择。
+#
+# 选官方插件而非直连 `rfd`：自带父窗口绑定（对话框不被无边框主窗口遮挡）与移动端实现。
+# Windows x64 实测增量：**+8 个编译单元 / 约 3.5 MB 下载**（本机 `cargo tree` 对照；
+# 其中 `windows-sys 0.60` 等 3 个包与既有 `windows 0.62` 版本分叉，由 rfd 0.16 决定，
+# 换方案也躲不掉）。release 二进制约 +0.1–0.3 MB（社区实测 plugins-workspace#1085 为 +0.13 MB）。
+#
+# 注意：会**连带引入 `tauri-plugin-fs`**（插件的硬依赖）——批次 H 的 fs 授权域将来
+# 可直接复用，届时勿重复引入。
+# 保持默认 features（`gtk3`）：该 feature 只影响 Linux/BSD 的 rfd 后端，Windows/macOS 无差异。
+tauri-plugin-dialog = "2"
+
 # 按需引入（不提前加，避免无用编译）：
 # - rusqlite（bundled feature，避免依赖系统 sqlite）→ 批次 C 数据库层
-# - tauri-plugin-{fs,updater,shell,notification} → 批次 B/H 按频道批准
+# - tauri-plugin-{updater,shell,notification} → 批次 H 按频道批准
 
 [profile.dev]
 incremental = true
