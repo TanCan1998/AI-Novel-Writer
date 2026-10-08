@@ -1,0 +1,24 @@
+# Gitleaks 配置 - 排除上游测试文件误报
+# 规则版本：v8.30.1
+
+# 全局白名单：包含允许忽略的文件和路径
+[allowlist]
+description = "全局白名单，包含允许忽略的文件、路径和测试密钥"
+
+# a) 按文件路径/名称忽略 (可以使用正则表达式)
+paths = [
+    'scripts/fixtures/s14c-official-old-sources/manifest.json',
+    'electron/services/__tests__/project-restore-service.test.ts',
+    '^|__tests__/',
+    '^|/fixtures/',
+    '\.gitleaks-report\.json$',
+]
+
+# b) 按正则表达式忽略特定的安全字符串 (测试中常见的字段名)
+regexes = [
+    'key_id',
+    'mock_api_key',
+    'test_api_key',
+    'fake_key',
+    'placeholder',
+]
