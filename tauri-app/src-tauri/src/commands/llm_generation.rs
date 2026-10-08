@@ -36,7 +36,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::llm::chat::{
-    build_client, provider_error_text, proxy_from_config, strip_thinking, ChatMessage,
+    build_client, is_gemini, provider_error_text, proxy_from_config, strip_thinking, ChatMessage,
     LlmFinishReason, LlmGenerateOptions, LlmResponse, LlmStreamOptions, StreamCallbacks,
     StreamFailure, TokenUsage,
 };
@@ -282,11 +282,6 @@ struct PreparedRequest {
     options: LlmGenerateOptions,
     client: reqwest::Client,
     log: Option<ProviderCallLog>,
-}
-
-/// 是否为 Gemini 协议（对齐 `LLMFactory.getProvider` 的选择依据）。
-fn is_gemini(model: &Value) -> bool {
-    model.get("protocol").and_then(Value::as_str) == Some("gemini")
 }
 
 /// 解析模型快照：有租约则用冻结快照（权威），否则回落到 `models.json`。
@@ -900,6 +895,7 @@ mod tests {
 
     #[test]
     fn gemini_protocol_selects_gemini_provider_test() {
+        // 协议判定实现单源在 `llm::chat::is_gemini`（此处仅验证该缝已接通）。
         assert!(is_gemini(&json!({"protocol": "gemini"})));
         assert!(!is_gemini(&json!({"protocol": "openai"})));
         assert!(!is_gemini(&json!({})));

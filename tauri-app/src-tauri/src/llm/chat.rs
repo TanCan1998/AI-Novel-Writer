@@ -222,7 +222,21 @@ pub fn proxy_from_config(config: &Value) -> Option<ProxySpec> {
 ///
 /// 刻意不设总超时：基线 `fetch` 无超时，长文生成可能持续数分钟。
 pub fn build_client(proxy: Option<&ProxySpec>) -> Result<reqwest::Client, String> {
+    build_client_with_timeout(proxy, None)
+}
+
+/// 同上，但可选总超时（含 body 读取）—— 供模型发现等有界调用使用。
+///
+/// `None` 表示不设超时（等价于基线 `fetch` 的默认行为）；`Some` 对应基线
+/// `AbortController` + `setTimeout(abort, ms)` 的总时长语义。
+pub fn build_client_with_timeout(
+    proxy: Option<&ProxySpec>,
+    timeout: Option<std::time::Duration>,
+) -> Result<reqwest::Client, String> {
     let mut builder = reqwest::Client::builder();
+    if let Some(timeout) = timeout {
+        builder = builder.timeout(timeout);
+    }
     if let Some(spec) = proxy {
         builder = builder.proxy(
             reqwest::Proxy::all(spec.url()).map_err(|error| format!("代理配置无效：{error}"))?,
@@ -231,6 +245,12 @@ pub fn build_client(proxy: Option<&ProxySpec>) -> Result<reqwest::Client, String
     builder
         .build()
         .map_err(|error| format!("HTTP 客户端初始化失败：{error}"))
+}
+
+/// 协议判定（对齐 `LLMFactory.getProvider()`）：`protocol === 'gemini'` 走 Gemini，
+/// 其余一律按 OpenAI 兼容协议处理。
+pub fn is_gemini(model: &Value) -> bool {
+    model.get("protocol").and_then(Value::as_str) == Some("gemini")
 }
 
 #[cfg(test)]
@@ -314,5 +334,15 @@ mod tests {
             assert_eq!(reason.as_str(), literal);
             assert_eq!(serde_json::to_value(reason).unwrap(), json!(literal));
         }
+    }
+
+    #[test]
+    fn protocol_detection_matches_provider_factory_test() {
+        // 与 `LLMFactory.getProvider()` 同一依据：只有 `protocol === 'gemini'` 走 Gemini。
+        assert!(is_gemini(&json!({"protocol": "gemini"})));
+        assert!(!is_gemini(&json!({"protocol": "openai"})));
+        assert!(!is_gemini(&json!({"protocol": "openai-compatible"})));
+        assert!(!is_gemini(&json!({})), "缺 protocol 按 OpenAI 兼容处理");
+        assert!(!is_gemini(&json!({"protocol": null})));
     }
 }

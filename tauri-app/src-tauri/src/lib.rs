@@ -13,7 +13,8 @@ mod db;
 mod disk_e2e;
 mod draft_source_guard;
 mod json_store;
-// 批次 D2：LLM 生成执行域（预设目录 / 推理策略 / 生成参数 / 执行租约 / HTTP 生成链）。
+// 批次 D2：LLM 生成执行域（预设目录 / 推理策略 / 生成参数 / 执行租约 / HTTP 生成链
+// + 模型发现 / 远程 Embedding）。
 mod llm;
 mod project_access;
 mod repositories;
@@ -157,6 +158,9 @@ pub fn run() {
             commands::llm_generate,
             commands::llm_generate_stream,
             commands::llm_cancel,
+            // 批次 D2-c：llm:* 收口（连通性探测 + 模型发现）
+            commands::llm_test_connection,
+            commands::llm_discover_models,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

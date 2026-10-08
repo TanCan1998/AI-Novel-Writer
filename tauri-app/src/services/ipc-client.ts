@@ -147,6 +147,10 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'llm:generate': ['request'],
   'llm:generate-stream': ['requestId', 'request'],
   'llm:cancel': ['requestId'],
+  // 批次 D2-c：`llm:*` 收口（连通性探测 + 模型发现，2 频道）
+  // 注：`llm:test-connection` 的 `creativeStrategy` 是可选尾参（Rust 侧 `Option<String>`）。
+  'llm:test-connection': ['model', 'creativeStrategy'],
+  'llm:discover-models': ['request'],
 }
 
 /** 频道 → Tauri 命令名（`channel:seg-name` → `channel_seg_name`）。 */
