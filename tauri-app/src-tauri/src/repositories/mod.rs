@@ -5,9 +5,12 @@
 pub mod blueprint_repository;
 pub mod character_repository;
 pub mod character_roster_repository;
+pub mod consistency_exemption_repository;
 pub mod content_repository;
 pub mod draft_repository;
 pub mod llm_repository;
+pub mod narrative_thread_repository;
+pub mod plot_tree_repository;
 pub mod post_process_repository;
 pub mod project_clear_repository;
 pub mod project_core_repository;

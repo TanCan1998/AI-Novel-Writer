@@ -386,6 +386,52 @@ CREATE TABLE IF NOT EXISTS character_roster_operations (
 );
 "#;
 
+/// narrative_thread_plans / narrative_thread_confirmations —— 叙事线索（计划 + 事件确认）
+///
+/// 平移自 `electron/database.ts:388`（批次 F1）。列定义逐字对齐基线最终列集：
+/// - `type` 在基线里**没有** CHECK 约束（仅事件类型有），故此处也不加，避免拒绝既有数据；
+/// - 事件表用 `UNIQUE(plan_id, draft_id, event_type, evidence)` 做重复确认的幂等键；
+/// - 计划删除时级联清除其事件（`ON DELETE CASCADE`）。
+pub const CREATE_NARRATIVE_THREADS: &str = r#"
+CREATE TABLE IF NOT EXISTS narrative_thread_plans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  type TEXT NOT NULL,
+  target_start_chapter INTEGER NOT NULL CHECK(target_start_chapter > 0),
+  target_end_chapter INTEGER NOT NULL CHECK(target_end_chapter >= target_start_chapter),
+  author_intent TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS narrative_thread_confirmations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  plan_id INTEGER NOT NULL,
+  draft_id INTEGER NOT NULL,
+  event_type TEXT NOT NULL CHECK(event_type IN ('planted', 'progressing', 'resolved', 'abandoned')),
+  evidence TEXT NOT NULL,
+  reason TEXT NOT NULL DEFAULT '',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (plan_id) REFERENCES narrative_thread_plans(id) ON DELETE CASCADE,
+  FOREIGN KEY (draft_id) REFERENCES drafts(id) ON DELETE CASCADE,
+  UNIQUE(plan_id, draft_id, event_type, evidence)
+);
+CREATE INDEX IF NOT EXISTS idx_narrative_thread_confirmations_plan
+  ON narrative_thread_confirmations(plan_id, draft_id, id);
+"#;
+
+/// consistency_exemptions —— 一致性预检豁免（`stable_fact_key` 为稳定事实键）
+///
+/// 平移自 `electron/database.ts:670`（批次 F1）。基线表**无** `created_at` 列，
+/// 且以 `revoked` 软删除而非物理删除行（撤销后仍可列出以展示历史）。
+pub const CREATE_CONSISTENCY_EXEMPTIONS: &str = r#"
+CREATE TABLE IF NOT EXISTS consistency_exemptions (
+  stable_fact_key TEXT PRIMARY KEY,
+  reason TEXT NOT NULL,
+  revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN (0, 1))
+);
+"#;
+
 /// 建表入口（幂等）：所有分批 DDL 在此汇总执行后再跑迁移
 pub fn create_tables(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(CREATE_PROJECT_CORE)?;
@@ -401,6 +447,9 @@ pub fn create_tables(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(CREATE_SUMMARY_SNAPSHOTS)?;
     conn.execute_batch(CREATE_IMPORT_OPERATIONS)?;
     conn.execute_batch(CREATE_FINALIZATION_OUTBOX)?;
+    // 批次 F1：叙事线索 + 一致性豁免（3 张表）
+    conn.execute_batch(CREATE_NARRATIVE_THREADS)?;
+    conn.execute_batch(CREATE_CONSISTENCY_EXEMPTIONS)?;
     migrate_project_core_legacy_columns(conn)?;
     migrate_character_roster_schema(conn)?;
     Ok(())

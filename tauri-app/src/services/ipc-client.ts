@@ -132,6 +132,21 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'db:get-latest-summary': ['expectedProjectPath'],
   // 批次 C：项目生成数据清理
   'db:project-clear-generated-data': ['options', 'expectedProjectPath'],
+  // 批次 F1：一致性豁免（consistency-exemption 子域，3 频道）
+  'db:consistency-exemption-list': ['expectedProjectPath'],
+  'db:consistency-exemption-save': ['stableFactKey', 'reason', 'expectedProjectPath'],
+  'db:consistency-exemption-revoke': ['stableFactKey', 'expectedProjectPath'],
+  // 批次 F1：叙事线索（narrative-thread 子域，6 频道）
+  'db:narrative-thread-list': ['expectedProjectPath'],
+  'db:narrative-thread-list-relevant': ['context', 'expectedProjectPath'],
+  'db:narrative-thread-plan-create': ['input', 'expectedProjectPath'],
+  'db:narrative-thread-plan-update': ['id', 'input', 'expectedProjectPath'],
+  'db:narrative-thread-plan-delete': ['id', 'expectedProjectPath'],
+  'db:narrative-thread-event-confirm': ['input', 'expectedProjectPath'],
+  // 批次 F1：剧情树（plot-tree 子域，3 频道）
+  'db:plot-tree-read': ['expectedProjectPath'],
+  'db:plot-tree-save': ['snapshot', 'expectedSourceRevision', 'expectedProjectPath'],
+  'db:plot-tree-clear': ['expectedProjectPath'],
   // 批次 D1：LLM 模型管理（无参频道：list-models / get-default-model /
   // get-default-embedding-model 无需登记）
   'llm:save-model': ['model'],

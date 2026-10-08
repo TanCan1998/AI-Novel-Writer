@@ -13,6 +13,9 @@ mod db;
 mod disk_e2e;
 mod draft_source_guard;
 mod json_store;
+// 批次 F1：剧情树快照的**结构校验**（`src/shared/plot-tree.ts` 的 Rust 单源，
+// 纯函数、不依赖数据库，故置于 crate 根而非 repositories）。
+mod plot_tree;
 // 批次 D2：LLM 生成执行域（预设目录 / 推理策略 / 生成参数 / 执行租约 / HTTP 生成链
 // + 模型发现 / 远程 Embedding）。
 mod llm;
@@ -148,6 +151,21 @@ pub fn run() {
             commands::db_get_latest_summary,
             // 批次 C：项目生成数据清理
             commands::db_project_clear_generated_data,
+            // 批次 F1：一致性豁免（consistency-exemption 子域，3 频道）
+            commands::db_consistency_exemption_list,
+            commands::db_consistency_exemption_save,
+            commands::db_consistency_exemption_revoke,
+            // 批次 F1：叙事线索（narrative-thread 子域，6 频道）
+            commands::db_narrative_thread_list,
+            commands::db_narrative_thread_list_relevant,
+            commands::db_narrative_thread_plan_create,
+            commands::db_narrative_thread_plan_update,
+            commands::db_narrative_thread_plan_delete,
+            commands::db_narrative_thread_event_confirm,
+            // 批次 F1：剧情树（plot-tree 子域，3 频道）
+            commands::db_plot_tree_read,
+            commands::db_plot_tree_save,
+            commands::db_plot_tree_clear,
             // 批次 D1：LLM 模型管理（7 频道）
             commands::llm_list_models,
             commands::llm_save_model,

@@ -17,8 +17,11 @@ use crate::commands::SimpleResult;
 use crate::repositories::blueprint_repository as blueprints;
 use crate::repositories::character_repository as characters;
 use crate::repositories::character_roster_repository as roster;
+use crate::repositories::consistency_exemption_repository as consistency;
 use crate::repositories::draft_repository as drafts;
 use crate::repositories::llm_repository as llm;
+use crate::repositories::narrative_thread_repository as threads;
+use crate::repositories::plot_tree_repository as plot_tree;
 use crate::repositories::post_process_repository as post_process;
 use crate::repositories::project_clear_repository as project_clear;
 use crate::repositories::project_core_repository as project_core;
@@ -2012,6 +2015,409 @@ pub fn db_project_clear_generated_data(
     )
 }
 
+// ===== 批次 F1：一致性豁免（consistency-exemption 子域，3 频道） =====
+
+/// `db:consistency-exemption-list` —— 列出全部豁免（含已撤销）
+#[tauri::command]
+pub fn db_consistency_exemption_list(
+    state: State<'_, AppState>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<consistency::ConsistencyExemption>, String> {
+    consistency_exemption_list_inner(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+pub(crate) fn consistency_exemption_list_inner(
+    state: &AppState,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Vec<consistency::ConsistencyExemption>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(consistency::list)
+}
+
+/// `db:consistency-exemption-save` —— 保存（upsert）豁免（MUTATING）
+#[tauri::command]
+pub fn db_consistency_exemption_save(
+    state: State<'_, AppState>,
+    stable_fact_key: String,
+    reason: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> SimpleResult {
+    consistency_exemption_save_inner(
+        state.inner(),
+        &stable_fact_key,
+        &reason,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+pub(crate) fn consistency_exemption_save_inner(
+    state: &AppState,
+    stable_fact_key: &str,
+    reason: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> SimpleResult {
+    let outcome = guard_read(state, expected_project_path, session).and_then(|()| {
+        state.with_project_db(|conn| consistency::save(conn, stable_fact_key, reason))
+    });
+    simple_mutating_result(outcome)
+}
+
+/// `db:consistency-exemption-revoke` —— 撤销豁免（软删除，MUTATING）
+#[tauri::command]
+pub fn db_consistency_exemption_revoke(
+    state: State<'_, AppState>,
+    stable_fact_key: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> SimpleResult {
+    consistency_exemption_revoke_inner(
+        state.inner(),
+        &stable_fact_key,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+pub(crate) fn consistency_exemption_revoke_inner(
+    state: &AppState,
+    stable_fact_key: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> SimpleResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| consistency::revoke(conn, stable_fact_key)));
+    simple_mutating_result(outcome)
+}
+
+// ===== 批次 F1：叙事线索（narrative-thread 子域，6 频道） =====
+
+/// `db:narrative-thread-plan-create` / `-update` 的信封（对齐契约 `{ success, plan?, error? }`）
+///
+/// ⚠️ **失败路径不会填充 `error`**：基线这两个 handler **没有** try/catch，
+/// 仓储异常直接 reject，`{ success: false }` 分支实际不可达。此处忠实平移该形状
+/// （命令返回 `Err` → 前端 `invoke` reject），仅保留成功信封。
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NarrativeThreadPlanResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan: Option<threads::NarrativeThreadPlanRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// `db:narrative-thread-event-confirm` 的信封（对齐契约 `{ success, event?, error? }`）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NarrativeThreadEventResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub event: Option<threads::NarrativeThreadEvent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// `db:narrative-thread-list` —— 列出全部线索（含派生状态）
+#[tauri::command]
+pub fn db_narrative_thread_list(
+    state: State<'_, AppState>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<threads::NarrativeThreadView>, String> {
+    narrative_thread_list_inner(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+pub(crate) fn narrative_thread_list_inner(
+    state: &AppState,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Vec<threads::NarrativeThreadView>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(threads::list)
+}
+
+/// `db:narrative-thread-list-relevant` —— 列出与本章相关的活跃线索
+#[tauri::command]
+pub fn db_narrative_thread_list_relevant(
+    state: State<'_, AppState>,
+    context: threads::NarrativeThreadChapterContext,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<threads::NarrativeThreadView>, String> {
+    narrative_thread_list_relevant_inner(
+        state.inner(),
+        &context,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+pub(crate) fn narrative_thread_list_relevant_inner(
+    state: &AppState,
+    context: &threads::NarrativeThreadChapterContext,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Vec<threads::NarrativeThreadView>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| threads::list_relevant_active(conn, context))
+}
+
+/// `db:narrative-thread-plan-create` —— 创建线索计划
+#[tauri::command]
+pub fn db_narrative_thread_plan_create(
+    state: State<'_, AppState>,
+    input: threads::NarrativeThreadPlanInput,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<NarrativeThreadPlanResult, String> {
+    narrative_thread_plan_create_inner(
+        state.inner(),
+        &input,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+pub(crate) fn narrative_thread_plan_create_inner(
+    state: &AppState,
+    input: &threads::NarrativeThreadPlanInput,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<NarrativeThreadPlanResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    let plan = state.with_project_db(|conn| threads::create_plan(conn, input))?;
+    Ok(NarrativeThreadPlanResult {
+        success: true,
+        plan: Some(plan),
+        error: None,
+    })
+}
+
+/// `db:narrative-thread-plan-update` —— 更新线索计划
+#[tauri::command]
+pub fn db_narrative_thread_plan_update(
+    state: State<'_, AppState>,
+    id: i64,
+    input: threads::NarrativeThreadPlanInput,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<NarrativeThreadPlanResult, String> {
+    narrative_thread_plan_update_inner(
+        state.inner(),
+        id,
+        &input,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+pub(crate) fn narrative_thread_plan_update_inner(
+    state: &AppState,
+    id: i64,
+    input: &threads::NarrativeThreadPlanInput,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<NarrativeThreadPlanResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    let plan = state.with_project_db(|conn| threads::update_plan(conn, id, input))?;
+    Ok(NarrativeThreadPlanResult {
+        success: true,
+        plan: Some(plan),
+        error: None,
+    })
+}
+
+/// `db:narrative-thread-plan-delete` —— 删除线索计划（级联清除事件）
+#[tauri::command]
+pub fn db_narrative_thread_plan_delete(
+    state: State<'_, AppState>,
+    id: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<SimpleResult, String> {
+    narrative_thread_plan_delete_inner(
+        state.inner(),
+        id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+pub(crate) fn narrative_thread_plan_delete_inner(
+    state: &AppState,
+    id: i64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<SimpleResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| threads::delete_plan(conn, id))?;
+    Ok(SimpleResult {
+        success: true,
+        error: None,
+    })
+}
+
+/// `db:narrative-thread-event-confirm` —— 确认一条线索事件（需短证据来自定稿正文）
+#[tauri::command]
+pub fn db_narrative_thread_event_confirm(
+    state: State<'_, AppState>,
+    input: threads::NarrativeThreadEventInput,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<NarrativeThreadEventResult, String> {
+    narrative_thread_event_confirm_inner(
+        state.inner(),
+        &input,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+pub(crate) fn narrative_thread_event_confirm_inner(
+    state: &AppState,
+    input: &threads::NarrativeThreadEventInput,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<NarrativeThreadEventResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    let event = state.with_project_db(|conn| threads::confirm_event(conn, input))?;
+    Ok(NarrativeThreadEventResult {
+        success: true,
+        event: Some(event),
+        error: None,
+    })
+}
+
+// ===== 批次 F1：剧情树（plot-tree 子域，3 频道） =====
+
+/// `db:plot-tree-save` 的信封（对齐契约 `{ success, snapshot?, errorCode?, error? }`）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlotTreeSaveResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<crate::plot_tree::PlotTreeSnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// `db:plot-tree-read` —— 读取来源包（含存量快照与乐观锁版本号）
+#[tauri::command]
+pub fn db_plot_tree_read(
+    state: State<'_, AppState>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<plot_tree::PlotTreeSourceBundle, String> {
+    plot_tree_read_inner(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+pub(crate) fn plot_tree_read_inner(
+    state: &AppState,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<plot_tree::PlotTreeSourceBundle, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(plot_tree::read)
+}
+
+/// `db:plot-tree-save` —— 乐观锁保存快照（MUTATING）
+#[tauri::command]
+pub fn db_plot_tree_save(
+    state: State<'_, AppState>,
+    snapshot: serde_json::Value,
+    expected_source_revision: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> PlotTreeSaveResult {
+    plot_tree_save_inner(
+        state.inner(),
+        &snapshot,
+        &expected_source_revision,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+pub(crate) fn plot_tree_save_inner(
+    state: &AppState,
+    snapshot: &serde_json::Value,
+    expected_source_revision: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> PlotTreeSaveResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| {
+            if !crate::plot_tree::is_plot_tree_source_revision(expected_source_revision) {
+                return Err("剧情树来源版本无效".to_string());
+            }
+            state.with_project_db(|conn| {
+                plot_tree::save(conn, snapshot, expected_source_revision)
+            })
+        });
+    match outcome {
+        Ok(saved) => PlotTreeSaveResult {
+            success: true,
+            snapshot: Some(saved),
+            error_code: None,
+            error: None,
+        },
+        Err(message) => PlotTreeSaveResult {
+            success: false,
+            snapshot: None,
+            error_code: message
+                .contains("剧情资料在生成期间已更新")
+                .then(|| "sources-changed".to_string()),
+            error: Some(mutating_error(message)),
+        },
+    }
+}
+
+/// `db:plot-tree-clear` —— 清除快照缓存（不动来源事实）
+#[tauri::command]
+pub fn db_plot_tree_clear(
+    state: State<'_, AppState>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<SimpleResult, String> {
+    plot_tree_clear_inner(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+pub(crate) fn plot_tree_clear_inner(
+    state: &AppState,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<SimpleResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(plot_tree::clear)?;
+    Ok(SimpleResult {
+        success: true,
+        error: None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3161,6 +3567,380 @@ mod tests {
         assert!(draft_list_all_inner(&state, &root, Some(&session))
             .unwrap()
             .is_empty());
+
+        cleanup(&root);
+    }
+
+    // ===== 批次 F1：一致性豁免 / 叙事线索 / 剧情树 跨层测试 =====
+
+    /// 写入一条有内容的章节蓝图（供剧情树与线索测试使用）
+    fn seed_blueprint(state: &AppState, chapter: i64, title: &str, key_events: &str) {
+        state
+            .with_project_db(|conn| {
+                conn.execute(
+                    "INSERT INTO blueprints (chapter_number, title, purpose, key_events)
+                     VALUES (?1, ?2, '开端', ?3)",
+                    rusqlite::params![chapter, title, key_events],
+                )
+                .map(|_| ())
+                .map_err(|error| format!("写入蓝图失败：{error}"))
+            })
+            .unwrap();
+    }
+
+    /// 写入一条已定稿草稿（连带 `finalization_outbox` 投影）并返回 draft_id
+    fn seed_finalized(state: &AppState, chapter: i64, title: &str, body: &str) -> i64 {
+        state
+            .with_project_db(|conn| {
+                let content_id = crate::repositories::content_repository::create(conn, body)?;
+                conn.execute(
+                    "INSERT INTO drafts (chapter_number, version, status, content_id, word_count)
+                     VALUES (?1, 1, 'finalized', ?2, ?3)",
+                    rusqlite::params![chapter, content_id, body.chars().count() as i64],
+                )
+                .map_err(|error| format!("写入草稿失败：{error}"))?;
+                let draft_id = conn.last_insert_rowid();
+                conn.execute(
+                    "INSERT INTO finalization_outbox (
+                       finalization_id, draft_id, chapter_number, chapter_title, content_hash,
+                       content_revision, content_snapshot, target_file_name, publication_status
+                     ) VALUES (?1, ?2, ?3, ?4, 'hash', 1, ?5, 'f.md', 'published')",
+                    rusqlite::params![format!("fin-{draft_id}"), draft_id, chapter, title, body],
+                )
+                .map_err(|error| format!("写入定稿投影失败：{error}"))?;
+                Ok(draft_id)
+            })
+            .unwrap()
+    }
+
+    fn thread_plan_input() -> threads::NarrativeThreadPlanInput {
+        threads::NarrativeThreadPlanInput {
+            title: "失落的信物".to_string(),
+            thread_type: "foreshadow".to_string(),
+            target_start_chapter: 1,
+            target_end_chapter: 5,
+            author_intent: "主角寻回遗物".to_string(),
+        }
+    }
+
+    #[test]
+    fn consistency_exemption_channels_test() {
+        let (state, root, session) = activated_state("consistency");
+
+        // 读频道门禁
+        assert_eq!(
+            consistency_exemption_list_inner(&state, &root, None).unwrap_err(),
+            "缺少项目会话上下文，已拒绝操作"
+        );
+        assert_eq!(
+            consistency_exemption_list_inner(&state, "C:\\other", Some(&session)).unwrap_err(),
+            "检测到跨项目读写，已拒绝操作。"
+        );
+
+        // 空列表
+        assert!(consistency_exemption_list_inner(&state, &root, Some(&session))
+            .unwrap()
+            .is_empty());
+
+        // 保存 → 信封成功
+        let saved = consistency_exemption_save_inner(
+            &state,
+            "fact:abc",
+            "作者已确认",
+            &root,
+            Some(&session),
+        );
+        assert!(saved.success);
+        assert_eq!(saved.error, None);
+
+        // 保存校验失败 → MUTATING 文案
+        let invalid = consistency_exemption_save_inner(&state, "  ", "原因", &root, Some(&session));
+        assert!(!invalid.success);
+        assert_eq!(invalid.error.as_deref(), Some("Error: 稳定事实键无效"));
+
+        // 保存门禁失败也走 MUTATING 包装
+        let denied = consistency_exemption_save_inner(&state, "fact:x", "原因", &root, None);
+        assert!(!denied.success);
+        assert_eq!(
+            denied.error.as_deref(),
+            Some("Error: 缺少项目会话上下文，已拒绝操作")
+        );
+
+        // 撤销 → 软删除（仍在列表中，revoked = true）
+        let revoked = consistency_exemption_revoke_inner(&state, "fact:abc", &root, Some(&session));
+        assert!(revoked.success);
+        let items = consistency_exemption_list_inner(&state, &root, Some(&session)).unwrap();
+        assert_eq!(items.len(), 1);
+        assert!(items[0].revoked);
+        assert_eq!(items[0].stable_fact_key, "fact:abc");
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn narrative_thread_plan_channels_test() {
+        let (state, root, session) = activated_state("thread-plan");
+
+        // 空列表
+        assert!(narrative_thread_list_inner(&state, &root, Some(&session))
+            .unwrap()
+            .is_empty());
+
+        // 创建 → 成功信封（含 plan）
+        let created = narrative_thread_plan_create_inner(
+            &state,
+            &thread_plan_input(),
+            &root,
+            Some(&session),
+        )
+        .unwrap();
+        assert!(created.success);
+        assert_eq!(created.error, None);
+        let plan = created.plan.expect("应返回计划");
+        assert_eq!(plan.thread_type, "foreshadow");
+
+        // 参数非法 → **reject**（基线无 try/catch，故不填信封）
+        assert_eq!(
+            narrative_thread_plan_create_inner(
+                &state,
+                &threads::NarrativeThreadPlanInput {
+                    title: "  ".to_string(),
+                    ..thread_plan_input()
+                },
+                &root,
+                Some(&session),
+            )
+            .unwrap_err(),
+            "叙事线索计划参数无效"
+        );
+
+        // 更新 → 成功信封
+        let updated = narrative_thread_plan_update_inner(
+            &state,
+            plan.id,
+            &threads::NarrativeThreadPlanInput {
+                title: "新标题".to_string(),
+                ..thread_plan_input()
+            },
+            &root,
+            Some(&session),
+        )
+        .unwrap();
+        assert!(updated.success);
+        assert_eq!(updated.plan.unwrap().title, "新标题");
+
+        // 更新不存在的计划 → reject
+        assert_eq!(
+            narrative_thread_plan_update_inner(&state, 404, &thread_plan_input(), &root, Some(&session))
+                .unwrap_err(),
+            "叙事线索计划不存在"
+        );
+
+        // 列表投影：无事件 → planned
+        let views = narrative_thread_list_inner(&state, &root, Some(&session)).unwrap();
+        assert_eq!(views.len(), 1);
+        assert_eq!(views[0].status, "planned");
+
+        // 相关线索（章号在区间内）
+        let relevant = narrative_thread_list_relevant_inner(
+            &state,
+            &threads::NarrativeThreadChapterContext {
+                chapter_number: 3,
+                title: "第三章".to_string(),
+                key_events: String::new(),
+                characters: vec![],
+            },
+            &root,
+            Some(&session),
+        )
+        .unwrap();
+        assert_eq!(relevant.len(), 1);
+
+        // 删除 → 成功信封；再删 → reject
+        assert!(narrative_thread_plan_delete_inner(&state, plan.id, &root, Some(&session))
+            .unwrap()
+            .success);
+        assert_eq!(
+            narrative_thread_plan_delete_inner(&state, plan.id, &root, Some(&session)).unwrap_err(),
+            "叙事线索计划不存在"
+        );
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn narrative_thread_event_channel_test() {
+        let (state, root, session) = activated_state("thread-event");
+        let plan = narrative_thread_plan_create_inner(
+            &state,
+            &thread_plan_input(),
+            &root,
+            Some(&session),
+        )
+        .unwrap()
+        .plan
+        .unwrap();
+        let draft_id = seed_finalized(&state, 2, "第二章", "她握紧了那枚青铜钥匙。");
+
+        // 证据不在定稿正文中 → reject（前端据此提示「请粘贴短原文」）
+        assert_eq!(
+            narrative_thread_event_confirm_inner(
+                &state,
+                &threads::NarrativeThreadEventInput {
+                    plan_id: plan.id,
+                    draft_id,
+                    event_type: "planted".to_string(),
+                    evidence: "银色戒指".to_string(),
+                    reason: "理由".to_string(),
+                },
+                &root,
+                Some(&session),
+            )
+            .unwrap_err(),
+            "短证据必须来自绑定的定稿正文"
+        );
+
+        // 正常确认 → 成功信封
+        let confirmed = narrative_thread_event_confirm_inner(
+            &state,
+            &threads::NarrativeThreadEventInput {
+                plan_id: plan.id,
+                draft_id,
+                event_type: "planted".to_string(),
+                evidence: "那枚青铜钥匙".to_string(),
+                reason: "首次出现".to_string(),
+            },
+            &root,
+            Some(&session),
+        )
+        .unwrap();
+        assert!(confirmed.success);
+        let event = confirmed.event.expect("应返回事件");
+        assert_eq!(event.chapter_number, 2);
+        assert_eq!(event.chapter_title, "第二章");
+
+        // 绑定不存在的草稿 → reject
+        assert_eq!(
+            narrative_thread_event_confirm_inner(
+                &state,
+                &threads::NarrativeThreadEventInput {
+                    plan_id: plan.id,
+                    draft_id: 9999,
+                    event_type: "planted".to_string(),
+                    evidence: "x".to_string(),
+                    reason: "y".to_string(),
+                },
+                &root,
+                Some(&session),
+            )
+            .unwrap_err(),
+            "线索事件只能绑定已定稿章节"
+        );
+
+        // 列表投影：状态派生为 planted
+        let views = narrative_thread_list_inner(&state, &root, Some(&session)).unwrap();
+        assert_eq!(views[0].status, "planted");
+        assert_eq!(views[0].events.len(), 1);
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn plot_tree_channels_test() {
+        let (state, root, session) = activated_state("plot-tree");
+        seed_blueprint(&state, 1, "第一章", "开端事件");
+
+        // 读频道门禁
+        assert_eq!(
+            plot_tree_read_inner(&state, &root, None).unwrap_err(),
+            "缺少项目会话上下文，已拒绝操作"
+        );
+
+        let bundle = plot_tree_read_inner(&state, &root, Some(&session)).unwrap();
+        assert!(bundle.snapshot.is_none());
+        assert_eq!(bundle.stored_snapshot_invalid, None);
+        assert_eq!(bundle.facts.blueprints.len(), 1);
+        assert_eq!(bundle.source_revision.len(), 64);
+        let revision = bundle.source_revision.clone();
+
+        // 版本形状非法 → 信封失败，**不**带 errorCode
+        let bad_shape = plot_tree_save_inner(
+            &state,
+            &serde_json::json!({}),
+            "not-a-hash",
+            &root,
+            Some(&session),
+        );
+        assert!(!bad_shape.success);
+        assert_eq!(bad_shape.error_code, None);
+        assert_eq!(bad_shape.error.as_deref(), Some("Error: 剧情树来源版本无效"));
+
+        // 版本过期 → errorCode = sources-changed
+        let stale = plot_tree_save_inner(
+            &state,
+            &serde_json::json!({}),
+            &"a".repeat(64),
+            &root,
+            Some(&session),
+        );
+        assert!(!stale.success);
+        assert_eq!(stale.error_code.as_deref(), Some("sources-changed"));
+        assert_eq!(
+            stale.error.as_deref(),
+            Some("Error: 剧情资料在生成期间已更新")
+        );
+
+        // 结构非法（空轨道）→ 信封失败，无 errorCode
+        let invalid = plot_tree_save_inner(
+            &state,
+            &serde_json::json!({ "version": 1 }),
+            &revision,
+            &root,
+            Some(&session),
+        );
+        assert!(!invalid.success);
+        assert_eq!(invalid.error_code, None);
+        assert_eq!(
+            invalid.error.as_deref(),
+            Some("Error: 剧情树快照版本或写作语言无效")
+        );
+
+        // 合法快照 → 成功信封，且能回读
+        let snapshot = serde_json::json!({
+            "version": 1,
+            "generatedAt": "2026-10-08T10:00:00.000Z",
+            "writingLanguage": "zh-CN",
+            "sourceRevision": revision,
+            "tracks": [{
+                "id": "main-1",
+                "title": "主线",
+                "role": "main",
+                "startChapter": 1,
+                "endChapter": 1,
+                "summary": "主线摘要",
+                "events": [{
+                    "status": "planned",
+                    "chapterNumber": 1,
+                    "summary": "规划",
+                    "sources": [{ "type": "blueprint", "chapterNumber": 1 }]
+                }]
+            }]
+        });
+        let saved = plot_tree_save_inner(&state, &snapshot, &revision, &root, Some(&session));
+        assert!(saved.success, "保存应成功：{:?}", saved.error);
+        assert_eq!(saved.snapshot.as_ref().unwrap().tracks.len(), 1);
+
+        let reread = plot_tree_read_inner(&state, &root, Some(&session)).unwrap();
+        assert!(reread.snapshot.is_some(), "保存后应可回读快照");
+        assert_eq!(reread.stored_snapshot_invalid, None);
+
+        // 清除 → 只清缓存列
+        assert!(plot_tree_clear_inner(&state, &root, Some(&session))
+            .unwrap()
+            .success);
+        let cleared = plot_tree_read_inner(&state, &root, Some(&session)).unwrap();
+        assert!(cleared.snapshot.is_none());
+        assert_eq!(cleared.facts.blueprints.len(), 1, "来源事实不受清快照影响");
 
         cleanup(&root);
     }

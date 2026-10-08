@@ -143,6 +143,24 @@ describe('channel migration coverage', () => {
     expect(MIGRATED_CHANNELS.has('llm:discover-models')).toBe(true)
     expect(MIGRATED_CHANNELS.has('llm:test-connection')).toBe(true)
     expect(MIGRATED_CHANNELS.has('db:project-clear-generated-data')).toBe(true)
+    // 批次 F1：一致性豁免（consistency-exemption 子域）
+    expect(MIGRATED_CHANNELS.has('db:consistency-exemption-list')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('db:consistency-exemption-save')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('db:consistency-exemption-revoke')).toBe(true)
+    // 批次 F1：叙事线索（narrative-thread 子域）
+    expect(MIGRATED_CHANNELS.has('db:narrative-thread-list')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('db:narrative-thread-list-relevant')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('db:narrative-thread-plan-create')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('db:narrative-thread-plan-update')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('db:narrative-thread-plan-delete')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('db:narrative-thread-event-confirm')).toBe(true)
+    // 批次 F1：剧情树（plot-tree 子域）
+    expect(MIGRATED_CHANNELS.has('db:plot-tree-read')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('db:plot-tree-save')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('db:plot-tree-clear')).toBe(true)
+    // 批次 F 的另一半（kb 全部 + knowledge 文件选择）仍待迁移
+    expect(MIGRATED_CHANNELS.has('kb:search-writing-context')).toBe(false)
+    expect(MIGRATED_CHANNELS.has('dialog:select-knowledge-files')).toBe(false)
   })
 
   /**
