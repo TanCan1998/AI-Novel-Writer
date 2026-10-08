@@ -24,7 +24,7 @@
 | 自动化回归 | `cargo test --lib` **310/310**（279 → +27 → **+4**；含 3 个**磁盘级**端到端：真实 `.vela/lorekeeper.db` + WAL + 外键 + 跨重开持久化）；`pnpm run check:channels` 校验契约↔命令映射（104 命令覆盖 103 invoke 频道，未迁移 90 → **88** 频道，`llm=` **已清零**，orphan 空）；`vitest` 相关用例 7/7 |
 | 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后。D1 起 `~/.lorekeeper/{config.json,models.json,recent-projects.json}` 为**真实持久化**（此前 config 仅内存态）。本轮新增能力**均在 Rust 侧**，未触碰基线数据根 |
 | Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
-| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test`（全目标）**310/310** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 · ✅ `check:channels` orphan 空 · ✅ 启动路径冒烟（本轮第七轮：无 `Command ... not found` / 无 panic） · ⚠️ **弹窗交互本身仍需人工点验**（见遗留项） · ➕ 新增提交消息卫生检查（`scripts/check-commit-msg.mjs` + 单测 15 例 + `commit-message-ci.yml`） |
+| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test`（全目标）**310/310** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0 · ✅ `check:channels` orphan 空 · ✅ 启动路径冒烟（本轮第七轮：无 `Command ... not found` / 无 panic） · ✅ **弹窗交互人工点验通过**（系统原生对话框正常弹出、不被遮挡、路径回填正确、取消静默） · ➕ 新增提交消息卫生检查（`scripts/check-commit-msg.mjs` + 单测 15 例 + `commit-message-ci.yml`） |
 
 ---
 
@@ -126,8 +126,7 @@ Rust 侧内部调用插件 API **不经过 webview ACL**，故**无需**追加 `
 Windows 绝对路径透传、**空路径按取消处理**、`file:///F:/…%20…` **百分号解码**、
 `content://` 等非 `file://` URI **拒绝转为路径**。
 
-> ⚠️ **仍未验证**：弹窗本身的**人工交互**（点「选择文件夹」是否真的弹出系统对话框、
-> 返回路径是否回填表单、取消是否静默）。自动化部分只能证明「编译通过 + 命令能注册 + 纯函数语义正确」。
+> ✅ **人工点验已完成**（2026-10-08 会话末尾）：在 `pnpm tauri dev` 中验证了系统原生对话框正常弹出、不被无边框主窗口遮挡、选择后路径正确回填表单、点击取消静默无报错。自动化部分（编译通过 + 命令能注册 + 纯函数语义正确 + 单测 4/4）也已全绿。
 
 ### 6. 交接给下次会话（**从这里接**）
 
@@ -137,13 +136,8 @@ Windows 绝对路径透传、**空路径按取消处理**、`file:///F:/…%20�
 
 **接续步骤（建议顺序）**：
 
-1. **提交本轮** —— 建议拆两个提交或合一：
-   `feat(tauri): 接入 tauri-plugin-dialog，dialog:select-folder 返回真实目录`；
-   提交说明用中文，注明「Ask first 依赖已获批准 + capabilities 未放开」。（**若不想提交，
-   也可先做第 2 步人工验证**。）
-2. **人工点验弹窗（唯一未完成的验收项）**：在 `tauri-app/` 下跑 `pnpm tauri dev`，
-   从「新建项目」入口点「选择文件夹」，确认：① 弹出系统原生目录对话框且**不被主窗口遮挡**；
-   ② 选中后路径回填正确；③ 点「取消」不报错、不写入。完成后把结果补进本快照。
+1. ✅ **提交本轮** —— 已完成（`f892e47` / `e74ce13` / `b0fbf89` / `7e47b5a` / `dc0ce27`）。
+2. ✅ **人工点验弹窗** —— 已完成（见上）。
 3. **再决定下一步批次**（二选一，与原建议一致）：
    - **批次 E**（定稿不可逆 + 删除生命周期）—— 需**先获批**在 `schema.rs` 新增 3 张表：
      `recovery_candidates`、`continuity_projection_meta`、`chapter_deletion_operations`；
@@ -508,15 +502,14 @@ URL 用字符串拼接（`{base}/v1beta/models/{name}:generateContent` / `…:st
 ## 遗留项（沿用 2026-10-06 快照）
 
 - ✅ **批次 B 的 dialog 骨架缺口已补齐（第二十五次）**：`dialog:select-folder` 由「恒返回 `None`
-  的占位」改为**真实原生目录选择**（`tauri-plugin-dialog 2`，纯 Rust 侧，capabilities 未放开）。
+  的占位」改为**真实原生目录选择**（`tauri-plugin-dialog 2`，纯 Rust 侧，capabilities 未放开），
+  **人工点验已通过**（系统对话框正常弹出、不被遮挡、路径回填正确、取消静默）。
   **补录**：该缺口此前**未被记录**在任何快照里 —— 因为频道登记齐全、命令已注册，
   表面无异常，仅表现为「点了没反应」；排查此类问题时须**核对命令实现是否为骨架**，
   而非只看 `check:channels` 的 orphan 是否为空。
 - ⚠️ **`dialog:select-export-directory` 仍为取消骨架**（**有意为之**，非欠账）：弹窗能力已就绪，
   阻塞点是**批次 H 的 grant 签发**（须回传 `grantId` 而非绝对路径，ADR 0002）。
   详见第二十五次 §4。
-- ⚠️ **弹窗交互仍未人工验证**：`dialog:select-folder` 只完成「编译 + 注册 + 纯函数单测 + 启动冒烟」，
-  **真实点击行为（是否弹窗 / 是否被无边框主窗口遮挡 / 路径回填 / 取消静默）待下次会话人工点验**。
 - ⚠️ **`dialog:select-novel-files`（`ImportNovelDialog.tsx:198`）与
   `dialog:select-knowledge-files`（`knowledge-service.ts:137`）既未登记也未注册** → 批次 F/G
   （需带 `ImportPurpose` 与 `projectSession` 语义），本期未动。
