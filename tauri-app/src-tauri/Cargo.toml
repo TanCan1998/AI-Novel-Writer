@@ -29,6 +29,21 @@ url = "2"
 # 基线 `stripThinking()` 的三条替换规则（`<think>` 剥离链）。
 # 已在 Cargo.lock（1.13.1），声明为直接依赖不产生任何新下载。
 regex = "1"
+
+# 批次 F2（方案 B：自研混合检索）—— 双路检索依赖，均为纯 Rust 生态。
+#
+# hnsw_rs 0.3.4：HNSW 近似最近邻图（向量语义检索）。无 C/C++ 绑定、无构建链。
+# 已由方案 C 验证通过（`examples/hnsw_validation.rs`），现正式工程化为
+# `src/db/vector.rs` 的 `LocalVectorIndex`（双向 ID 映射 + 内存墓碑 + 二进制图快照）。
+hnsw_rs = "0.3.4"
+# jieba-rs 0.7.0：中文分词（关键词检索路径 `/ FTS5 预分词 / 查询分词`）。
+# 本批次先行声明，供 F2 的 `fts` 子层消费；向量层本身不依赖它。
+jieba-rs = "0.7.0"
+# 并发原语：向 量与 ID 映射以 `Arc<tokio::sync::RwLock<_>>` 常驻 Tauri State，
+# 支撑 `&self` 下的并发读（search）/ 写（insert / delete / load）。
+# tokio 1.53 已在 Cargo.lock（tauri 传递依赖），此处仅提升为直接依赖并启用
+# 最小 feature 集：sync（读写锁）+ rt/macros（仅单元测试的异步执行器）。
+tokio = { version = "1", features = ["sync", "rt", "macros"] }
 # 批次 D2-b：LLM 生成 / 流式（对齐基线 `fetch` + 手写 SSE 行解析）。
 #
 # ⚠️ 必须 `default-features = false`：reqwest 0.13 的 `default = ["default-tls", ...]`，

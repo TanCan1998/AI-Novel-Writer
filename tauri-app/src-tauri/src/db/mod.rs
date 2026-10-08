@@ -4,6 +4,7 @@
 //! 库文件位于 `<projectRoot>/.vela/lorekeeper.db`，采用 WAL + 外键约束。
 
 pub mod schema;
+pub mod vector;
 
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};

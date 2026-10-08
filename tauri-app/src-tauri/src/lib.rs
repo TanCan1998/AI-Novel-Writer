@@ -8,7 +8,7 @@
 mod app_paths;
 mod character_role;
 mod commands;
-mod db;
+pub mod db;
 #[cfg(test)]
 mod disk_e2e;
 mod draft_source_guard;
