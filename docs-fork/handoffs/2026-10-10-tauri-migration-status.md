@@ -11,7 +11,7 @@
 
 ---
 
-## 快照（最后更新：2026-10-10 · 第三十六次）
+## 快照（最后更新：2026-10-10 · 第三十七次）
 
 > 本表只填**最新一次自检的实测值**。改表前必须重跑对应命令，不得沿用旧数字、不得估算。
 > 本轮实测命令与输出见下方「[§5 自检记录](#5-自检记录2026-10-10-实测)」。
@@ -24,7 +24,7 @@
 | 覆盖 invoke 频道 | **169**（契约总数 193，事件频道 4） |
 | 未迁移 invoke 频道 | **24**（`db=15 mcp=9`） |
 | orphan | **空** ✅ |
-| `cargo test --lib` | **585/585** ✅（G2a 新增 13 条） |
+| `cargo test --lib` | **586/586** ✅（本轮修复窗口命令 +1） |
 | `cargo fmt --check` | **干净（0 差异）** ✅ |
 | `cargo check --all-targets` | **0 告警** ✅ |
 | `pnpm typecheck` / `lint` | exit 0 / exit 0 ✅ |
@@ -32,7 +32,7 @@
 | 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅** / **批次 G2a ✅（本次）** |
 | 当前阶段 | **批次 G2a 完成**（导入运行读面 3 频道）。下一步 **G2b（写面 2 频道 + 复活 `reference` 路径）→ G3（租约与批次推进，11 + effect receipts）→ G4（收口）**（未迁移 24 → 9）。其它待办：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项 |
 | 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、`tauri-plugin-opener 2.7.0`、`windows-sys 0.61`（`[target.'cfg(windows)'.dependencies]`，仅 lock 提级，**0 新下载**；Ask first 已批准 2026-10-10）。**G2a 零新依赖**。向量层 `hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio`；FTS5 由 `libsqlite3-sys` bundled 提供 |
-| GUI 冒烟 | ✅ 自 2026-10-07 起 **十一轮**。**第十一轮（2026-10-10，批次 G2a）**：vite `812 ms` + cargo `42.46s` → `lorekeeper.exe`（45 MB）；4 项全部通过 —— ① 可恢复任务卡片显示夹具运行（`第1章 开端.txt` / `2/2` / 阶段 `author-commit`，即 `list_resumable` + `row_to_snapshot` 投影）；② 点「继续导入」后流程推进到 `db:import-run-prepare-inspection`（**G2b 频道**）才报未迁移，**反证 G2a 的 `-list-chapters` 已真实成功**；③④ G1 两项回归通过。dev 日志仅两条已知 `setZoomFactor` 占位提示 + Windows EBUSY 噪声。近三轮：第十轮（G1，3 项）、第九轮（H 前三项 + B12）、第八轮（E G1） |
+| GUI 冒烟 | ✅ 自 2026-10-07 起 **十二轮**。**第十二轮（2026-10-10，冒烟发现的三项缺陷修复）**：① 弹窗 **ESC 关闭**（根因：Radix `DismissableLayer` 仅在 `index === layers.length-1` 时注册 ESC，而 Radix 关闭后仍保留 `DialogContent` 挂载——实测 `layers.length=7`，可见弹窗永远不是最高层）；② **窗口命令真实化**（批次 A 四个命令原为假成功骨架）；③ **标题栏拖拽**（`-webkit-app-region` 在 WebView2 无效 → 补 `data-tauri-drag-region`）。4 项人工验证全部 ✅。近三轮：第十一轮（G2a）、第十轮（G1）、第九轮（H 前三项 + B12） |
 | 双栈隔离 | **L0/L1/L2/L3 全部独立**：安装标识 / `~/.lorekeeper` / `<root>/.lore/`（库 `.lore/lorekeeper.db`、KB 向量 `.lore/kb/`）。基线为 `~/.vela` / `<root>/.vela/`。**两栈项目目录刻意不互通**（`ee40aaab`） |
 | Rust 工具链 | rustc/cargo **1.99.0 stable-msvc** @ `D:\Environment\rust\`（脚本内须显式设 `RUSTUP_HOME` / `CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
 
@@ -221,6 +221,85 @@ dev 进程树已 `taskkill /T` 结束，无残留进程；用户目录 `%TEMP%` 
 
 ---
 
+## 本次更新（第三十七次：冒烟发现的三项缺陷修复 —— 弹窗 ESC / 窗口命令真实化 / 标题栏拖拽）
+
+> 由用户在同日第十一轮鼠标实测验出。三项均为**上游/骨架遗留缺陷**，与迁移本身无关，
+> 但均为用户可感知的功能缺失，已在本批修复。
+
+### 1. 🐞 弹窗不响应 ESC（上游既有缺陷，根因定位到 Radix 源码）
+
+**现象**：应用内所有 `ui/Dialog` 弹窗按 ESC 无任何反应；而**系统原生**（选目录）对话框 ESC 正常。
+
+**定位过程（证据链，均来自实测日志）**：
+
+1. `ImportNovelDialog.tsx` / `ui/Dialog.tsx` 与基线 `src/` **逐字节相同** → 不是迁移回归；
+2. 临时 `console.warn` 诊断证明 **ESC 确实到达 DOM**（`{"key":"Escape","target":"DIV","role":"dialog"}`）
+   → 排除 webview 焦点问题；
+3. 读 `@radix-ui/react-dismissable-layer@1.1.19` 源码找到真因：
+   ```js
+   const isHighestLayer = node ? index === layers.length - 1 : false
+   useEffect(() => { if (!isHighestLayer) return; /* 才注册 document keydown(capture) */ })
+   ```
+4. 实测诊断：`{"isTop":false,"stackLen":7}` —— **Radix 在弹窗关闭后仍保留 `DialogContent` 挂载**
+   （退出动画走 `Presence`），叠加本应用同时渲染多个弹窗，`layers.length` 达 **7**，
+   真正可见的弹窗**几乎永远不是最高层** → Radix 自身的 ESC 通道永久失效。
+
+**修复（fork 侧健壮化，2 文件）**：
+
+| 文件 | 改动 |
+|---|---|
+| `src/components/ui/Dialog.tsx` | `Dialog` 包装 Radix `Root` 并下发 `{ open, requestClose }` 上下文；`DialogContent` 自建**仅登记「真正打开」弹窗**的栈 + `window` capture 阶段 ESC 兑底；尊重 `onEscapeKeyDown` 的 `preventDefault()` 选退（修稿合并弹窗） |
+| `src/components/settings/SettingsModal.tsx` | 该弹窗是**手写全屏弹层**（不走 `ui/Dialog`），补 ESC（与 `ClearProjectDataDialog` 既有先例同型：冒泡阶段 + 尊重 `defaultPrevented`） |
+
+### 2. 🐞 窗口最小化 / 最大化 / 关闭按钮全部无响应（批次 A 骨架）
+
+**根因**：`commands/window.rs` 的四个命令此前均为**假成功占位**（`// TODO` + 直接 `Ok(success: true)`），
+调用「成功」但不做任何事——正是盘点文档警告的「频道登记齐全但实现为骨架」。
+
+**修复**：按 `electron/controllers/window-controller.ts` 逐条真实化，并复刻**两段式关窗协议**：
+- `window:minimize` → `window.minimize()`；`window:toggle-maximize` → 切换后回读 `is_maximized()`；
+  `window:close` → `window.close()`；
+- 新增 `WindowCloseGuard`（`commands/window.rs`，常驻 `AppState`）+ `lib.rs` 的 `on_window_event`：
+  拦截 `CloseRequested` → `prevent_close()` + 广播 `window:close-requested{requestId}`；
+  `window:resolve-close` 校验 requestId/decision，`proceed` 才置 `approved` 并再次 `close()`。
+- **刻意偏离**：基线守卫在 `webContents.isDestroyed() || isLoadingMainFrame()` 时放行，
+  Tauri 无对应概念（`CloseRequested` 只对存活窗口触发），仅保留 `approved` 一条。
+
+### 3. 🐞 标题栏无法拖动窗口
+
+**根因**：基线用 Electron 专有的 `-webkit-app-region: drag`（**WebView2 不支持**）。
+**修复**：`TitleBar.tsx` 标题栏根元素补 `data-tauri-drag-region`（保留原样式以维持与基线可对比）。
+
+### 4. fork 侧与基线的偏离登记（本轮 3 文件）
+
+| 文件 | 偏离类型 | 理由 |
+|---|---|---|
+| `src/components/ui/Dialog.tsx` | 行为增强 | Radix 上游缺陷兑底（见上）；若上游日后修复需收敛 |
+| `src/components/settings/SettingsModal.tsx` | 行为增强 | 手写弹层缺 ESC；与 `ClearProjectDataDialog` 先例对齐 |
+| `src/components/layout/TitleBar.tsx` | 平台适配 | WebView2 需 `data-tauri-drag-region` |
+
+> 背景：`tauri-app/src` 与基线 `src/` 本已存在 ~20 个偏离文件
+> （`git diff --no-index --name-only src tauri-app/src`），故上述偏离符合既有做法；同步上游时需逐项核对。
+
+### 5. 验证（第十二轮 GUI 冒烟，用户人工）
+
+| # | 项 | 结果 |
+|---|---|---|
+| 1 | 标题栏【最小化】/【最大化】 | ✅ |
+| 2 | 按住标题栏空白拖动 / 双击最大化 | ✅ |
+| 3 | 「设置」弹窗 ESC 关闭（且其余 `ui/Dialog` 弹窗 ESC 仍正常） | ✅ |
+| 4 | 标题栏【关闭】按钮 | ✅ 有响应且可关闭（⚠️ **未保存内容确认流程未测** —— 需 dirty 状态） |
+
+自检：`cargo test --lib 586/586` · `cargo check --all-targets` 0 告警 · `cargo fmt --check` 干净 ·
+`check:channels` 193/170/169/24 · `typecheck`/`lint` exit 0 · 定向 `vitest` 7/7。
+
+### 6. 收尾
+
+- 提交清单：`fix(tauri): 修复弹窗 ESC、窗口命令真实化与标题栏拖拽`。
+- 规则变更：无。
+
+---
+
 ## 交接给下次会话（**从这里接**）
 
 ### 1. 当前工作区状态
@@ -235,7 +314,8 @@ dev 进程树已 `taskkill /T` 结束，无残留进程；用户目录 `%TEMP%` 
 | `8edd1b46` | `docs(tauri): G2 开工清单（状态机细分 G2a/G2b）与决策归档` |
 | `1a523707` | `feat(tauri): 批次 G2a 导入运行读面（3 频道 + 批次检查点单源）` |
 | `9d12514d` | `docs(tauri): 第三十六次快照与频道盘点更新（批次 G2a 收口）` |
-| 待生成 | `docs(tauri): 记录第十一轮 GUI 冒烟（批次 G2a 验收通过）`（含本文件的 G2a 冒烟章节） |
+| 待生成 ① | `fix(tauri): 修复弹窗 ESC、窗口命令真实化与标题栏拖拽` |
+| 待生成 ② | `docs(tauri): 第三十七次快照 —— 冒烟三项缺陷修复` |
 
 - HEAD（写入本表时）：`9d12514d docs(tauri): 第三十六次快照与频道盘点更新（批次 G2a 收口）`
 - ⚠️ 上一份快照（2026-10-09）中**已过期的交接描述**（防照旧操作）：
@@ -282,6 +362,8 @@ dev 进程树已 `taskkill /T` 结束，无残留进程；用户目录 `%TEMP%` 
 | **B19** | **`reference`（参考语料）路径** | ⚠️ **新增（本次）**：依赖 G2 状态机；G1 返回诚实错误并登记为临时缺口 |
 | **B20** | **D7 zh-CN 排序不等价** | ⚠️ **新增（本次）**：无 ICU 依赖，来源文件名排序用数字感知自然序近似；如需逐字对齐须 Ask first 引 ICU |
 | **B21** | **G1 GUI 冒烟** | ✅ **已解除（本次）**：第十轮冒烟 3 项全部通过（作者原稿预览 / reference 诚实错误 / epub 诚实错误），dev 日志无 error/panic |
+| **B22** | **两段式关窗的未保存内容确认未验证** | ⚠️ **新增（本次）**：`window:close` 现在会拦截并广播 `window:close-requested`，渲染层无 dirty 时直接 `proceed`；**dirty 分支（确认框 + cancel / 再次关窗）尚未实测**，需构造未保存内容后再验 |
+| **B23** | **手写弹层无退出动画** | ⚠️ **新增（本次）**：`SettingsModal` 在 `open=false` 时直接 `return null`（无 `Presence` 式延迟卸载），关闭“生硬”；**这是基线既有表现，非本次回归**（点 X 同样如此）。如需动画需改成延迟卸载，代价中等，待定 |
 
 ### 4. 红线提醒（每次接手都要过一遍）
 
@@ -305,7 +387,7 @@ dev 进程树已 `taskkill /T` 结束，无残留进程；用户目录 `%TEMP%` 
 | 命令 | 工作目录 | 实测输出 |
 |---|---|---|
 | `node scripts/verify-channel-coverage.mjs --quiet` | `tauri-app/` | 契约 invoke 频道 **193**（事件频道 4）· 已注册命令 **170** → 覆盖 **169** · 未迁移 **24** `[db=15 mcp=9]` · 命令名与契约频道一一对应 ✅ |
-| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 585 passed; 0 failed; 0 ignored; 0 measured` |
+| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 586 passed; 0 failed; 0 ignored; 0 measured` |
 | `cargo check --all-targets` | `tauri-app/src-tauri/` | `Finished dev profile ... `（**0 告警**） |
 | `cargo fmt --check` | `tauri-app/src-tauri/` | 输出 **0 行**（干净） |
 | `pnpm typecheck` / `pnpm run lint` | `tauri-app/` | exit 0 / exit 0 |
@@ -314,6 +396,7 @@ dev 进程树已 `taskkill /T` 结束，无残留进程；用户目录 `%TEMP%` 
 | `git log -1` | 仓库根 | `9d12514d docs(tauri): 第三十六次快照与频道盘点更新（批次 G2a 收口）` |
 | `pnpm tauri dev`（第十轮冒烟，G1） | `tauri-app/` | VITE `ready in 441 ms` · cargo `Finished dev profile in 47.50s` · `lorekeeper.exe` **90 MB** · 3 项人工验证全部 ✅ |
 | `pnpm tauri dev`（第十一轮冒烟，G2a） | `tauri-app/` | VITE `ready in 812 ms` · cargo `Finished dev profile in 42.46s` · `lorekeeper.exe` **45 MB** · 4 项人工验证全部 ✅（唯一 console.error 为预期的 G2b 频道未迁移） |
+| `pnpm tauri dev`（第十二轮冒烟，ESC/窗口修复） | `tauri-app/` | VITE `ready` · cargo 增量重建 · `lorekeeper.exe` **32 MB** · 4 项人工验证全部 ✅（窗口最小/最大化、标题栏拖拽、设置弹窗 ESC、关闭按钮） |
 
 ---
 
