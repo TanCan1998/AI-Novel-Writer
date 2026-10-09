@@ -8,7 +8,7 @@
 
 > **背景**：批次 F2（`kb:*` 15 频道 + `dialog:select-knowledge-*` 2 频道）技术方案决策。  
 > **输入文档**：
-> - [`vector-store-migration-assessment.md`](../../../research/2026-10-08-vector-store-migration-assessment.md)（基线行为对照 + 差异清单）
+> - [`vector-store-migration-assessment.md`](../../../research/archive/2026-10-08-f2/2026-10-08-vector-store-migration-assessment.md)（基线行为对照 + 差异清单）
 > - [`vector-alternatives-survey.md`](../../../research/archive/2026-10-08-f2/2026-10-08-vector-alternatives-survey.md)（Rust 生态方案调研）
 
 ---

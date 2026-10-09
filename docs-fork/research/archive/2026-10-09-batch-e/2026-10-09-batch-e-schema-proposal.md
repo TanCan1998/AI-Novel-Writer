@@ -1,6 +1,6 @@
 # 批次 E：定稿与章节生命周期 - Schema 变更申报（重写版 v2.0）
 
-**文档编号**：`docs-fork/research/2026-10-09-batch-e-schema-proposal.md`
+**文档编号**：`docs-fork/research/archive/2026-10-09-batch-e/2026-10-09-batch-e-schema-proposal.md`
 **申报类型**：Ask-first（需架构组批准）
 **生效范围**：`tauri-app/src-tauri/src/db/schema.rs` 新增 3 个 `CREATE_*` DDL 常量
 **阻塞状态**：**阻塞批次 E 推进**（详见 `docs-fork/handoffs/2026-10-08-tauri-migration-status.md` 第 5 项）

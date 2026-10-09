@@ -2,7 +2,7 @@
 
 > **⚠️ 已过时（Superseded）**
 > 本文件推荐方案 D（cairn-search）验证，但方案 D 已被
-> [`2026-10-08-plan-d-verification-results.md`](../../2026-10-08-plan-d-verification-results.md)
+> [`2026-10-08-plan-d-verification-results.md`](2026-10-08-plan-d-verification-results.md)
 > 证明不可行。最终决策见 [`2026-10-08-final-decision-plan-b.md`](../../2026-10-08-final-decision-plan-b.md)。
 
 **日期**：2026-10-08 23:45  

@@ -483,8 +483,8 @@ impl FtsEngine {
    - `src/shared/ipc-channels.ts`: 17 个频道契约
 
 3. **技术文档**
-   - `docs-fork/research/2026-10-08-plan-d-verification-results.md`
-   - `docs-fork/research/2026-10-08-vector-store-migration-assessment.md`
+   - `docs-fork/research/archive/2026-10-08-f2/2026-10-08-plan-d-verification-results.md`
+   - `docs-fork/research/archive/2026-10-08-f2/2026-10-08-vector-store-migration-assessment.md`
    - `docs-fork/plans/tauri-migration-channel-inventory.md`
 
 ---
