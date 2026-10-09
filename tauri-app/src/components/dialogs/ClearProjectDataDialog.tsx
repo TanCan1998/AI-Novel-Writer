@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AlertTriangle, FileText, FolderTree, Loader2, Map, Trash2 } from 'lucide-react'
 
 import { clearProjectData, type ClearProjectDataOptions } from '../../services/project-clear-service'
@@ -65,9 +65,26 @@ export default function ClearProjectDataDialog({
 }
 
 function ClearProjectDataDialogContents({
-  onClose,
+  onClose: onCloseProp,
   onCleared,
 }: Omit<ClearProjectDataDialogProps, 'open'>) {
+  // 统一进出场（B25）：把内部**全部**关闭入口（ESC / 遮罩点击 / 清除成功后 / 取消按钮）
+  // 收口到带延迟卸载的 `onClose`，各处调用点无需关心动画；写法同 `SettingsModal`。
+  const [isExiting, setIsExiting] = useState(false)
+  const exitTimerRef = useRef<number | null>(null)
+  const onClose = useCallback(() => {
+    // 幂等：已在退场中时忽略重复点击 / 重复 ESC
+    if (exitTimerRef.current !== null) return
+    setIsExiting(true)
+    exitTimerRef.current = window.setTimeout(() => {
+      exitTimerRef.current = null
+      onCloseProp()
+    }, 200)
+  }, [onCloseProp])
+  useEffect(() => () => {
+    if (exitTimerRef.current !== null) window.clearTimeout(exitTimerRef.current)
+  }, [])
+
   const [selected, setSelected] = useState<Record<ClearKey, boolean>>({
     creativeFields: true,
     blueprints: true,
@@ -120,20 +137,23 @@ function ClearProjectDataDialogContents({
 
   return (
     <div
-      className="fixed inset-0 z-[9998] flex items-center justify-center"
+      className="lk-dialog-backdrop fixed inset-0 z-[9998] flex items-center justify-center"
+      data-state={isExiting ? 'closed' : 'open'}
       style={{
         backgroundColor: 'var(--color-backdrop)',
         backdropFilter: 'blur(8px)',
+        pointerEvents: isExiting ? 'none' : 'auto',
       }}
       onClick={() => {
         if (!clearing) onClose()
       }}
     >
       <div
+        className="lk-dialog-panel w-[min(92vw,520px)] overflow-hidden"
+        data-state={isExiting ? 'closed' : 'open'}
         role="dialog"
         aria-modal="true"
         aria-labelledby="clear-project-data-title"
-        className="w-[min(92vw,520px)] overflow-hidden"
         style={{
           backgroundColor: 'var(--color-sidebar)',
           border: '1px solid var(--color-border)',
