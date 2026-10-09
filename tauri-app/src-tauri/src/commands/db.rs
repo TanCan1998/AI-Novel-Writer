@@ -19,6 +19,7 @@ use crate::repositories::character_repository as characters;
 use crate::repositories::character_roster_repository as roster;
 use crate::repositories::consistency_exemption_repository as consistency;
 use crate::repositories::draft_repository as drafts;
+use crate::repositories::finalized_continuity_repository as continuity;
 use crate::repositories::llm_repository as llm;
 use crate::repositories::narrative_thread_repository as threads;
 use crate::repositories::plot_tree_repository as plot_tree;
@@ -2575,6 +2576,61 @@ pub fn db_recovery_candidate_resolve(
         &expected_project_path,
         project_session.as_ref(),
     )
+}
+
+// ===== 批次 E：定稿连续性投影（continuity 子域，4 频道） =====
+
+/// `db:continuity-save-finalized`
+#[tauri::command]
+pub fn db_continuity_save_finalized(
+    state: State<'_, AppState>,
+    request: continuity::SaveFinalizedContinuityRequest,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> SimpleResult {
+    let outcome = guard_read(state.inner(), &expected_project_path, project_session.as_ref())
+        .and_then(|()| state.with_project_db(|conn| continuity::save_finalized_continuity(conn, &request)));
+    simple_mutating_result(outcome)
+}
+
+/// `db:continuity-save-character-state-candidates`
+#[tauri::command]
+pub fn db_continuity_save_character_state_candidates(
+    state: State<'_, AppState>,
+    request: continuity::SaveFinalizedCharacterStateCandidatesRequest,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> SimpleResult {
+    let outcome = guard_read(state.inner(), &expected_project_path, project_session.as_ref()).and_then(|()| {
+        state
+            .with_project_db(|conn| continuity::save_finalized_character_state_candidates(conn, &request))
+    });
+    simple_mutating_result(outcome)
+}
+
+/// `db:continuity-list-before`（读频道）
+#[tauri::command]
+pub fn db_continuity_list_before(
+    state: State<'_, AppState>,
+    chapter_number: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<continuity::FinalizedContinuityProjection>, String> {
+    guard_read(state.inner(), &expected_project_path, project_session.as_ref())?;
+    state.with_project_db(|conn| continuity::list_finalized_continuity_before(conn, chapter_number))
+}
+
+/// `db:continuity-read-source`（读频道；基线在库未开时返回 invalid 而非报错，
+/// 但本侧 with_project_db 未开库即报错，语义由门禁先行拦截，行为等价）
+#[tauri::command]
+pub fn db_continuity_read_source(
+    state: State<'_, AppState>,
+    draft_id: i64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<continuity::FinalizedSourceReadResult, String> {
+    guard_read(state.inner(), &expected_project_path, project_session.as_ref())?;
+    state.with_project_db(|conn| continuity::read_finalized_source(conn, draft_id))
 }
 
 #[cfg(test)]

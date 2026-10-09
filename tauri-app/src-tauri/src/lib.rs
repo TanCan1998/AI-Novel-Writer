@@ -171,6 +171,11 @@ pub fn run() {
             commands::db_recovery_candidate_list,
             commands::db_recovery_candidate_update,
             commands::db_recovery_candidate_resolve,
+            // 批次 E：定稿连续性投影（continuity 子域，4 频道）
+            commands::db_continuity_save_finalized,
+            commands::db_continuity_save_character_state_candidates,
+            commands::db_continuity_list_before,
+            commands::db_continuity_read_source,
             // 批次 D1：LLM 模型管理（7 频道）
             commands::llm_list_models,
             commands::llm_save_model,
