@@ -177,12 +177,3 @@ SettingsModal / ClearProjectDataDialog）。GUI 已验：淡入 + 淡出 ✅。
 | `pnpm tauri dev`（第十二轮冒烟，ESC/窗口修复） | `tauri-app/` | VITE `ready` · cargo 增量重建 · `lorekeeper.exe` **32 MB** · 4 项人工验证全部 ✅（窗口最小/最大化、标题栏拖拽、设置弹窗 ESC、关闭按钮） |
 
 ---
-
-## 历史指针（不复制正文）
-
-| 日期 | 文件 | 内容 |
-|---|---|---|
-| 2026-10-09 | [`2026-10-09-tauri-migration-status.md`](./2026-10-09-tauri-migration-status.md) | 第三十四次（H3 update 域）及以前（G schema、L3、E、F2、H1/H2/B12…） |
-| 2026-10-08 | [`2026-10-08-tauri-migration-status.md`](./2026-10-08-tauri-migration-status.md) | 第二十三～二十六次（F1 / F2 决策 / 批次 B 遗留补齐 / D2-b·D2-c） |
-| 2026-10-07 | [`2026-10-07-tauri-migration-status.md`](./2026-10-07-tauri-migration-status.md) | 批次 D2-a 及以前 |
-| 2026-10-06 | [`2026-10-06-tauri-migration-status.md`](./2026-10-06-tauri-migration-status.md) | 批次 A–C 细节 |
