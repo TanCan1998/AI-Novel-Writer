@@ -37,6 +37,7 @@ use crate::import::parsing::{
     self, default_file_identity, file_alias_digest, location_alias_digest, ParsedChapter,
 };
 use crate::import::{ImportPurpose, ImportRunLocale};
+use crate::repositories::import_run_repository as import_runs;
 use crate::security::ProjectSessionContext;
 use crate::state::AppState;
 
@@ -52,9 +53,9 @@ pub struct NovelFileSelectionResult {
     pub success: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub inspection: Option<ImportInspectionSummary>,
-    /// G1 恒为 `None`（`reference` 路径依赖 G2 状态机）；保留字段以对齐契约。
+    /// G1 恒为 `None`；自 G2b-6 起 `reference`（结构化请求）路径回填解析准备结果
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub preparation: Option<Value>,
+    pub preparation: Option<import_runs::ImportRunPreparationResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -65,6 +66,15 @@ impl NovelFileSelectionResult {
             success: true,
             inspection: Some(inspection),
             preparation: None,
+            error: None,
+        }
+    }
+
+    fn ok_preparation(preparation: import_runs::ImportRunPreparationResult) -> Self {
+        Self {
+            success: true,
+            inspection: None,
+            preparation: Some(preparation),
             error: None,
         }
     }
@@ -181,15 +191,6 @@ fn epub_import_unmigrated_message(locale: ImportRunLocale) -> String {
     )
 }
 
-/// G2 依赖：`reference` 诚实错误
-fn reference_import_unmigrated_message(locale: ImportRunLocale) -> String {
-    import_text(
-        locale,
-        "参考语料导入尚未迁移：它依赖批次 G2 的导入运行状态机。本次仅支持「作者原稿」导入。",
-        "Reference-corpus import is not migrated yet: it depends on the batch G2 import-run state machine. Only author-manuscript import is available for now.",
-    )
-}
-
 /// 空来源文案（对齐基线两条专用错误）
 fn empty_source_message(locale: ImportRunLocale) -> String {
     import_text(
@@ -297,6 +298,41 @@ fn read_text_bounded(path: &Path, limit: usize) -> Result<String, String> {
 struct SelectedSource {
     identity: parsing::ImportSourceFileIdentity,
     display_name: String,
+    /// D1：无密钥 sha256 来源别名（在读取任何字节前对**全部**来源算好）
+    location_alias_digest: String,
+    file_alias_digest: Option<String>,
+    /// 原始文件大小（baseline `sourceDisplay.size` 用它，而非正文实际字节）
+    selected_size: usize,
+}
+
+/// 选择期已落地的 reference 解析运行（对齐基线 `parsingContext`）
+struct ReferenceParsing {
+    run_id: String,
+    /// 与 `selected` 下标一一对应
+    source_ids: Vec<String>,
+}
+
+/// 选择结果：author → 检视摘要；reference → 解析准备结果
+#[derive(Debug)]
+pub(crate) enum InspectOutcome {
+    Inspection(ImportInspectionSummary),
+    Preparation(import_runs::ImportRunPreparationResult),
+}
+
+/// 参考语料导入：抛出错误前把该来源标记为 failed（
+/// 消息用**映射后**的文案，对齐基线 catch 块里那次 `failParsedSource`）。
+fn fail_reference_source(
+    conn: Option<&rusqlite::Connection>,
+    parsing: Option<&ReferenceParsing>,
+    source_index: usize,
+    message: &str,
+) {
+    let (Some(conn), Some(ctx)) = (conn, parsing) else {
+        return;
+    };
+    if let Some(source_id) = ctx.source_ids.get(source_index) {
+        let _ = import_runs::fail_parsed_source(conn, &ctx.run_id, source_id, message);
+    }
 }
 
 /// 平移自控制器主体（对话框与项目门禁之外的全部纯逻辑）。
@@ -304,13 +340,12 @@ struct SelectedSource {
 /// 失败时**不自行清理**存储：调用方负责 `clear()`（命令层在失败路径统一清理）。
 pub(crate) fn inspect_selected_novel_files(
     store: &mut ImportInspectionStore,
+    conn: Option<&rusqlite::Connection>,
     file_paths: Vec<String>,
     purpose: ImportPurpose,
     locale: ImportRunLocale,
-) -> Result<ImportInspectionSummary, String> {
-    if purpose == ImportPurpose::Reference {
-        return Err(reference_import_unmigrated_message(locale));
-    }
+    reference_run_id: Option<&str>,
+) -> Result<InspectOutcome, String> {
     if file_paths.is_empty() {
         return Err(import_selection_error_message("", locale));
     }
@@ -349,8 +384,18 @@ pub(crate) fn inspect_selected_novel_files(
             .map(|name| name.to_string_lossy().to_string())
             .unwrap_or_else(|| file_path.clone());
         selected.push(SelectedSource {
+            location_alias_digest: location_alias_digest(&identity.canonical_location)
+                .map_err(|error| import_selection_error_message(&error, locale))?,
+            file_alias_digest: match &identity.file_identity {
+                Some(file_identity) => Some(
+                    file_alias_digest(file_identity)
+                        .map_err(|error| import_selection_error_message(&error, locale))?,
+                ),
+                None => None,
+            },
             identity,
             display_name,
+            selected_size,
         });
     }
     // D7：数字感知自然序（逼近基线 zh-CN numeric collation）
@@ -358,29 +403,110 @@ pub(crate) fn inspect_selected_novel_files(
 
     let mut consumed_bytes: usize = 0;
     let mut chapter_count: usize = 0;
+    // reference（结构化请求）：**选择期**即落地解析运行（对齐基线 `parsingContext`）。
+    // 非结构化请求或 author 用途不进入该分支（与基线 `structuredRequest?.purpose` 同义）。
+    let parsing: Option<ReferenceParsing> = match reference_run_id {
+        None => None,
+        Some(run_id) => {
+            let Some(conn) = conn else {
+                return Err(import_selection_error_message("项目数据库未打开", locale));
+            };
+            let encoded: Vec<crate::import::identity::EncodedImportSourceIdentity> = selected
+                .iter()
+                .map(
+                    |source| crate::import::identity::EncodedImportSourceIdentity {
+                        location_alias_digest: source.location_alias_digest.clone(),
+                        file_alias_digest: source.file_alias_digest.clone(),
+                    },
+                )
+                .collect();
+            let resolved =
+                crate::import::identity::resolve_encoded_sources(conn, &encoded, purpose)
+                    .map_err(|error| import_selection_error_message(&error, locale))?;
+            let source_display: Vec<import_runs::ImportSourceDisplayMetadata> = selected
+                .iter()
+                .map(|source| import_runs::ImportSourceDisplayMetadata {
+                    display_name: source.display_name.clone(),
+                    media_type: parsing::source_media_type(&source.display_name),
+                    size: source.selected_size as i64,
+                })
+                .collect();
+            let run = import_runs::begin_parsing(
+                conn,
+                &import_runs::ImportRunBeginParsingRequest {
+                    run_id: run_id.to_string(),
+                    purpose,
+                    source_fingerprint: resolved.source_fingerprint.clone(),
+                    source_ids: Some(resolved.source_ids.clone()),
+                    source_fingerprints: Some(resolved.source_fingerprints.clone()),
+                    // D3′：两栈项目目录不互通，legacy 指纹恒为空
+                    legacy_source_fingerprints: None,
+                    legacy_collection_fingerprint: None,
+                    source_display,
+                    locale,
+                },
+            )
+            .map_err(|error| import_selection_error_message(&error, locale))?;
+            if run.total_content_size as usize > MAX_IMPORT_TOTAL_BYTES - selected_bytes {
+                return Err(import_selection_error_message(
+                    "IMPORT_SOURCE_BYTES_EXCEEDED",
+                    locale,
+                ));
+            }
+            // 断点恢复：已完成来源的正文/章节数从运行台账续算
+            consumed_bytes = run.total_content_size as usize;
+            chapter_count = run.completed_chapters as usize;
+            Some(ReferenceParsing {
+                run_id: run_id.to_string(),
+                source_ids: resolved.source_ids,
+            })
+        }
+    };
+
     let mut sources: Vec<InspectedImportSource> = Vec::new();
     let mut inspected_chapters: Vec<InspectedImportChapter> = Vec::new();
     let mut empty_source_found = false;
     let mut title_only_source_found = false;
 
     for (source_index, source) in selected.into_iter().enumerate() {
+        // 断点恢复：已完成的来源直接跳过（对齐基线 `parsedSourceStatus === 'completed'`）
+        if let (Some(conn), Some(ctx)) = (conn, parsing.as_ref()) {
+            if let Some(source_id) = ctx.source_ids.get(source_index) {
+                let status = import_runs::parsed_source_status(conn, &ctx.run_id, source_id)?;
+                if status.as_deref() == Some("completed") {
+                    continue;
+                }
+            }
+        }
         if parsing::is_epub_name(&source.display_name) {
             return Err(epub_import_unmigrated_message(locale));
         }
         let remaining = MAX_IMPORT_TOTAL_BYTES - consumed_bytes;
-        let raw = read_text_bounded(Path::new(&source.identity.canonical_location), remaining)
-            .map_err(|code| import_selection_error_message(&code, locale))?;
+        let raw = match read_text_bounded(Path::new(&source.identity.canonical_location), remaining)
+        {
+            Ok(value) => value,
+            Err(code) => {
+                let message = import_selection_error_message(&code, locale);
+                fail_reference_source(conn, parsing.as_ref(), source_index, &message);
+                return Err(message);
+            }
+        };
         let content_bytes = raw.len();
         if content_bytes > MAX_IMPORT_TOTAL_BYTES - consumed_bytes {
-            return Err(import_selection_error_message(
-                "IMPORT_SOURCE_BYTES_EXCEEDED",
-                locale,
-            ));
+            let message = import_selection_error_message("IMPORT_SOURCE_BYTES_EXCEEDED", locale);
+            fail_reference_source(conn, parsing.as_ref(), source_index, &message);
+            return Err(message);
         }
         consumed_bytes += content_bytes;
         let content = raw.trim();
         if content.is_empty() {
             empty_source_found = true;
+            fail_reference_source(
+                conn,
+                parsing.as_ref(),
+                source_index,
+                &import_text(locale, "所选来源文件为空", "Selected source file is empty"),
+            );
             continue;
         }
 
@@ -401,18 +527,9 @@ pub(crate) fn inspect_selected_novel_files(
             }]
         };
 
-        let location_digest = location_alias_digest(&source.identity.canonical_location)
-            .map_err(|error| import_selection_error_message(&error, locale))?;
-        let file_digest = match &source.identity.file_identity {
-            Some(file_identity) => Some(
-                file_alias_digest(file_identity)
-                    .map_err(|error| import_selection_error_message(&error, locale))?,
-            ),
-            None => None,
-        };
         sources.push(InspectedImportSource {
-            location_alias_digest: location_digest,
-            file_alias_digest: file_digest,
+            location_alias_digest: source.location_alias_digest.clone(),
+            file_alias_digest: source.file_alias_digest.clone(),
             display_name: source.display_name.clone(),
             media_type: parsing::source_media_type(&source.display_name),
             size: content_bytes,
@@ -420,15 +537,25 @@ pub(crate) fn inspect_selected_novel_files(
 
         if parsed.is_empty() {
             title_only_source_found = true;
+            fail_reference_source(
+                conn,
+                parsing.as_ref(),
+                source_index,
+                &import_text(
+                    locale,
+                    "所选来源文件只有章节标题，没有可导入的正文",
+                    "The selected source file contains chapter headings but no body text",
+                ),
+            );
             continue;
         }
         if parsed.len() > MAX_IMPORT_CHAPTERS - chapter_count {
-            return Err(import_selection_error_message(
-                "IMPORT_CHAPTER_COUNT_EXCEEDED",
-                locale,
-            ));
+            let message = import_selection_error_message("IMPORT_CHAPTER_COUNT_EXCEEDED", locale);
+            fail_reference_source(conn, parsing.as_ref(), source_index, &message);
+            return Err(message);
         }
         chapter_count += parsed.len();
+        let first_inspected_chapter = inspected_chapters.len();
 
         let mut used_local_numbers: std::collections::HashSet<i64> =
             std::collections::HashSet::new();
@@ -461,6 +588,35 @@ pub(crate) fn inspect_selected_novel_files(
                 content_size,
             });
         }
+        // reference：逐来源落地冻结章（对齐基线 `commitParsedSource`）；
+        // 失败先标记该来源 failed（**映射后**文案，对齐基线 catch 里那次 fail）再抛
+        if let (Some(conn), Some(ctx)) = (conn, parsing.as_ref()) {
+            if let Some(source_id) = ctx.source_ids.get(source_index) {
+                let source_chapters: Vec<import_runs::ImportRunChapterInput> = inspected_chapters
+                    [first_inspected_chapter..]
+                    .iter()
+                    .map(|chapter| import_runs::ImportRunChapterInput {
+                        number: chapter.source_chapter_number,
+                        source_index: None,
+                        source_chapter_number: Some(chapter.source_chapter_number),
+                        title: chapter.title.clone(),
+                        content_fingerprint: chapter.content_fingerprint.clone(),
+                        content_size: chapter.content_size as i64,
+                        content: chapter.content.clone(),
+                    })
+                    .collect();
+                if let Err(error) = import_runs::commit_parsed_source(
+                    conn,
+                    &ctx.run_id,
+                    source_id,
+                    &source_chapters,
+                ) {
+                    let message = import_selection_error_message(&error, locale);
+                    fail_reference_source(Some(conn), parsing.as_ref(), source_index, &message);
+                    return Err(message);
+                }
+            }
+        }
     }
 
     if empty_source_found {
@@ -470,7 +626,14 @@ pub(crate) fn inspect_selected_novel_files(
         return Err(title_only_source_message(locale));
     }
 
-    // author-manuscript：章号必须唯一（`reference` 在上方已提前拒绝）
+    // reference：解析已全部落地 → 收口为准备结果（对齐基线最终 `finalizeParsing`）
+    if let (Some(conn), Some(ctx)) = (conn, parsing.as_ref()) {
+        let preparation = import_runs::finalize_parsing(conn, &ctx.run_id)
+            .map_err(|error| import_selection_error_message(&error, locale))?;
+        return Ok(InspectOutcome::Preparation(preparation));
+    }
+
+    // author-manuscript：章号必须唯一
     let mut seen_numbers: std::collections::HashSet<i64> = std::collections::HashSet::new();
     for chapter in &inspected_chapters {
         if chapter.number < 1 || !seen_numbers.insert(chapter.number) {
@@ -480,6 +643,7 @@ pub(crate) fn inspect_selected_novel_files(
 
     store
         .create(purpose, sources, inspected_chapters)
+        .map(InspectOutcome::Inspection)
         .map_err(|error| import_selection_error_message(&error, locale))
 }
 
@@ -568,10 +732,34 @@ pub async fn dialog_select_novel_files(
             .map_err(|_| "导入检查状态被污染".to_string())?;
         // 同会话重选即替换（D2：清空全部待处理检视）
         store.clear();
-        inspect_selected_novel_files(&mut store, file_paths, parsed.purpose, locale)
+        // reference（结构化请求）需要项目库且**选择期**即落地解析运行；author 路径不碰 DB。
+        // 库未打开时 `with_project_db` 会报「项目数据库未打开」——结构化请求已过 `guard_read`
+        // （要求活跃项目即已开库），故仅遗留的非结构化请求会受影响。
+        let reference_run_id = if parsed.purpose == ImportPurpose::Reference && parsed.structured {
+            request
+                .as_ref()
+                .and_then(|value| value.get("runId"))
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        } else {
+            None
+        };
+        state.with_project_db(|conn| {
+            inspect_selected_novel_files(
+                &mut store,
+                Some(conn),
+                file_paths,
+                parsed.purpose,
+                locale,
+                reference_run_id.as_deref(),
+            )
+        })
     };
     match outcome {
-        Ok(summary) => Ok(Some(NovelFileSelectionResult::ok(summary))),
+        Ok(InspectOutcome::Inspection(summary)) => Ok(Some(NovelFileSelectionResult::ok(summary))),
+        Ok(InspectOutcome::Preparation(preparation)) => {
+            Ok(Some(NovelFileSelectionResult::ok_preparation(preparation)))
+        }
         Err(message) => {
             clear_inspections(&state);
             Ok(Some(NovelFileSelectionResult::failure(message)))
@@ -590,6 +778,26 @@ mod tests {
     use super::*;
     use crate::project_access::random_uuid_v4;
     use crate::state::ActiveProject;
+
+    /// author 路径薄封装：统一补 `None` 连接 / 无 runId，并把结果解包为检视摘要
+    fn inspect_author_summary(
+        store: &mut ImportInspectionStore,
+        paths: Vec<String>,
+    ) -> ImportInspectionSummary {
+        match inspect_selected_novel_files(
+            store,
+            None,
+            paths,
+            ImportPurpose::AuthorManuscript,
+            ImportRunLocale::ZhCn,
+            None,
+        )
+        .unwrap()
+        {
+            InspectOutcome::Inspection(summary) => summary,
+            InspectOutcome::Preparation(_) => panic!("author 路径不应返回 preparation"),
+        }
+    }
 
     fn temp_dir(name: &str) -> std::path::PathBuf {
         let dir =
@@ -695,13 +903,7 @@ mod tests {
         let second = write_file(&dir, "第1章.txt", "第一章 开端\n正文甲");
         let mut store = ImportInspectionStore::new();
         // 传入顺序颠倒，验证按 displayName 数值排序后 source 顺序一致
-        let summary = inspect_selected_novel_files(
-            &mut store,
-            vec![first, second],
-            ImportPurpose::AuthorManuscript,
-            ImportRunLocale::ZhCn,
-        )
-        .unwrap();
+        let summary = inspect_author_summary(&mut store, vec![first, second]);
         assert_eq!(summary.source_count, 2);
         assert_eq!(
             summary.source_display_names,
@@ -717,29 +919,125 @@ mod tests {
     }
 
     #[test]
-    fn inspect_rejects_reference_and_epub_honestly_test() {
+    fn inspect_reference_without_run_id_creates_inspection_and_epub_is_honest_test() {
         let dir = temp_dir("honest");
         let text = write_file(&dir, "a.md", "正文");
         let epub = write_file(&dir, "book.epub", "not-a-real-epub");
-
         let mut store = ImportInspectionStore::new();
-        let error = inspect_selected_novel_files(
+
+        // reference 但**非结构化**（无 runId）→ 与基线一致：不落地解析运行，直接建检视
+        let outcome = inspect_selected_novel_files(
             &mut store,
+            None,
             vec![text.clone()],
             ImportPurpose::Reference,
             ImportRunLocale::ZhCn,
+            None,
         )
-        .unwrap_err();
-        assert!(error.contains("G2"), "reference 错误应指向 G2：{error}");
+        .unwrap();
+        match outcome {
+            InspectOutcome::Inspection(summary) => assert_eq!(summary.chapter_count, 1),
+            InspectOutcome::Preparation(_) => panic!("非结构化 reference 不应返回 preparation"),
+        }
 
+        // reference + runId，但项目库未打开 → 诚实地报「项目数据库未打开」
         let error = inspect_selected_novel_files(
             &mut store,
+            None,
+            vec![text],
+            ImportPurpose::Reference,
+            ImportRunLocale::ZhCn,
+            Some("run-ref"),
+        )
+        .unwrap_err();
+        // 基线把这条错误也经过 `importSelectionErrorMessage` 收敛为通用文案
+        assert_eq!(error, "无法读取所选文件；请重新选择后再试。");
+
+        // D4：.epub 仍为诚实错误
+        let error = inspect_selected_novel_files(
+            &mut store,
+            None,
             vec![epub],
             ImportPurpose::AuthorManuscript,
             ImportRunLocale::ZhCn,
+            None,
         )
         .unwrap_err();
         assert!(error.contains("EPUB"), "epub 错误应说明未迁移：{error}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// G2b-6：reference 选择期即落地解析运行 → 返回 preparation（真实内存库）
+    #[test]
+    fn inspect_reference_with_run_id_returns_preparation_test() {
+        use rusqlite::Connection;
+        let dir = temp_dir("reference");
+        let body = "第一章 开端\n正文甲\n第二章 发展\n正文乙";
+        let text = write_file(&dir, "第1章.txt", body);
+
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+        crate::db::schema::create_tables(&conn).unwrap();
+
+        let mut store = ImportInspectionStore::new();
+        let outcome = inspect_selected_novel_files(
+            &mut store,
+            Some(&conn),
+            vec![text],
+            ImportPurpose::Reference,
+            ImportRunLocale::ZhCn,
+            Some("run-ref"),
+        )
+        .unwrap();
+        let preparation = match outcome {
+            InspectOutcome::Preparation(preparation) => preparation,
+            InspectOutcome::Inspection(_) => panic!("reference 结构化请求应返回 preparation"),
+        };
+        assert_eq!(preparation.classification, "new");
+        let run = preparation.run.clone().unwrap();
+        assert_eq!(run.id, "run-ref");
+        assert_eq!(run.stage, "prepared");
+        assert_eq!(run.total_chapters, 2);
+        assert_eq!(run.manifest_chapter_count, 2);
+        assert_eq!(preparation.new_chapter_numbers, vec![1, 2]);
+        // 冻结章与章号映射已落地
+        let frozen: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM import_run_chapters WHERE run_id = 'run-ref'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(frozen, 2);
+        let mapped: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM import_source_chapter_map",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(mapped, 2);
+        // 同来源同内容再选一次（新 runId）→ 命中可恢复运行
+        let again = write_file(&dir, "第1章.txt", body);
+        let outcome = inspect_selected_novel_files(
+            &mut store,
+            Some(&conn),
+            vec![again],
+            ImportPurpose::Reference,
+            ImportRunLocale::ZhCn,
+            Some("run-ref-2"),
+        )
+        .unwrap();
+        match outcome {
+            InspectOutcome::Preparation(preparation) => {
+                assert_eq!(preparation.classification, "resumable");
+                assert_eq!(
+                    preparation.run.as_ref().map(|run| run.id.as_str()),
+                    Some("run-ref")
+                );
+            }
+            InspectOutcome::Inspection(_) => panic!("应返回 preparation"),
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -752,9 +1050,11 @@ mod tests {
         let empty = write_file(&dir, "empty.txt", "   \n \n  ");
         let error = inspect_selected_novel_files(
             &mut store,
+            None,
             vec![empty],
             ImportPurpose::AuthorManuscript,
             ImportRunLocale::ZhCn,
+            None,
         )
         .unwrap_err();
         assert_eq!(
@@ -767,9 +1067,11 @@ mod tests {
         let b = write_file(&dir, "b.txt", "第一章 乙\n正文乙");
         let error = inspect_selected_novel_files(
             &mut store,
+            None,
             vec![a, b],
             ImportPurpose::AuthorManuscript,
             ImportRunLocale::ZhCn,
+            None,
         )
         .unwrap_err();
         assert_eq!(error, "作者原稿包含重复的第 1 章；请修正章节号后重新选择。");
@@ -782,9 +1084,11 @@ mod tests {
         let many = write_file(&dir, "many.txt", &content);
         let error = inspect_selected_novel_files(
             &mut store,
+            None,
             vec![many],
             ImportPurpose::AuthorManuscript,
             ImportRunLocale::ZhCn,
+            None,
         )
         .unwrap_err();
         assert_eq!(error, "拆分后的章节数超过导入上限（最多 5000 章）。");
