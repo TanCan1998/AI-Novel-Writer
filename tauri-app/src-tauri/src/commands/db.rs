@@ -59,7 +59,7 @@ fn assert_project_path(state: &AppState, expected_project_path: &str) -> Result<
 }
 
 /// 读频道门禁（失败即拒绝）
-fn guard_read(
+pub(crate) fn guard_read(
     state: &AppState,
     expected_project_path: &str,
     session: Option<&ProjectSessionContext>,

@@ -21,6 +21,7 @@ mod fs; // 批次 B：项目文件系统
 pub mod project; // 批次 B：项目生命周期
 mod external_file_grant; // 批次 B：外部文件授权
 mod db; // 批次 C：项目数据库
+pub mod chapter_lifecycle; // 批次 E 第二部分：章节生命周期（4 频道）
 mod llm; // 批次 D1：LLM 模型管理（配置读写 7 频道）
 mod llm_execution; // 批次 D2：LLM 生成执行（租约 2 频道）
 mod llm_generation; // 批次 D2-b：LLM 生成 / 流式 / 取消（3 频道 + 3 事件）
@@ -29,6 +30,7 @@ mod llm_management; // 批次 D2-c：连通性探测 + 模型发现（llm:* 收�
 /// 再导出各批次模块的全部公开项（含 Tauri 命令宏 `__cmd__*`），
 /// 供 `lib.rs` 的 `generate_handler![commands::xxx]` 与 `state.rs` 引用。
 pub use config::*;
+pub use chapter_lifecycle::*;
 pub use db::*;
 pub use external_file_grant::*;
 pub use fs::*;

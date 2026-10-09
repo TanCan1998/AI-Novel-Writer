@@ -185,6 +185,11 @@ pub fn run() {
             commands::db_draft_export_authority_current,
             // 批次 E：原稿导入幂等提交（draft 收尾最后一频道）
             commands::db_draft_import_finalized_batch,
+            // 批次 E 第二部分：章节生命周期（chapter-lifecycle，4 频道）
+            commands::chapter_delete_finalized,
+            commands::chapter_retry_deletion,
+            commands::chapter_confirm_legacy_knowledge_absent,
+            commands::chapter_list_incomplete_deletions,
             // 批次 D1：LLM 模型管理（7 频道）
             commands::llm_list_models,
             commands::llm_save_model,
