@@ -1,5 +1,10 @@
 # Tauri 迁移进度快照（活文档）
 
+> ⚠️ **前约定时代文件（历史正文保持原样，不追溯改写）**：本篇写于快照模板成型之前——当时用
+> `## 阶段总览` / `## 历史工作记录` / `## 文档索引` 等章节，**没有** `## 本次更新` / `## 交接给下次会话`。
+> **后续快照一律不得参照本篇结构**；请以 `_TEMPLATE-tauri-migration-status.md` 与
+> `docs-fork/agents/pi-development.md` §9 为准。
+
 > **📌 最新进展看 [`2026-10-08-tauri-migration-status.md`](./2026-10-08-tauri-migration-status.md)（第二十三次：批次 D2-b 完成，102 命令、279/279）**。
 >
 > **用途**：AI/开发者接续 Tauri 迁移工作的入口文档。**每次迁移工作完成后必须更新本文件的快照区块**。channel 级细节见 [`docs-fork/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md)。
