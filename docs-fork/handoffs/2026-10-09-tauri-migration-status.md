@@ -442,9 +442,10 @@ ee4a3f07 docs(tauri): H3/H4 依赖评估与决策（零新依赖 + B12）
 
 ### 2. 下一步（1-2-3）
 
-1. **H3（update）**：按零依赖方案移植——GitHub-Release 后端（`https://api.github.com/repos/<fork>/releases/latest`）
-   + `update-service` 状态机（版本比较 / 结构化错误分类 / `update:state` 事件）+ 偏好存储 + 平台门禁；
-   `update:open-release` 复用 B12 的 `external_link.rs`。**背景与选项见**
+1. **H3（update）**：**开工清单已就绪 → [`docs-fork/plans/2026-10-09-h3-update-kickoff.md`](../plans/2026-10-09-h3-update-kickoff.md)**
+   （含契约/类型全集、基线文件行级参系、11 步实现顺序、测试计划、验收命令、8 项风险与待确认点）。
+   方案：零依赖 GitHub-Release 后端 + 状态机 + 偏好 + 平台门禁；`update:open-release` 复用 B12 的
+   `external_link.rs`。背景与选项见
    [`docs-fork/research/2026-10-09-h3-h4-dependency-evaluation.md`](../research/2026-10-09-h3-h4-dependency-evaluation.md)。
 2. **批次 G**：import-run 19 频道 + `dialog:select-novel-files`（落实后收口 `kb:import-reference-text`；
    需注意执行租约与断点恢复语义）。
