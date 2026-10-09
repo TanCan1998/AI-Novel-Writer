@@ -60,6 +60,11 @@ pub struct AppState {
     /// （`sourceUrl` → `(contentSha256, resolvedUrl)`；进程内存态，重启即失效）。
     pub(crate) writing_skill_inspections:
         Mutex<std::collections::HashMap<String, (String, String)>>,
+    /// 批次 H（H3）：应用更新服务（进程内存态；在 `lib.rs` 的 `setup` 中装配）。
+    ///
+    /// 为 `None` 时代表更新运行时**未装配**（理论上不发生），命令层会回退为
+    /// `disabled` + `UPDATES_DISABLED` 信封。
+    pub(crate) update: Mutex<Option<std::sync::Arc<crate::update::UpdateService>>>,
 }
 
 impl AppState {
@@ -79,6 +84,7 @@ impl AppState {
             external_grants: Mutex::new(crate::external_grant::ExternalGrantRegistry::default()),
             kb_vectors: Mutex::new(crate::db::kb::vectors::KbVectorManager::default()),
             writing_skill_inspections: Mutex::new(std::collections::HashMap::new()),
+            update: Mutex::new(None),
         }
     }
 
@@ -96,6 +102,21 @@ impl AppState {
             .lock()
             .ok()
             .and_then(|guard| guard.as_ref().map(|project| project.root_path.clone()))
+    }
+
+    /// 批次 H（H3）：装配更新服务（`lib.rs` 的 `setup` 中调用；重复装配会替换）
+    pub(crate) fn install_update_service(
+        &self,
+        service: std::sync::Arc<crate::update::UpdateService>,
+    ) {
+        if let Ok(mut guard) = self.update.lock() {
+            *guard = Some(service);
+        }
+    }
+
+    /// 批次 H（H3）：当前更新服务（未装配 → `None`）
+    pub(crate) fn update_service(&self) -> Option<std::sync::Arc<crate::update::UpdateService>> {
+        self.update.lock().ok().and_then(|guard| guard.clone())
     }
 
     /// 登记最新打开/创建请求令牌

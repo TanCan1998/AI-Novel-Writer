@@ -132,7 +132,6 @@ describe('channel migration coverage', () => {
   })
 
   it('未迁移频道会被前置拦截（如批次 G/H 的导入与更新链）', () => {
-    expect(MIGRATED_CHANNELS.has('update:get-state')).toBe(false)
     expect(MIGRATED_CHANNELS.has('dialog:select-novel-files')).toBe(false)
     // 已迁频道不受影响
     expect(MIGRATED_CHANNELS.has('config:get')).toBe(true)
@@ -191,6 +190,13 @@ describe('channel migration coverage', () => {
     expect(MIGRATED_CHANNELS.has('skills:inspect-github')).toBe(true)
     expect(MIGRATED_CHANNELS.has('skills:install-github')).toBe(true)
     expect(MIGRATED_CHANNELS.has('skills:uninstall-user')).toBe(true)
+    // 批次 H（H3）：应用更新（update:* 6 频道）
+    expect(MIGRATED_CHANNELS.has('update:get-state')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('update:check')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('update:download')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('update:open-release')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('update:defer-reminder')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('update:quit-and-install')).toBe(true)
   })
 
   /**

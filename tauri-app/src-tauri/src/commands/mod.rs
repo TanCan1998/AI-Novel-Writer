@@ -12,7 +12,7 @@
 
 use serde::Serialize;
 
-pub mod app_data;
+pub mod app_data; // 批次 H：应用数据域（prompt:* 3 + skills:* 4）
 pub mod chapter_lifecycle; // 批次 E 第二部分：章节生命周期（4 频道）
 mod config; // 批次 A：配置管理
 mod db; // 批次 C：项目数据库
@@ -28,7 +28,8 @@ mod model_provider_resource; // 批次 A：模型资源
 mod official_homepage; // 批次 A：官方主页
 pub mod project; // 批次 B：项目生命周期
 mod skin; // 批次 A：皮肤管理
-mod window; // 批次 A：窗口管理 // 批次 H：应用数据域（prompt:* 3 + skills:* 4）
+pub mod update; // 批次 H（H3）：应用更新（update:* 6 频道 + update:state 事件）
+mod window; // 批次 A：窗口管理
 
 /// 再导出各批次模块的全部公开项（含 Tauri 命令宏 `__cmd__*`），
 /// 供 `lib.rs` 的 `generate_handler![commands::xxx]` 与 `state.rs` 引用。
@@ -48,6 +49,7 @@ pub use model_provider_resource::*;
 pub use official_homepage::*;
 pub use project::*;
 pub use skin::*;
+pub use update::*;
 pub use window::*;
 
 /// 通用「成功/失败」返回 —— 对齐契约 `{ success: boolean; error?: string }`。

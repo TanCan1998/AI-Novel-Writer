@@ -34,6 +34,9 @@ mod state;
 // 批次 H：Writing Skill 检查与 GitHub 地址解析（`src/shared/writing-skills.ts` 的 Rust 单源）。
 pub mod writing_skills;
 
+// 批次 H（H3）：应用更新域（update:* 6 频道 + update:state 事件）。
+pub mod update;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -45,10 +48,15 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         // 对齐基线 `ensureVelaHome()`：启动即保证 `~/.lorekeeper/{prompts,logs}` 存在。
         // 失败不阻断启动（首次写入时会再次建目录并给出可读错误）。
-        .setup(|_app| {
+        .setup(|app| {
+            use tauri::Manager;
             if let Err(error) = app_paths::ensure_lorekeeper_home() {
                 eprintln!("[Lorekeeper] {error}");
             }
+            // 批次 H（H3）：装配更新运行时（失败降级为「更新不可用」，绝不阻断启动）
+            let outcome = update::startup::start_update_runtime(app.handle());
+            app.state::<state::AppState>()
+                .install_update_service(outcome.service);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -210,6 +218,13 @@ pub fn run() {
             commands::skills_inspect_github,
             commands::skills_install_github,
             commands::skills_uninstall_user,
+            // 批次 H（H3）：应用更新（update:* 6 频道 + update:state 事件）
+            commands::update_get_state,
+            commands::update_check,
+            commands::update_download,
+            commands::update_open_release,
+            commands::update_defer_reminder,
+            commands::update_quit_and_install,
             // 批次 D1：LLM 模型管理（7 频道）
             commands::llm_list_models,
             commands::llm_save_model,

@@ -199,6 +199,8 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'skills:inspect-github': ['sourceUrl'],
   'skills:install-github': ['sourceUrl'],
   'skills:uninstall-user': ['name'],
+  // 批次 H（H3）：应用更新（update:* 6 频道；仅 defer-reminder 带参）
+  'update:defer-reminder': ['days'],
 
   // 批次 E 第一部分补登记（E 收尾时补齐，测试 channel-migration-coverage 断言）
   'db:recovery-candidate-record': ['request', 'expectedProjectPath'],
