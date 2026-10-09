@@ -166,6 +166,11 @@ pub fn run() {
             commands::db_plot_tree_read,
             commands::db_plot_tree_save,
             commands::db_plot_tree_clear,
+            // 批次 E：生成失败恢复候选（recovery-candidate 子域，4 频道）
+            commands::db_recovery_candidate_record,
+            commands::db_recovery_candidate_list,
+            commands::db_recovery_candidate_update,
+            commands::db_recovery_candidate_resolve,
             // 批次 D1：LLM 模型管理（7 频道）
             commands::llm_list_models,
             commands::llm_save_model,

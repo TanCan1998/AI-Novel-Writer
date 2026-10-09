@@ -23,6 +23,7 @@ use crate::repositories::llm_repository as llm;
 use crate::repositories::narrative_thread_repository as threads;
 use crate::repositories::plot_tree_repository as plot_tree;
 use crate::repositories::post_process_repository as post_process;
+use crate::repositories::recovery_candidate_repository as recovery;
 use crate::repositories::project_clear_repository as project_clear;
 use crate::repositories::project_core_repository as project_core;
 use crate::repositories::review_repository as reviews;
@@ -2418,6 +2419,164 @@ pub(crate) fn plot_tree_clear_inner(
     })
 }
 
+// ===== 批次 E：生成失败恢复候选（recovery-candidate 子域，4 频道） =====
+
+/// `db:recovery-candidate-{record,update}` 的 IPC 信封（对齐基线 `{ success, candidate?, error? }`）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecoveryCandidateResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub candidate: Option<recovery::RecoveryCandidate>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// `projectId` 由已校验租约注入（基线 `active.projectId`），不经渲染层传入
+pub(crate) fn recovery_candidate_record_inner(
+    state: &AppState,
+    request: &recovery::RecoveryCandidateRecordRequest,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> RecoveryCandidateResult {
+    let outcome = guard_read(state, expected_project_path, session).and_then(|()| {
+        let project_id = session
+            .map(|s| s.project_id.clone())
+            .unwrap_or_default();
+        state.with_project_db(|conn| recovery::record(conn, &project_id, request))
+    });
+    match outcome {
+        Ok(candidate) => RecoveryCandidateResult {
+            success: true,
+            candidate: Some(candidate),
+            error: None,
+        },
+        Err(error) => {
+            eprintln!("[db:recovery-candidate-record] 失败: {error}");
+            RecoveryCandidateResult {
+                success: false,
+                candidate: None,
+                error: Some(mutating_error(error)),
+            }
+        }
+    }
+}
+
+/// `db:recovery-candidate-list`（读频道：失败直接拒绝）
+pub(crate) fn recovery_candidate_list_inner(
+    state: &AppState,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Vec<recovery::RecoveryCandidate>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(recovery::list_pending)
+}
+
+pub(crate) fn recovery_candidate_update_inner(
+    state: &AppState,
+    candidate_id: &str,
+    visible_text: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> RecoveryCandidateResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| recovery::update_pending(conn, candidate_id, visible_text)));
+    match outcome {
+        Ok(candidate) => RecoveryCandidateResult {
+            success: true,
+            candidate: Some(candidate),
+            error: None,
+        },
+        Err(error) => {
+            eprintln!("[db:recovery-candidate-update] 失败: {error}");
+            RecoveryCandidateResult {
+                success: false,
+                candidate: None,
+                error: Some(mutating_error(error)),
+            }
+        }
+    }
+}
+
+/// `db:recovery-candidate-resolve`（基线返回 void，信封对齐 `{ success }`）
+pub(crate) fn recovery_candidate_resolve_inner(
+    state: &AppState,
+    candidate_id: &str,
+    status: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> SimpleResult {
+    let outcome = guard_read(state, expected_project_path, session)
+        .and_then(|()| state.with_project_db(|conn| recovery::resolve(conn, candidate_id, status)));
+    simple_mutating_result(outcome)
+}
+
+/// `db:recovery-candidate-record`
+#[tauri::command]
+pub fn db_recovery_candidate_record(
+    state: State<'_, AppState>,
+    request: recovery::RecoveryCandidateRecordRequest,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> RecoveryCandidateResult {
+    recovery_candidate_record_inner(
+        state.inner(),
+        &request,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:recovery-candidate-list`
+#[tauri::command]
+pub fn db_recovery_candidate_list(
+    state: State<'_, AppState>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<recovery::RecoveryCandidate>, String> {
+    recovery_candidate_list_inner(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:recovery-candidate-update`
+#[tauri::command]
+pub fn db_recovery_candidate_update(
+    state: State<'_, AppState>,
+    candidate_id: String,
+    visible_text: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> RecoveryCandidateResult {
+    recovery_candidate_update_inner(
+        state.inner(),
+        &candidate_id,
+        &visible_text,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:recovery-candidate-resolve`
+#[tauri::command]
+pub fn db_recovery_candidate_resolve(
+    state: State<'_, AppState>,
+    candidate_id: String,
+    status: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> SimpleResult {
+    recovery_candidate_resolve_inner(
+        state.inner(),
+        &candidate_id,
+        &status,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3941,6 +4100,110 @@ mod tests {
         let cleared = plot_tree_read_inner(&state, &root, Some(&session)).unwrap();
         assert!(cleared.snapshot.is_none());
         assert_eq!(cleared.facts.blueprints.len(), 1, "来源事实不受清快照影响");
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn recovery_candidate_command_guard_and_roundtrip_test() {
+        let (state, root, session) = activated_state("recovery");
+
+        // 门禁：缺会话 → 读频道拒绝（裸文案），写频道返回带前缀信封
+        assert_eq!(
+            recovery_candidate_list_inner(&state, &root, None).unwrap_err(),
+            "缺少项目会话上下文，已拒绝操作"
+        );
+        let req = serde_json::from_value::<recovery::RecoveryCandidateRecordRequest>(serde_json::json!({
+            "runId": "run-1",
+            "stepId": "step-1",
+            "chapterNumber": 1,
+            "chapterTitle": "第一章",
+            "source": {
+                "chapterNumber": 1,
+                "title": "标题",
+                "role": "main",
+                "purpose": "推进",
+                "keyEvents": "事件A",
+                "characters": ["甲"]
+            },
+            "sourceDraft": null,
+            "visibleText": "<think>思考</think>正文",
+            "failureCode": "TIMEOUT",
+            "failureReason": "超时"
+        }))
+        .unwrap();
+        let blocked = recovery_candidate_record_inner(&state, &req, &root, None);
+        assert!(!blocked.success);
+        assert_eq!(
+            blocked.error.as_deref(),
+            Some("Error: 缺少项目会话上下文，已拒绝操作")
+        );
+
+        // record：projectId 由租约注入，正文剥除思考链
+        let recorded = recovery_candidate_record_inner(&state, &req, &root, Some(&session));
+        assert!(recorded.success, "record 应成功：{:?}", recorded.error);
+        let candidate = recorded.candidate.as_ref().unwrap();
+        assert_eq!(candidate.visible_text, "正文");
+        assert_eq!(candidate.project_id, session.project_id, "projectId 注入自租约");
+
+        // list → update → resolve 全链路
+        let listed = recovery_candidate_list_inner(&state, &root, Some(&session)).unwrap();
+        assert_eq!(listed.len(), 1);
+
+        // update 的时效校验要求蓝图存在且与 source 一致
+        state
+            .with_project_db(|conn| {
+                blueprints::upsert(
+                    conn,
+                    &blueprints::BlueprintData {
+                        chapter_number: 1,
+                        title: "标题".to_string(),
+                        role: "main".to_string(),
+                        purpose: "推进".to_string(),
+                        key_events: "事件A".to_string(),
+                        characters: vec!["甲".to_string()],
+                        new_character_candidates: None,
+                        relationship_hints: None,
+                        suspense_hook: String::new(),
+                        user_guidance: String::new(),
+                        notes: String::new(),
+                        notes_updated_at: String::new(),
+                    },
+                )
+            })
+            .unwrap();
+
+        let updated = recovery_candidate_update_inner(
+            &state,
+            &candidate.candidate_id,
+            "修订正文",
+            &root,
+            Some(&session),
+        );
+        assert!(updated.success, "update 应成功：{:?}", updated.error);
+        assert_eq!(updated.candidate.as_ref().unwrap().visible_text, "修订正文");
+
+        // resolve：无效动作 → 带前缀信封；然后 discarded 成功
+        let invalid = recovery_candidate_resolve_inner(
+            &state,
+            &candidate.candidate_id,
+            "nope",
+            &root,
+            Some(&session),
+        );
+        assert!(!invalid.success);
+        assert_eq!(invalid.error.as_deref(), Some("Error: 恢复候选动作无效"));
+
+        let resolved = recovery_candidate_resolve_inner(
+            &state,
+            &candidate.candidate_id,
+            "discarded",
+            &root,
+            Some(&session),
+        );
+        assert!(resolved.success, "resolve 应成功：{:?}", resolved.error);
+        let listed = recovery_candidate_list_inner(&state, &root, Some(&session)).unwrap();
+        assert!(listed.is_empty(), "终态后不再出现在待处理列表");
 
         cleanup(&root);
     }
