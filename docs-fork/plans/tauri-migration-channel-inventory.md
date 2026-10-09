@@ -11,9 +11,16 @@
 
 | 类别 | 数量 | 说明 |
 |---|---|---|
-| invoke 频道（请求/响应） | **191** | 渲染 → 主进程，`ipcMain.handle` |
+| invoke 频道（请求/响应） | **193** | 渲染 → 主进程，`ipcMain.handle`（含 G1 补建 2 个） |
 | 事件频道（主 → 渲染推送） | **5** | `ipcRenderer.on`，迁移为 Tauri Event |
-| 合计 | **196** | 每个频道对应一个 Rust 命令或事件 |
+| 合计 | **198** | 每个频道对应一个 Rust 命令或事件 |
+
+> **【契约单源位置刻意偏移 — G1，2026-10-09】** 定稿频道 `finalization:commit` / `finalization:retry`
+> 在 Electron 侧由 `finalization-controller.ts` 真实注册，但**上游两份 `ipc-channels.ts` 均未声明**。
+> Tauri 迁移期在该单源改为 **`tauri-app/src/shared/ipc-channels.ts`**：
+> `verify-channel-coverage.mjs`与 `test/channel-migration-coverage.test.ts` 的契约读取路径同步从
+> 仓库根 `src/shared/ipc-channels.ts` 改为 tauri-app 副本；**基线 `src/` 保持不动**，以免
+> 后续合并上游时在该文件产生冲突（2026-10-09 用户决策）。事件频道数口径不变（仍 5）。
 
 > 已注册命令数、未迁移数、测试通过数等**会变动的数字不在本文维护** —— 一律见 [`docs/handoffs/`](../handoffs/) 最新快照。
 
@@ -22,7 +29,7 @@
 | 文件 | 角色 | 迁移动作 |
 |---|---|---|
 | `src/services/ipc-client.ts` | 主封装：类型安全 `invoke/on/once/send` + 项目会话注入 + zoom | 仅替换底层 `getAPI()` 实现（`@tauri-apps/api/core.invoke` / `event.listen`），上层零改动 |
-| `src/services/finalization-client.ts` | 定稿专用封装（绕过 ipc-client） | 同上，仅替换 `getVelaApi()` |
+| `src/services/finalization-client.ts` | 定稿专用封装（绕过 ipc-client） | ✅ **已完成（G1）**：`getVelaApi()` → `ipc.invoke`（仍是唯一绕过 ipc-client 会话自动注入的封装，`projectSession` 显式尾参） |
 
 `electron/preload.ts` 暴露面 = `invoke / on / once / send / setZoomLevel / setZoomFactor / getZoomLevel`（zoom 走 Electron `webFrame`，Tauri 侧需用 Webview zoom API 或 CSS 替代，归阶段 3）。
 
@@ -39,7 +46,7 @@
 
 | # | 问题 | 详情 | 处理建议 |
 |---|---|---|---|
-| G1 | **`finalization:commit` / `finalization:retry` 未在 ipc-channels.ts 声明** | 仅 `electron/controllers/finalization-controller.ts`（注册）与 `src/services/finalization-client.ts`（调用：args = `(FinalizationSnapshot, ProjectSessionContext)` / `(finalizationId, ProjectSessionContext)`，return `FinalizationResult`，类型来自 `electron/services/finalization-service.ts`） | 迁移时补建 `FinalizationChannels` 接口；`FinalizationResult`/`FinalizationSnapshot` 类型随迁入 `src/shared/` |
+| G1 | **`finalization:commit` / `finalization:retry` 未在 ipc-channels.ts 声明** | 仅 `electron/controllers/finalization-controller.ts`（注册）与 `src/services/finalization-client.ts`（调用：args = `(FinalizationSnapshot, ProjectSessionContext)` / `(finalizationId, ProjectSessionContext)`，return `FinalizationResult`，类型来自 `electron/services/finalization-service.ts`） | ✅ **已解决（G1，2026-10-09）**：`FinalizationChannels` + `FinalizationResult`/`FinalizationSnapshot` 声明于 **tauri-app 副本**；基线 `src/` 未动 |
 | G2 | **src 直接 import electron 目录的类型** | `ipc-channels.ts` 与 `finalization-client.ts` `import type` 自 `electron/repositories/*`、`electron/services/*` | Tauri 迁移期间保留（TS 类型不产生运行时依赖）；Rust 侧按类型定义平移；长期可把纯类型下沉 `src/shared/`（Ask first） |
 | G3 | **update-controller 注册位置特殊** | 不在 `ipc-handlers.ts`，在 `electron/main.ts:259` 注册，带 `publish: publishUpdateState` 回调（发布 `update:state` 事件） | 迁移时注意 update 命令与 update:state 事件同源于 update-service |
 | G4 | **window:close-requested 是「请求-决策」两段式** | 主进程发 `window:close-requested { requestId }`，渲染端回 `window:resolve-close(requestId, 'proceed'|'cancel')` | Tauri 侧拦截 `tauri://close-requested`（`on_window_event` + `api.prevent_close()`），保留 requestId 决策协议 |
@@ -113,6 +120,10 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 数据库层迁移：better-sqlite3 → `rusqlite`（bundled）；一域一仓（`blueprint_repository.rs`…）；controller 不写 SQL。
 
 ### 4.11 KnowledgeBaseChannels（15 + dialog 2）— controller: `kb-controller.ts` — 批次 F2
+
+> ⚠️ **2026-10-09（B10）**：UI 层唯一的知识库导入入口是 `KnowledgeOverview` 的「导入参考资料」
+> → `selectPlanningMaterials()` → `dialog:select-knowledge-files` ✅ + **`fs:grant-read-file` ⛔（批次 H 占位）**。
+> 即 F2 的 `kb:*` 服务端内核已可用（已被第 2 章后处理 `kb_import` 间接验证），但**界面导入在批次 H 前不可用**。
 `kb:import-{document,folder}`（grantId 入口）、`kb:import-{text,planning-text,reference-text}`、`kb:search`、`kb:search-writing-context`、`kb:search-with-scope`、`kb:list-documents`、`kb:remove-document`、`kb:clear-all`、`kb:stats`、`kb:get-vectorless-count`、`kb:get-vector-rebuild-status`（纯本地状态读，不发 embedding 请求）、`kb:backfill-vectors`；`dialog:select-knowledge-{files,folder}`。
 返回多为 `AppResult<T>`★。**向量存储路线（用户决策，方案 B）**：`rusqlite`（bundled）+ **SQLite FTS5 + jieba-rs 预分词 + HNSW 向量索引 + RRF 倒数排名融合**（自研混合检索）。**否决** `lancedb` Rust crate（+1680 传递依赖、需 protoc/ninja/nasm、与「减内存」目标相背）与 `cairn-search`（非通用库，紧耦合 cairn-core）。最终决策见 [`2026-10-08-final-decision-plan-b.md`](../research/2026-10-08-final-decision-plan-b.md)；实测 `FTS5 unicode61` 中文召回率 **0%**，必须写入前预分词。基线封装为 `electron/vector-store.ts`（2010 行，含 embedding space 注册表 / 重建计划 / FTS 索引 / 混合检索），专项评估已完成（见上决策文档），实施时仍须逐项对齐差异。
 **✅ 隔离红线已解决（2026-10-09）**：基线向量数据在 `{project}/.vela/lancedb/` 与 `.vela/*.json`（**共享目录**）。**L3 后 Tauri 项目目录已改为 `.lore/`**（两栈项目目录刻意不互通），向量快照定为 `{project}/.lore/kb/` —— 互覆风险消除。
@@ -139,9 +150,12 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 ### 4.14 MCPChannels（9）— controller: 无独立 controller（`electron/mcp/`）— 批次 H
 `mcp:load-config`、`mcp:connect`、`mcp:disconnect`、`mcp:disconnect-all`、`mcp:list-tools`、`mcp:list-resources`、`mcp:call-tool`、`mcp:get-servers-status`、`mcp:get-config-path`。全局域★G6（stdio/sse 子进程，Tauri 侧评估 `tauri-plugin-shell` 或 Rust MCP SDK）。
 
-### 4.15 FinalizationChannels（2，**未声明**★G1）— controller: `finalization-controller.ts` — 批次 E
+### 4.15 FinalizationChannels（2，**契约补于 tauri-app 副本**★G1）— controller: `finalization-controller.ts` — 批次 E ✅
 `finalization:commit(snapshot, projectSession)` → `FinalizationResult`；`finalization:retry(finalizationId, projectSession)` → `FinalizationResult`。
-**定稿不可逆**：草稿身份 + 收据 + 章节号 + 正文哈希绑定（ADR 0003/0011）。迁移时补声明 + 等量测试。
+**定稿不可逆**：草稿身份 + 收据 + 章节号 + 正文哈希绑定（ADR 0003/0011）。
+✅ **G1 完成（2026-10-09）**：`commands::finalization_commit` / `finalization_retry`（`commands/finalization.rs`）
++ `manuscript_publisher.rs`（实体稿发布 / 删除，与 `finalized_draft_import_repository` 共用目标解析）；
+前端 `finalization-client.ts` 底层切 `ipc.invoke`。契约声明落在 `tauri-app/src/shared/ipc-channels.ts`。
 
 ## 5. 事件频道汇总（5 个 → Tauri Event）
 
@@ -162,9 +176,9 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 | **B** | project、fs 基础、external-file-grant、dialog | 0 | 会话租约签发/校验（ADR 0001）、fs 授权（ADR 0002）。**排查提醒**：频道登记齐全但 UI「点了没反应」时，须核对**命令实现是否为骨架**（`check:channels` 只查映射，不查实现完整度） |
 | **C** | db 子域逐步：project-core → blueprints → characters/roster → drafts → revisions → reviews → post-process → summary/llm-stats | B | 一域一仓；行为与 Electron 对照 |
 | **D** | llm 全部 + 3 个流事件（G5 性能实测） | C | generation-parameter-policy 复刻；finishReason 显式终态。拆 D1（模型管理）/ D2（生成·流式·租约·发现·连通性） |
-| **E** | finalization(G1 补契约)、chapter-lifecycle、continuity、recovery-candidate、draft-import-finalized-batch | C, D | 定稿不可逆 + 删除生命周期（ADR 0003/0011）等量测试。物理清理依赖：删实体稿文件（fs 授权域→H）、删 KB 文档（✅ 已随 F2-3 真实化） |
+| **E** | finalization(G1 ✅ 已完成)、chapter-lifecycle、continuity、recovery-candidate、draft-import-finalized-batch | C, D | 定稿不可逆 + 删除生命周期（ADR 0003/0011）等量测试。物理清理依赖：删实体稿文件（✅ **G1 已真实化**）、删 KB 文档（✅ 已随 F2-3 真实化） |
 | **F** | kb 全部、plot-tree、narrative-thread、consistency-exemption | C | AppResult 错误码对齐。拆 **F1**（plot-tree 3 / narrative-thread 6 / consistency-exemption 3 = 12 频道，零新依赖，纯 SQLite 平移；剧情树 `sourceRevision` 有**黄金哈希测试**锁定与 `JSON.stringify` 逐字节一致）/ **F2**（`kb:*` 15 + `dialog:select-knowledge-*` 2）。**F2 向量路线见 §4.11**；隔离红线**已解决**（L3 后项目目录 `.lore/`，向量快照 `.lore/kb/`）。进度：**F2-1 ✅ / F2-2 ✅ / F2-3 ✅（F2 全部完成）** |
 | **G** | import-run 全套（18 频道状态机）、dialog:select-novel-files、import-global-facts | C | 执行租约 `ImportRunExecutionLease`；断点恢复语义。**已知依赖**：`kb:import-reference-text` 待本批收口（当前为显式占位失败） |
-| **H** | update（updater 插件，G3）、mcp、prompt/skills、**fs:grant-\* 三命令 + `dialog:select-export-directory`** | 任意 | macOS 更新 = 仅打开 Release 页；`tauri-plugin-fs 2.6.0` **已随 dialog 插件连带引入**，勿重复添加；grant 签发只回传 `grantId`（ADR 0002）。**注**：外部 grant 注册表（`external_grant.rs`）已随 F2-3 落地，本批 `fs:grant-*` 只需接入同一注册表 |
+| **H** | update（updater 插件，G3）、mcp、prompt/skills、**fs:grant-\* 三命令 + `dialog:select-export-directory`** | 任意 | macOS 更新 = 仅打开 Release 页；`tauri-plugin-fs 2.6.0` **已随 dialog 插件连带引入**，勿重复添加；grant 签发只回传 `grantId`（ADR 0002）。**注**：外部 grant 注册表（`external_grant.rs`）已随 F2-3 落地，本批 `fs:grant-*` 只需接入同一注册表。⚠️ **2026-10-09 GUI 冒烟确认（B10）**：`fs:grant-*` 目前仍是占位（`commands/external_file_grant.rs:65`），已导致 **KB 界面导入**（`selectPlanningMaterials()`）、**导出成稿**、**角色卡导入** 三条前端路径不可用；而 `kb:import-document` / `kb:import-folder` 目前**无任何 UI 调用点** |
 
 每批次验收：Rust 单元测试 + `cargo test` + 前端 `pnpm typecheck`/相关 `pnpm test` + 与 Electron 版行为对照。**验收数字见 [`docs/handoffs/`](../handoffs/) 最新快照。**

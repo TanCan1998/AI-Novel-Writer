@@ -11,7 +11,7 @@
 
 ---
 
-## 快照（最后更新：2026-10-09 · 第三十次）
+## 快照（最后更新：2026-10-09 · 第三十二次）
 
 > 本表只填**最新一次自检的实测值**。改表前必须重跑对应命令，不得沿用旧数字、不得估算。
 > 本轮实测命令与输出见下方「[§5 自检记录](#5-自检记录2026-10-09-实测)」。
@@ -20,22 +20,95 @@
 |---|---|
 | 仓库 / 分支 | **`TanCan1998/Lorekeeper`**（`EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork）· `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 已注册命令 | **150** |
-| 覆盖 invoke 频道 | **149**（契约总数 191，事件频道 4） |
+| 已注册命令 | **152** |
+| 覆盖 invoke 频道 | **151**（契约总数 193，事件频道 4） |
 | 未迁移 invoke 频道 | **42**（`db=19 mcp=9 update=6 skills=4 prompt=3 dialog=1`） |
 | orphan | **空** ✅ |
-| `cargo test --lib` | **478/478** ✅ |
+| `cargo test --lib` | **491/491** ✅ |
 | `cargo check --all-targets` | **0 告警** ✅ |
 | `pnpm typecheck` / `lint` | exit 0 / exit 0 ✅ |
-| 定向 `vitest` | **70/72**（2 个失败为阶段 0 起就失效的既有测试，见 10-08 快照 §6） |
-| 已完成批次 | A ✅ / B ✅（含遗留补齐） / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅（两部分全部完成）** / **F1 ✅** / **L3 ✅** / **F2 ✅（F2-1/F2-2/F2-3 全部完成）** |
-| 当前阶段 | **批次 F2 ✅ 完成**：`kb:*` 15 频道 + `dialog:select-knowledge-*` 2 频道已注册，含外部文件授权注册表、SQLite 存储层、HNSW 向量管理器与前端登记。下一步：① 批次 G（`kb:import-reference-text` 收口）；② 批次 H（fs:grant-* + update/mcp/prompt/skills，可复用已落地的 grant 注册表） |
+| 定向 `vitest` | **16/16**（6 文件：契约覆盖 / 入参结构体契约 / 源码契约 / locale / finalization-client / finalization-snapshot）✅ |
+| 已完成批次 | A ✅ / B ✅（含遗留补齐） / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅（两部分全部完成）** / **F1 ✅** / **L3 ✅** / **F2 ✅（F2-1/F2-2/F2-3 全部完成）** / **G1 ✅（批次 E 收口）** |
+| 当前阶段 | **G1 ✅ 完成（批次 E 彻底收口）**：`finalization:commit` / `finalization:retry` + `manuscript_publisher.rs` 落地，`chapter:*` 删实体稿**真实化**（B2 全部解除）；契约补在 **tauri-app 副本**（基线 `src/` 未动）。下一步：① **批次 H**（`fs:grant-*` 三命令 → 解开 KB 界面导入 / 导出 / 角色卡导入，见 B10；+ update/mcp/prompt/skills）；② 批次 G（import-run + `kb:import-reference-text` 收口）；③ 上游 502 提交合并专项（本轮已评估，见第三十二次 §0） |
 | 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（Cargo.lock 锁 **2.8.1**）。**F2 无新增依赖**：`hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio` 已在 `Cargo.toml`（`4aff3f65`）；**FTS5 由 `libsqlite3-sys` bundled 提供**（`-DSQLITE_ENABLE_FTS5` 实测） |
-| GUI 冒烟 | ✅ 自 2026-10-07 起 **七轮**（末轮 2026-10-08）。近三轮记录：F1 轮 `pnpm tauri dev` 编译 **35.19s** 功能正常；E 轮 `cargo test --lib` **418/418** 无 panic；dialog 轮 vite `453 ms` + cargo `24.91s`。渲染层 `ipc-client` 已联通。**⚠️ E 第二部分的 GUI 冒烟未做**（chapter-lifecycle 依赖含正文项目） |
+| GUI 冒烟 | ✅ 自 2026-10-07 起 **八轮**。近两轮：dialog 轮 vite `453 ms` + cargo `24.91s`；**第八轮（2026-10-09，G1）**：vite `533 ms` + cargo `1.33s`（增量）→ `lorekeeper.exe` 运行正常，**G1 定稿（两章 outbox `published` + `.txt` 落盘且标题剥离）+ B2 删除（两章实体稿真实删除、KB 文档真实清理）全部通过**；本轮共 3 次 cargo-watch 自动重建（19.59s / 19.92s / 增量），过程中发现并修复 1 个入参契约缺陷（见第三十二次 §2） |
 | 双栈隔离 | **L0/L1/L2/L3 全部独立**：安装标识 / `~/.lorekeeper` / `<root>/.lore/`（库 `.lore/lorekeeper.db`、KB 向量 `.lore/kb/`）。基线为 `~/.vela` / `<root>/.vela/`。**两栈项目目录刻意不互通**（`ee40aaab`） |
 | Rust 工具链 | rustc/cargo **1.99.0 stable-msvc** @ `D:\Environment\rust\`（脚本内须显式设 `RUSTUP_HOME` / `CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
 
-<sub>*命令与频道差额：**133 命令**中 1 个为骨架（`dialog:select-export-directory`），不产生独立频道覆盖；其余 **132** 与 invoke 频道一一对应。</sub>
+<sub>*命令与频道差额：**152 命令**中 1 个为阶段 0 骨架（`app_health_check`，不对应任何契约频道），其余 **151** 与 invoke 频道一一对应。`dialog:select-export-directory` 仍是诚实化占位（返回 `None`，批次 H）。</sub>
+
+---
+
+## 本次更新（第三十二次：批次 E 收口 G1 —— 定稿提交/重试 + 实体稿发布与清理真实化；GUI 冒烟发现并修复入参契约缺陷）
+
+> 承接第三十一次，同属 **2026-10-09**。本轮把批次 E 唯一剩余缺口 **G1** 落地，
+> 并借此**真实化** `chapter:*` 的删实体稿投影（解除 B2），随后完成**第八轮 GUI 冒烟**。
+
+### 0. 决策（用户确认，本轮）
+
+| 决策 | 选择 |
+|---|---|
+| **上游策略** | **暂不合并 upstream**。核查（2026-10-09）：上游领先 **502 提交**（合并基点 `992b3f5f`，2026-10-01）；invoke 频道 191 → **205**；上游**仍未声明** `FinalizationChannels`。**利好**：已迁移的 149 频道**零删除/零改名**（上游只新增）。继续冻结 10-01 基线，上游合并另立专项 |
+| **G1 契约归属** | **只补 tauri-app 副本**（`tauri-app/src/shared/ipc-channels.ts`），并把 `scripts/verify-channel-coverage.mjs` 与 `test/channel-migration-coverage.test.ts` 的契约读取路径改为 tauri-app 副本 → **基线 `src/` 保持逐字节不变**，上游可合并。代价：两份契约分叉（已记入盘点文档 §1） |
+| **B2 范围** | G1 一并真实化「删实体稿文件」，**不再等批次 H**（核对基线 `chapter-deletion-service.ts`：删实体稿仅 `unlink` 项目根内冻结文件名，路径受约束，不需 ADR 0002 外部授权） |
+| **冒烟方式** | GUI 加一个「假」生成模型（内置 OpenAI 预设 + 任意 key，仅用于通过生成运行时前置校验）。**定稿的提交/发布在命令体最前**（`finalize-chapter.command.ts:708`），随后的 AI 后处理失败不影响已提交事实 |
+
+### 1. 交付
+
+**Rust**
+- `repositories/finalization_repository.rs`：+`FinalizationCommitInput` / `commit`（正文·字数·定稿状态·outbox **同事务**）/ `get` / `get_by_draft_id` / `mark_publication_pending` / `mark_published`；抽取 `map_record` 收敛列投影
+- **新增** `manuscript_publisher.rs`：`resolve_manuscript_target`（直接子文件守卫 + 碰撞后缀）/ `publish_manuscript`（临时文件 `create_new` + 原位 rename + 同内容幂等）/ `remove_published_manuscript` / `serialize_manuscript`（章节头 + 剥离首个 Markdown 标题行）。**删除了 `finalized_draft_import_repository` 里的重复实现并改为复用此模块**（消除两份 `resolveManuscriptTarget` 漂移）
+- **新增** `commands/finalization.rs`：`finalization_commit` / `finalization_retry`，逐字对齐 `finalization-controller.ts` + `finalization-service.ts` 的**三层失败语义**（controller throw → `"Error: "`；service 明文返回分支不前缀；`publishCommitted` catch → `定稿已提交、实体稿待发布：…`）
+- `commands/chapter_lifecycle.rs`：`manuscript_cleanup_unavailable()` 占位 → **真实** `manuscript_publisher::remove_published_manuscript`
+
+**前端 / 契约**
+- `src/shared/ipc-channels.ts`：+`FinalizationChannels`（2 频道）+ `FinalizationResult` / `FinalizationSnapshot` / `FinalizationPublicationStatus`（`finalization-snapshot.ts` 改为再导出，单源）
+- `src/services/finalization-client.ts`：`getVelaApi()`（读 `window.velaAPI`）→ `ipc.invoke`；`projectSession` 仍**显式**尾参（保持基线 `(snapshot, context)` 签名）
+- `src/services/ipc-client.ts`：+2 条 `CHANNEL_ARG_NAMES`；`migrated-channels.ts` 重新生成（149 → **151**）
+
+### 2. 🐞 GUI 冒烟发现并修复的真实缺陷（本轮最大收获）
+
+**现象**：侧边栏删除已定稿章节 → 确认框弹出、点确认后「什么都没发生」（无 toast、库中零记录）。
+
+**根因**：`chapter:delete-finalized` 的入参结构体 `DeleteFinalizedChapterRequest` **缺 `#[serde(rename_all = "camelCase")]`**。渲染层发 `{ draftId, chapterNumber }`，Tauri 在**参数反序列化**阶段即失败并 **reject promise**：
+
+```
+Unknown Error: invalid args `request` for command `chapter_delete_finalized`: missing field `draft_id`
+```
+
+调用点未 catch → 未处理拒绝 → 静默失败；后端连一行也不会落。**Rust 单测永远抓不到**（测试直接构造结构体）。
+
+**修复与防线**：
+1. ✅ 补属性（`repositories/chapter_deletion_repository.rs`）
+2. ✅ Rust 契约测试：从 `{"draftId":7,"chapterNumber":3}` 反序列化必须成功（旧 snake_case 载荷必须失败）
+3. ✅ **新增源码扫描测试** `test/ipc-arg-struct-contract.test.ts`：任何派生 `Deserialize` 且含下划线字段的结构体都必须显式 camelCase（内部结构体走白名单）。已实测**「注入回归 → 立刻报错」**（去掉属性即报 `DeleteFinalizedChapterRequest [draft_id,chapter_number]`），当前 0 违规
+4. 📋 全仓审计：82 个 `Deserialize` 结构体中**仅此 1 个**是 IPC 入参且缺 rename（其余为单词字段或纯内部）；规则已写入 `docs-fork/agents/pi-development.md` §2 第 5 条
+
+### 3. GUI 冒烟（第八轮，2026-10-09）—— ✅ 通过
+
+测试项目 `F:\Temp\loretest\lore-smoke`（手写 `.lore/project.json` 清单；草稿由外部脚本播种，**零 API**）。
+
+| 项 | 结果 |
+|---|---|
+| 项目打开 | ✅ 自动建 `.lore/lorekeeper.db` + 清单校验通过 |
+| **G1 定稿（第 1 章）** | ✅ `drafts.status=finalized`、outbox `published` @ `15:07:23`、落盘 `第1章 # 标题.txt`；内容 `第1章 # 标题\n\n正文…`，**首行 `# 第一章 雾港的灯语` 已剥离** |
+| **G1 定稿（第 2 章）** | ✅ outbox `published` @ `15:22:48`、`第2章 潮汐的裂口.txt` |
+| **B2 删除（第 1 章）** | ✅ 走 **legacy 人工确认**分支（`required → consumed`）→ `manuscript=completed` / `knowledge=not_required` / `status=completed`，`.txt` **真实删除** |
+| **B2 删除（第 2 章）** | ✅ `knowledge_status=completed`（**KB 文档被真实清理**）+ `.txt` 真实删除；`drafts` 归零、项目根无残留 |
+| F2 KB 界面导入 | ⛔ 阻塞于 `fs:grant-read-file`（批次 H 占位，见 §4 B10）。服务端内核已被第 2 章后处理间接验证（真实创建 KB 文档并回链，删除时真实清理） |
+
+> 顺带确认：无向量（vectorless 导入）时 `.lore/kb/` 不落 HNSW 快照 —— 属预期。
+
+### 4. 阻塞项变化
+
+- **B1 ✅ 解除**：G1 落地；`finalization-client.ts` 底层已切 `ipc.invoke`。
+- **B2 ✅ 全部解除**：删 KB 文档（F2-3）+ 删实体稿文件（本轮）均真实化。
+- **新增 B10**：`fs:grant-read-file` / `write-file` / `mkdir` 仍是批次 H 占位（`commands/external_file_grant.rs:65`）。影响面：**KB 界面导入**、**导出成稿**、**角色卡导入**三条前端路径；且 `kb:import-document` / `kb:import-folder` **无任何 UI 调用点**（唯一 UI 导入入口是 `KnowledgeOverview` 的「导入参考资料」→ `selectPlanningMaterials()`）。
+
+### 5. 验证（本轮实测）
+
+`cargo test --lib` **491/491**（478 → +13）；`cargo check --all-targets` **0 告警**；`pnpm typecheck` / `lint` **exit 0**；
+`check:channels` **193 契约 / 152 命令 / 151 覆盖 / 42 未迁移**，orphan 空；定向 vitest **6 文件 / 16 测试全过**。
 
 ---
 
@@ -247,39 +320,66 @@ SQLite 事实删除**已真实提交**（`committed: true`）。
 
 ### 1. 当前工作区状态
 
-**`master` 上工作区干净**（`git status --porcelain` 无输出）；第二十七 ～ 第三十一次改动**均已提交**，
-HEAD = `0e74971e`（F2-3 前端登记）。第二十七次快照里「5 个已修改 + 4 个新增文件尚未提交」的描述**已过期**，勿再照它操作。
+⚠️ **第三十二次（G1）改动尚未提交**（第二十七 ～ 第三十一次均已提交，上次 HEAD = `0e74971e`）。
+待提交文件（`git status --porcelain`）：
 
-> 历史备注：第二十七次的 5 个 commit message 里附带过「建议提交拆分（5 主题）」表；实际提交已按该表完成，**无需再拆**。
+```
+docs-fork/agents/pi-development.md            (¶2 新增第 5 条 camelCase 规则)
+docs-fork/handoffs/2026-10-09-...md           (本快照)
+docs-fork/plans/tauri-migration-channel-inventory.md
+tauri-app/scripts/verify-channel-coverage.mjs
+tauri-app/src-tauri/src/commands/chapter_lifecycle.rs
+tauri-app/src-tauri/src/commands/finalization.rs      (新增)
+tauri-app/src-tauri/src/commands/mod.rs
+tauri-app/src-tauri/src/disk_e2e.rs
+tauri-app/src-tauri/src/lib.rs
+tauri-app/src-tauri/src/manuscript_publisher.rs       (新增)
+tauri-app/src-tauri/src/repositories/chapter_deletion_repository.rs
+tauri-app/src-tauri/src/repositories/finalization_repository.rs
+tauri-app/src-tauri/src/repositories/finalized_draft_import_repository.rs
+tauri-app/src/services/__tests__/finalization-client-session.test.ts
+tauri-app/src/services/finalization-client.ts
+tauri-app/src/services/finalization-snapshot.ts
+tauri-app/src/services/ipc-client.ts
+tauri-app/src/shared/ipc-channels.ts
+tauri-app/src/shared/migrated-channels.ts
+tauri-app/test/channel-migration-coverage.test.ts
+tauri-app/test/ipc-arg-struct-contract.test.ts        (新增)
+```
+
+**建议提交拆分（3 个，未执行）**：
+1. `feat(tauri): 迁移 G1 定稿频道并真实化实体稿发布与清理`（Rust + 前端 + 契约 + 脚本）
+2. `fix(tauri): 修复章节删除入参缺 camelCase 导致 GUI 静默失败`（含源码扫描防线）
+3. `docs(tauri): 第三十二次快照与上游/契约决策记录`
+
+> 历史备注：第二十七次的 5 个 commit message 里附带过「建议提交拆分（5 主题）」表；实际提交已按该表完成。
 
 ### 2. 下一步（1-2-3）
 
-1. **GUI 冒烟（含正文的真实项目，`.lore/` 项目）**：
-   - 批次 E 第二部分：`chapter:delete-finalized` → `chapter:list-incomplete-deletions` → `chapter:retry-deletion`，
-     确认实体稿占位返回**可读失败**（知识库清理已真实化）；
-   - 批次 F2：导入（`dialog:select-knowledge-*` → `kb:import-*`）→ `kb:search` → `kb:stats` →
-     `kb:remove-document` / `kb:clear-all` 全链路。
-2. **G1 补契约（`finalization:commit` / `finalization:retry`）** —— 属**定稿不可逆核心**，
-   **Ask first：需用户批准**后方可平移 `electron/services/finalization-service.ts`。这是批次 E 唯一剩余缺口。
-3. **批次 F2 ✅ 已完成**（向量层 `4aff3f65`、F2-1 `99efceaf`、F2-2 `d0538819`、
-   F2-3 `419076db` / `20d26f42` / `0e74971e`）。下一批可选：
-   - **批次 G**（import-run 18 频道 + `dialog:select-novel-files`），落地后收口 `kb:import-reference-text`；
-   - **批次 H**（update / mcp / prompt / skills + `fs:grant-*` + `dialog:select-export-directory`），
-     可直接复用 F2-3 已落地的 `external_grant.rs` 注册表。
+1. **批次 H（当前最高优先）**：`fs:grant-read-file` / `write-file` / `mkdir` 三命令（接入 F2-3 已落地的
+   `external_grant.rs` 注册表）—— 可直接解开 **KB 界面导入**、**导出成稿**、**角色卡导入**三条前端路径（B10）；
+   顺带 `dialog:select-export-directory`（B3）+ update / mcp / prompt / skills。
+2. **批次 G**：import-run 18 频道 + `dialog:select-novel-files`，落地后收口 `kb:import-reference-text`。
+3. **上游合并专项**（本轮已评估、**未执行**）：上游领先 502 提交（`src/` +39k/−10.8k、`electron/` +47k、`docs/` +81k），
+   但**共享目录零冲突**（本 fork 从未改过 `src/`/`electron/`/`docs/`），且已迁移 149 频道**零删除/零改名**；
+   冲突面仅根目录 `.github` / `.gitignore` / `README.md` / `scripts/check-commit-msg.mjs`。
+   合并后需重建盘点（191 → ~205 invoke）并评估仓库层语义漂移。
 
 ### 3. 阻塞项与待授权项（不得删除，须逐条确认后更新）
 
 | # | 项 | 状态 |
 |---|---|---|
-| B1 | `finalization:commit` / `finalization:retry`（G1） | ⛔ **阻塞于用户授权**（定稿不可逆核心）。**落地时必须同时把 `src/services/finalization-client.ts` 的 `getVelaApi()`（真实读取 `window.velaAPI`）切换为 `ipc.invoke`**，否则 Tauri 下必抛 `不在 Electron 环境中` |
-| B2 | `chapter:*` 物理清理（删稿件 / 删 KB 文档） | 🟡 **部分解除**：删 KB 文档 ✅ **已随 F2-3 真实化**；删实体稿文件仍 ⛔ 阻塞于批次 H |
+| B1 | `finalization:commit` / `finalization:retry`（G1） | ✅ **已完成（第三十二次）**：命令 + `manuscript_publisher.rs` 落地；`finalization-client.ts` 底层已切 `ipc.invoke`；契约补在 tauri-app 副本 |
+| B2 | `chapter:*` 物理清理（删稿件 / 删 KB 文档） | ✅ **全部解除**：删 KB 文档（F2-3）+ 删实体稿文件（第三十二次，`manuscript_publisher::remove_published_manuscript`）；GUI 双章删除已验（含 legacy 授权与 KB 清理两分支） |
 | B3 | `dialog:select-export-directory` | ⛔ 仍返回 `None`，阻塞于批次 H 的 grant 域 |
-| B4 | L3 双栈隔离（`.vela` 改名） | ✅ **已执行**（`ee40aaab`：项目目录 `.vela` → `.lore`，36 文件 + `AGENTS.md` 契约） |
+| B4 | L3 双栈隔离（`.vela` 改名） | ✅ **已执行**（`ee40aaab`） |
 | B5 | `cargo fmt --check` | ⚠️ 未纳入验收（`src-tauri/` 全域存在既有 rustfmt 差异） |
-| B6 | `tauri-app` 全量 `pnpm test` | ⚠️ 暂超时（见 10-08 快照遗留项） |
+| B6 | `tauri-app` 全量 `pnpm test` | ⚠️ 暂超时（见 10-08 快照遗留项）；另：凡未 mock `ipc-client` 的流程测试在 node 下必因未 mock 的 `@tauri-apps/api` invoke 失败（**既有**，非本轮） |
 | B7 | 「证据不在正文中」反例 | ⚠️ 未验证（无正文数据） |
-| B8 | 2 个既有 `vitest` 失败 | ⚠️ 阶段 0 起就失效，**非本轮引入**（10-08 快照 §6） |
+| B8 | 2 个既有 `vitest` 失败（`ipc-client-project-session.test.ts`） | ⚠️ 阶段 0 起就失效，**非本轮引入**（10-08 快照 §6） |
 | B9 | `tauri-plugin-dialog 2.8.1` 要求 rustc ≥ 1.90 | ⚠️ CI 最低版本需相应抬高 |
+| B10 | **`fs:grant-*` 三命令仍为批次 H 占位** | ⛔ `commands/external_file_grant.rs:65` → **KB 界面导入 / 导出成稿 / 角色卡导入全部不可用**；`kb:import-document`/`folder` 无 UI 调用点（2026-10-09 GUI 冒烟发现，推荐随批次 H 解决） |
+| B11 | **`chapter:delete-finalized` 的 `request` 入参曾缺 camelCase** | ✅ **已修复（第三十二次）** + Rust 契约测试 + 全仓源码扫描防线；规则写入 `pi-development.md` §2.5 |
 
 ### 4. 红线提醒（每次接手都要过一遍）
 
@@ -294,15 +394,16 @@ HEAD = `0e74971e`（F2-3 前端登记）。第二十七次快照里「5 个已�
 
 ---
 
-## 5. 自检记录（2026-10-09 实测）
+## 5. 自检记录（2026-10-09 实测，第三十二次）
 
 > 生成本表快照时在本机实跑，命令与输出如下。**下次更新快照表必须先重跑这些命令。**
 
 | 命令 | 工作目录 | 实测输出 |
 |---|---|---|
-| `pnpm run check:channels` | `tauri-app/` | 契约 invoke 频道 **191**（事件频道 4）· 已注册命令 **150** → 覆盖 **149** · 未迁移 **42** `[db=19 mcp=9 update=6 skills=4 prompt=3 dialog=1]` · 命令名与契约频道一一对应 ✅ |
-| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 478 passed; 0 failed; 0 ignored` |
-| `cargo check --all-targets` | `tauri-app/src-tauri/` | `Finished dev profile ... in 4.10s`（0 告警） |
+| `pnpm run check:channels` | `tauri-app/` | 契约 invoke 频道 **193**（事件频道 4）· 已注册命令 **152** → 覆盖 **151** · 未迁移 **42** `[db=19 mcp=9 update=6 skills=4 prompt=3 dialog=1]` · 命令名与契约频道一一对应 ✅ |
+| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 491 passed; 0 failed; 0 ignored` |
+| `cargo check --all-targets` | `tauri-app/src-tauri/` | `Finished dev profile ... in 5.62s`（0 告警） |
 | `pnpm typecheck` / `lint` | `tauri-app/` | exit 0 / exit 0 |
-| `npx vitest run test/channel-migration-coverage.test.ts` | `tauri-app/` | `Test Files 1 passed`，`Tests 6 passed` |
-| `git log -1` | 仓库根 | 见下方「交接」（F2-3 前端登记提交） |
+| `npx vitest run`（6 文件定向） | `tauri-app/` | `Test Files 6 passed`，`Tests 16 passed`（契约覆盖 / 入参结构体契约 / 源码契约 / locale / finalization-client / finalization-snapshot） |
+| 磁盘级 E2E | `cargo test --lib` 内 | `disk_e2e::real_project_finalize_publish_then_delete_removes_manuscript_test` ✅（真实目录 + WAL 库 + 真实 `.txt` 删除、陪跑文件保留、幂等、重开持久） |
+| GUI 冒烟 | `pnpm tauri dev` | vite `533 ms` + cargo `1.33s` → `lorekeeper.exe`；G1 两章 `published` + `.txt` 落盘；B2 两章真实删除。详见本快照第三十二次 §3 |
