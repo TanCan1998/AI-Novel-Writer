@@ -295,6 +295,9 @@ pub fn run() {
             commands::db_import_run_get,
             commands::db_import_run_list_resumable,
             commands::db_import_run_list_chapters,
+            // 批次 G2b-5：导入运行准备 / 解析收口（2 频道）
+            commands::db_import_run_prepare_inspection,
+            commands::db_import_run_finalize_parsing,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

@@ -206,6 +206,27 @@ impl AppState {
         }
     }
 
+    /// 与 [`Self::with_project_db`] 同源，但**保留调用方自定义的错误类型**。
+    ///
+    /// 用于需要区分错误类别的仓储 API（如 `PrepareError::AuthorPreviewStale` 必须
+    /// 上浮到命令层才能回 `errorCode` 信封，而不能塌成 `String`）。
+    pub(crate) fn with_project_db_typed<T, E>(
+        &self,
+        operation: impl FnOnce(&rusqlite::Connection) -> Result<T, E>,
+    ) -> Result<T, E>
+    where
+        E: From<String>,
+    {
+        let guard = self
+            .project_db
+            .lock()
+            .map_err(|_| E::from("项目数据库状态被污染".to_string()))?;
+        match guard.as_ref() {
+            Some(database) => operation(database.connection()),
+            None => Err(E::from("项目数据库未打开".to_string())),
+        }
+    }
+
     /// 批次 A 收口：窗口 `CloseRequested` 入口。
     ///
     /// 返回 `(allow_close, emit_request_id)`；详见

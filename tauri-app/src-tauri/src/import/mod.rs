@@ -89,6 +89,12 @@ impl ImportRunLocale {
     }
 }
 
+/// 作者原稿预览过期错误码（对齐契约 `AUTHOR_IMPORT_PREVIEW_STALE`）
+///
+/// D10：Rust 侧无异常类，用 `PrepareError::AuthorPreviewStale` + 本错误码表达；
+/// 命令层据此回 `{ success:false, errorCode:'AUTHOR_IMPORT_PREVIEW_STALE' }`。
+pub const AUTHOR_IMPORT_PREVIEW_STALE: &str = "AUTHOR_IMPORT_PREVIEW_STALE";
+
 #[cfg(test)]
 mod tests {
     use super::*;

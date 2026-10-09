@@ -2939,6 +2939,277 @@ pub fn db_import_run_list_chapters(
     )
 }
 
+// ==================== 批次 G2b-5：prepare-inspection / finalize-parsing ====================
+
+/// `db:import-run-prepare-inspection` 结构化入参
+/// （对齐契约 `ImportRunPrepareFromInspectionRequest`）
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRunPrepareFromInspectionRequest {
+    pub inspection_id: String,
+    pub run_id: String,
+    pub purpose: crate::import::ImportPurpose,
+    pub locale: crate::import::ImportRunLocale,
+    #[serde(default)]
+    pub authority_fingerprint: Option<String>,
+    #[serde(default)]
+    pub manifest_fingerprint: Option<String>,
+}
+
+/// 对齐契约 `ImportRunPrepareFromInspectionResult`
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRunPrepareFromInspectionResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preparation: Option<import_runs::ImportRunPreparationResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl ImportRunPrepareFromInspectionResult {
+    fn ok(preparation: import_runs::ImportRunPreparationResult) -> Self {
+        Self {
+            success: true,
+            preparation: Some(preparation),
+            error_code: None,
+            error: None,
+        }
+    }
+
+    /// D10：作者原稿预览过期 → `errorCode` 信封（与基线同一形态）
+    fn stale() -> Self {
+        Self {
+            success: false,
+            preparation: None,
+            error_code: Some(crate::import::AUTHOR_IMPORT_PREVIEW_STALE.to_string()),
+            error: None,
+        }
+    }
+}
+
+/// `db:import-run-finalize-parsing` 返回（失败走 invoke reject，对齐基线）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRunFinalizeParsingResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preparation: Option<import_runs::ImportRunPreparationResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// 当前活跃项目的预检后写运行（对齐基线 `FinalizedDraftImportRepository.preview` 预检）
+fn author_preview_stale_for_inspection(
+    state: &AppState,
+    request: &ImportRunPrepareFromInspectionRequest,
+    chapters: &[crate::import::inspection_store::InspectedImportChapter],
+) -> Result<bool, String> {
+    let preview_chapters: Vec<draft_import::FinalizedDraftImportChapter> = chapters
+        .iter()
+        .map(|chapter| draft_import::FinalizedDraftImportChapter {
+            chapter_number: chapter.number,
+            title: chapter.title.clone(),
+            content: chapter.content.clone(),
+            word_count: chapter.word_count,
+        })
+        .collect();
+    let preview = state.with_project_db(|conn| draft_import::preview(conn, &preview_chapters))?;
+    Ok(
+        preview.authority_fingerprint != request.authority_fingerprint.clone().unwrap_or_default()
+            || preview.manifest_fingerprint
+                != request.manifest_fingerprint.clone().unwrap_or_default(),
+    )
+}
+
+/// `db:import-run-prepare-inspection`（对齐 `db-controller.ts:212-300`）
+///
+/// 返回形态三分：成功信封 / **stale 信封**（`errorCode`）/ **invoke reject**
+/// （其余业务失败，带 `"Error: "` 前缀，与 Electron 的 `String(new Error(...))` 一致）。
+/// 检视令牌在预检通过后才 `consume`（stale 路径不消费，可重试）。
+pub(crate) fn import_run_prepare_inspection_inner(
+    state: &AppState,
+    request: &ImportRunPrepareFromInspectionRequest,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<ImportRunPrepareFromInspectionResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    let purpose = request.purpose;
+
+    let inspection = {
+        let mut guard = state
+            .import_inspections
+            .lock()
+            .map_err(|_| "导入检查状态被污染".to_string())?;
+        // 1) peek（含 purpose 校验）—— 不消费
+        let inspected = guard.peek(&request.inspection_id, Some(purpose))?;
+        if purpose == crate::import::ImportPurpose::AuthorManuscript
+            && author_preview_stale_for_inspection(state, request, &inspected.chapters)?
+        {
+            return Ok(ImportRunPrepareFromInspectionResult::stale());
+        }
+        // 2) 预检通过 → consume（此后令牌失效）
+        guard.consume(&request.inspection_id)?
+    };
+
+    // 3) 来源身份（无密钥 sha256，D1′）+ 展示事实
+    let encoded: Vec<crate::import::identity::EncodedImportSourceIdentity> = inspection
+        .sources
+        .iter()
+        .map(
+            |source| crate::import::identity::EncodedImportSourceIdentity {
+                location_alias_digest: source.location_alias_digest.clone(),
+                file_alias_digest: source.file_alias_digest.clone(),
+            },
+        )
+        .collect();
+    let source_display: Vec<import_runs::ImportSourceDisplayMetadata> = inspection
+        .sources
+        .iter()
+        .map(|source| import_runs::ImportSourceDisplayMetadata {
+            display_name: source.display_name.clone(),
+            media_type: source.media_type.clone(),
+            size: source.size as i64,
+        })
+        .collect();
+    let resolved = state.with_project_db(|conn| {
+        crate::import::identity::resolve_encoded_sources(conn, &encoded, purpose)
+    })?;
+
+    if purpose == crate::import::ImportPurpose::AuthorManuscript {
+        let chapters: Vec<import_runs::ImportRunChapterInput> = inspection
+            .chapters
+            .iter()
+            .map(|chapter| import_runs::ImportRunChapterInput {
+                number: chapter.number,
+                source_index: Some(chapter.source_index as i64),
+                source_chapter_number: Some(chapter.source_chapter_number),
+                title: chapter.title.clone(),
+                content_fingerprint: chapter.content_fingerprint.clone(),
+                content_size: chapter.content_size as i64,
+                content: chapter.content.clone(),
+            })
+            .collect();
+        let candidate = import_runs::ImportRunPrepareRequest {
+            run_id: request.run_id.clone(),
+            purpose,
+            source_fingerprint: resolved.source_fingerprint.clone(),
+            source_ids: Some(resolved.source_ids.clone()),
+            source_fingerprints: Some(resolved.source_fingerprints.clone()),
+            source_display,
+            locale: request.locale,
+            authority_fingerprint: request.authority_fingerprint.clone(),
+            expected_manifest_fingerprint: request.manifest_fingerprint.clone(),
+            chapters,
+        };
+        return match state.with_project_db_typed(|conn| import_runs::prepare(conn, &candidate)) {
+            Ok(preparation) => Ok(ImportRunPrepareFromInspectionResult::ok(preparation)),
+            // 与第 1 道预检同义：运行中再次发现权威变化 → 仍回 errorCode 信封
+            Err(import_runs::PrepareError::AuthorPreviewStale(_)) => {
+                Ok(ImportRunPrepareFromInspectionResult::stale())
+            }
+            Err(import_runs::PrepareError::Message(message)) => Err(mutating_error(message)),
+        };
+    }
+
+    // reference：beginParsing → 逐来源 commit（失败落 fail）→ finalizeParsing
+    let begin_request = import_runs::ImportRunBeginParsingRequest {
+        run_id: request.run_id.clone(),
+        purpose,
+        source_fingerprint: resolved.source_fingerprint.clone(),
+        source_ids: Some(resolved.source_ids.clone()),
+        source_fingerprints: Some(resolved.source_fingerprints.clone()),
+        legacy_source_fingerprints: None,
+        legacy_collection_fingerprint: None,
+        source_display,
+        locale: request.locale,
+    };
+    let outcome = state.with_project_db(|conn| {
+        let parsing_run = import_runs::begin_parsing(conn, &begin_request)?;
+        for (source_index, source_id) in resolved.source_ids.iter().enumerate() {
+            let source_chapters: Vec<import_runs::ImportRunChapterInput> = inspection
+                .chapters
+                .iter()
+                .filter(|chapter| chapter.source_index == source_index)
+                .map(|chapter| import_runs::ImportRunChapterInput {
+                    number: chapter.source_chapter_number,
+                    source_index: None,
+                    source_chapter_number: Some(chapter.source_chapter_number),
+                    title: chapter.title.clone(),
+                    content_fingerprint: chapter.content_fingerprint.clone(),
+                    content_size: chapter.content_size as i64,
+                    content: chapter.content.clone(),
+                })
+                .collect();
+            if let Err(error) = import_runs::commit_parsed_source(
+                conn,
+                &parsing_run.id,
+                source_id,
+                &source_chapters,
+            ) {
+                let _ = import_runs::fail_parsed_source(conn, &parsing_run.id, source_id, &error);
+                return Err(error);
+            }
+        }
+        import_runs::finalize_parsing(conn, &parsing_run.id)
+    });
+    match outcome {
+        Ok(preparation) => Ok(ImportRunPrepareFromInspectionResult::ok(preparation)),
+        Err(message) => Err(mutating_error(message)),
+    }
+}
+
+/// `db:import-run-prepare-inspection`
+#[tauri::command]
+pub fn db_import_run_prepare_inspection(
+    state: State<'_, AppState>,
+    request: ImportRunPrepareFromInspectionRequest,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<ImportRunPrepareFromInspectionResult, String> {
+    import_run_prepare_inspection_inner(
+        state.inner(),
+        &request,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:import-run-finalize-parsing`（对齐 `db-controller.ts:302-310`）
+pub(crate) fn import_run_finalize_parsing_inner(
+    state: &AppState,
+    run_id: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<ImportRunFinalizeParsingResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    let preparation = state.with_project_db(|conn| import_runs::finalize_parsing(conn, run_id))?;
+    Ok(ImportRunFinalizeParsingResult {
+        success: true,
+        preparation: Some(preparation),
+        error: None,
+    })
+}
+
+/// `db:import-run-finalize-parsing`
+#[tauri::command]
+pub fn db_import_run_finalize_parsing(
+    state: State<'_, AppState>,
+    run_id: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<ImportRunFinalizeParsingResult, String> {
+    import_run_finalize_parsing_inner(
+        state.inner(),
+        &run_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .map_err(mutating_error)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4695,6 +4966,138 @@ mod tests {
             import_run_author_preview_inner(&state, &summary.inspection_id, &root, None).is_err()
         );
 
+        cleanup(&root);
+    }
+
+    // ==================== 批次 G2b-5：prepare-inspection / finalize-parsing ====================
+
+    fn seed_inspection(
+        state: &AppState,
+        purpose: crate::import::ImportPurpose,
+        content: &str,
+    ) -> String {
+        use crate::import::inspection_store::{InspectedImportChapter, InspectedImportSource};
+        use crate::import::parsing::sha256_hex;
+        let mut store = state.import_inspections.lock().unwrap();
+        store
+            .create(
+                purpose,
+                vec![InspectedImportSource {
+                    location_alias_digest: "a".repeat(64),
+                    file_alias_digest: Some("b".repeat(64)),
+                    display_name: "第1章.txt".to_string(),
+                    media_type: "text/plain".to_string(),
+                    size: content.len(),
+                }],
+                vec![InspectedImportChapter {
+                    number: 1,
+                    source_index: 0,
+                    source_chapter_number: 1,
+                    title: "开端".to_string(),
+                    content: content.to_string(),
+                    word_count: 3,
+                    content_fingerprint: sha256_hex(content),
+                    content_size: content.len(),
+                }],
+            )
+            .unwrap()
+            .inspection_id
+    }
+
+    fn prepare_request_for(
+        inspection_id: &str,
+        run_id: &str,
+        purpose: crate::import::ImportPurpose,
+    ) -> ImportRunPrepareFromInspectionRequest {
+        ImportRunPrepareFromInspectionRequest {
+            inspection_id: inspection_id.to_string(),
+            run_id: run_id.to_string(),
+            purpose,
+            locale: crate::import::ImportRunLocale::ZhCn,
+            authority_fingerprint: None,
+            manifest_fingerprint: None,
+        }
+    }
+
+    #[test]
+    fn prepare_inspection_reference_creates_run_and_consumes_token_test() {
+        use crate::import::ImportPurpose;
+        let (state, root, session) = activated_state("g2b5-prepare");
+        let inspection_id = seed_inspection(&state, ImportPurpose::Reference, "正文甲");
+        let request = prepare_request_for(&inspection_id, "run-ch", ImportPurpose::Reference);
+
+        let result =
+            import_run_prepare_inspection_inner(&state, &request, &root, Some(&session)).unwrap();
+        assert!(result.success, "应成功：{:?}", result.error);
+        let preparation = result.preparation.unwrap();
+        assert_eq!(preparation.classification, "new");
+        // 注意：本频道走 beginParsing→commit→finalizeParsing，终态为 'prepared'
+        // （'knowledge' 是 `prepare` 的 reference 分支终态，两条入口不同）
+        assert_eq!(
+            preparation.run.as_ref().map(|run| run.stage.as_str()),
+            Some("prepared")
+        );
+
+        // 令牌已 consume → 再次调用即失效
+        assert_eq!(
+            import_run_prepare_inspection_inner(&state, &request, &root, Some(&session))
+                .unwrap_err(),
+            "导入检查已失效，请重新选择文件"
+        );
+        // 跨项目被拒
+        assert!(
+            import_run_prepare_inspection_inner(&state, &request, "C:\\other", Some(&session))
+                .is_err()
+        );
+        cleanup(&root);
+    }
+
+    #[test]
+    fn prepare_inspection_author_stale_returns_error_code_without_consuming_test() {
+        use crate::import::ImportPurpose;
+        let (state, root, session) = activated_state("g2b5-stale");
+        let inspection_id = seed_inspection(&state, ImportPurpose::AuthorManuscript, "正文甲");
+        let mut request = prepare_request_for(
+            &inspection_id,
+            "run-author",
+            ImportPurpose::AuthorManuscript,
+        );
+        // 空台账下 preview.authorityFingerprint = sha256("[]")，故意传错指纹
+        request.authority_fingerprint = Some("f".repeat(64));
+        request.manifest_fingerprint = Some("e".repeat(64));
+
+        let stale =
+            import_run_prepare_inspection_inner(&state, &request, &root, Some(&session)).unwrap();
+        assert!(!stale.success);
+        assert_eq!(
+            stale.error_code.as_deref(),
+            Some(crate::import::AUTHOR_IMPORT_PREVIEW_STALE)
+        );
+        assert!(stale.preparation.is_none());
+
+        // 预检失败不消费令牌 → 再次调用仍能走到同一分支
+        let retried =
+            import_run_prepare_inspection_inner(&state, &request, &root, Some(&session)).unwrap();
+        assert_eq!(
+            retried.error_code.as_deref(),
+            Some(crate::import::AUTHOR_IMPORT_PREVIEW_STALE)
+        );
+        assert_eq!(state.import_inspections.lock().unwrap().active_count(), 1);
+        cleanup(&root);
+    }
+
+    #[test]
+    fn finalize_parsing_channel_rejects_non_parsing_run_test() {
+        let (state, root, session) = activated_state("g2b5-finalize");
+        let error = import_run_finalize_parsing_inner(&state, "missing", &root, Some(&session))
+            .unwrap_err();
+        assert_eq!(error, "导入解析运行当前不可完成");
+        // 命令层包装为 MUTATING 文案（与 Electron `String(new Error(...))` 一致）
+        assert_eq!(mutating_error(error), "Error: 导入解析运行当前不可完成");
+        assert!(
+            import_run_finalize_parsing_inner(&state, "missing", &root, None).is_err(),
+            "缺会话应被拒绝"
+        );
         cleanup(&root);
     }
 }

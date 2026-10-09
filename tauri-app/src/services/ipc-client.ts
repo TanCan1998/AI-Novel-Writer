@@ -193,6 +193,9 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'db:import-run-get': ['runId', 'expectedProjectPath'],
   'db:import-run-list-resumable': ['expectedProjectPath'],
   'db:import-run-list-chapters': ['runId', 'afterChapterNumber', 'limit', 'expectedProjectPath'],
+  // 批次 G2b-5：导入运行准备 / 解析收口（2 频道）
+  'db:import-run-prepare-inspection': ['request', 'expectedProjectPath'],
+  'db:import-run-finalize-parsing': ['runId', 'expectedProjectPath'],
 
   // 批次 E 第二部分：章节生命周期（chapter-lifecycle，4 频道）
   'chapter:delete-finalized': ['request', 'expectedProjectPath'],
