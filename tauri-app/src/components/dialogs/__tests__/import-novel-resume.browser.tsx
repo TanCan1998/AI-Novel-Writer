@@ -753,6 +753,48 @@ describe('current-project reference import', () => {
     expect(startWorkflow).not.toHaveBeenCalled()
   })
 
+  it('clears the author-manuscript conflict notice after switching projects and reopening', async () => {
+    authorPreview = {
+      ...authorPreview,
+      classification: 'conflict',
+      conflictChapterNumbers: [1],
+    }
+    await act(async () => page.getByTestId('import-purpose-author').click())
+    await act(async () => page.getByTestId('import-source-choose').click())
+
+    await expect.element(page.getByText(/以下章节与现有权威正文内容冲突.*1/)).toBeVisible()
+    const previewCallsBeforeSwitch = invoke.mock.calls
+      .filter(([channel]) => channel === 'db:import-run-author-preview').length
+
+    // 关闭弹窗 → 切换到另一个项目 → 重新打开：冲突文案是上一项目的预览结果，
+    // 随会话状态整体复位，不得残留；也不得把上一项目的检视对新项目重放预览。
+    await act(async () => root.render(
+      <div>
+        <ProjectTree />
+        <div style={{ height: 360 }}><BottomPanel /></div>
+        <ImportNovelDialog open={false} onClose={vi.fn()} />
+      </div>,
+    ))
+    await act(async () => useProjectStore.setState({
+      currentProject: {
+        ...project,
+        id: 'replacement-project', sessionLease: 'lease-replacement', path: 'C:\\novels\\replacement',
+      } as never,
+    }))
+    await act(async () => root.render(
+      <div>
+        <ProjectTree />
+        <div style={{ height: 360 }}><BottomPanel /></div>
+        <ImportNovelDialog open onClose={vi.fn()} />
+      </div>,
+    ))
+
+    expect(page.getByText(/以下章节与现有权威正文内容冲突/).query()).toBeNull()
+    expect(invoke.mock.calls
+      .filter(([channel]) => channel === 'db:import-run-author-preview').length
+    ).toBe(previewCallsBeforeSwitch)
+  })
+
   it('discovers a failed run after reopen and continues the same persisted run id', async () => {
     const resumable = importRun({ status: 'failed', stage: 'style', lastError: 'provider unavailable' })
     invoke.mockImplementation(async (channel: string) => {

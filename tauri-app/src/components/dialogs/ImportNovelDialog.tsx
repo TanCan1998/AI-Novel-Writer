@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { FileUp, FolderOpen, BookOpen, FileText, Zap, Clock, AlertTriangle, RotateCcw } from 'lucide-react'
 import { useProjectStore } from '../../stores/project-store'
 import { useWorkflowStore } from '../../stores/workflow-store'
@@ -83,6 +83,29 @@ export default function ImportNovelDialog({ open, onClose }: ImportNovelDialogPr
     completed: run.progressCompleted ?? run.completedChapters,
     total: run.progressTotal ?? run.totalChapters,
   })
+
+  // 「重新打开」或「切换项目」时整体复位导入会话状态：检视 / 预览 / 错误文案
+  // 都是上一项目或上一轮选择的产物，残留会把上一项目的结果带进当前项目
+  // （GUI 冒烟发现：冲突文案在切换项目后重开弹窗仍显示）。
+  const previousOpenRef = useRef(open)
+  const previousProjectPathRef = useRef(currentProject?.path)
+  useEffect(() => {
+    const reopened = open && !previousOpenRef.current
+    const projectSwitched = currentProject?.path !== previousProjectPathRef.current
+    previousOpenRef.current = open
+    previousProjectPathRef.current = currentProject?.path
+    if (!reopened && !projectSwitched) return
+    setInspection(null)
+    setAuthorPreview(null)
+    setAuthorPreviewLoading(false)
+    setSelectionPreparation(null)
+    setSelectionProjectLeaseId('')
+    setSplitDone(false)
+    setSplitError('')
+    setImportNotice('')
+    setResumableState(null)
+    setSelectedResumableRunId('')
+  }, [open, currentProject?.path])
 
   useEffect(() => {
     if (!open || !currentProject) return
