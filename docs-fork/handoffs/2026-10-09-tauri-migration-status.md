@@ -24,13 +24,13 @@
 | 覆盖 invoke 频道 | **164**（契约总数 193，事件频道 4） |
 | 未迁移 invoke 频道 | **29**（`db=19 mcp=9 dialog=1`） |
 | orphan | **空** ✅ |
-| `cargo test --lib` | **539/539** ✅ |
+| `cargo test --lib` | **542/542** ✅ |
 | `cargo fmt --check` | **干净（0 差异）** ✅ 已纳入验收（第三十三次全量格式化） |
 | `cargo check --all-targets` | **0 告警** ✅ |
 | `pnpm typecheck` / `lint` | exit 0 / exit 0 ✅ |
 | 定向 `vitest` | **33/33**（8 文件：契约覆盖 / 入参结构体契约 / 源码契约 / locale / ipc-client 会话 / finalization-client / finalization-snapshot / writing-skills）✅（既有 2 个失败已修） |
 | 已完成批次 | A ✅ / B ✅（含遗留补齐） / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅（update:*）** / **B12 ✅** |
-| 当前阶段 | **批次 H 基本收口**：H1（fs:grant-* / 导出目录）、H2（prompt:* / skills:*）、**H3（update:* 6 频道 + `update:state`）**、B12（打开外部链接）已完成；**H4（mcp）暂缓**（用户决定）。下一步：① **批次 G**（import-run 19 + `dialog:select-novel-files`，20 频道 → 收口 `kb:import-reference-text`）；② H4 或上游合并专项（502 提交）；③ B13（渲染层导航防护）、B14（真 Windows 自更新） |
+| 当前阶段 | **批次 H 收口**（H1 ✅ / H2 ✅ / H3 ✅ / B12 ✅；H4 暂缓）· **批次 G 已开工**：schema 申报已获批并落地（9 张表 + 7 索引，`cca792cd`），下一步 **G1 检视面（3 频道）→ G2 状态机主体（5）→ G3 租约与批次推进（11）→ G4 收口**（未迁移 29 → 9）。其它待办：B13（导航防护）、B14（真 Windows 自更新）、上游合并专项（502 提交） |
 | 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、**`tauri-plugin-opener 2.7.0`**（第三十三次 B12 新增，连带 `open 5.4.4`；Ask first 已批准）。**F2 无新增依赖**：`hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio` 已在 `Cargo.toml`；**FTS5 由 `libsqlite3-sys` bundled 提供** |
 | GUI 冒烟 | ✅ 自 2026-10-07 起 **九轮**。**第九轮（2026-10-09，批次 H 前三项 + B12）**：vite `502 ms` + cargo `47.95s` → `lorekeeper.exe`（90 MB），**KB 界面导入→搜索→stats→删除全链路 ✅、导出成稿（合并 md + 分章 md）✅、官方主页/模型资源链接真实打开 ✅、提示词保存/删除与技能列表 ✅**（用户人工逐项验证，事后库/磁盘状态已复核）。近两轮：dialog 轮 vite `453 ms` + cargo `24.91s`；**第八轮（2026-10-09，G1）**：vite `533 ms` + cargo `1.33s`（增量）→ G1 定稿（两章 outbox `published` + `.txt` 落盘且标题剥离）+ B2 删除（两章实体稿真实删除、KB 文档真实清理）全部通过，过程中发现并修复 1 个入参契约缺陷（见第三十二次 §2） |
 | 双栈隔离 | **L0/L1/L2/L3 全部独立**：安装标识 / `~/.lorekeeper` / `<root>/.lore/`（库 `.lore/lorekeeper.db`、KB 向量 `.lore/kb/`）。基线为 `~/.vela` / `<root>/.vela/`。**两栈项目目录刻意不互通**（`ee40aaab`） |
@@ -95,6 +95,32 @@ open-release 注入闭包 / 每次变更都发布快照）。
 - **GUI 冒烟未做**：dev（`tauri::is_dev()` 为真）下门禁关闭 → `update:get-state` 应为 `disabled`、
   `update:check` 返回 `UPDATES_DISABLED`（与基线一致）；真正的检查/打开 Release 页需**打包版**验证。
 - **B14**（真正 Windows 自更新）与 **H4**（mcp）仍待做；**批次 G** 为下一批。
+
+### 5. 批次 G schema 落地（同日追加，提交 `cca792cd`）
+
+批次 G（import-run）的 **schema 申报书已获批准（**批准 9 张，不建 `import_legacy_identity_bridge`）
+并已落地到 `db/schema.rs`：
+
+| 项 | 内容 |
+|---|---|
+| 申报书 | [`docs-fork/research/2026-10-10-g-import-run-schema-proposal.md`](../research/2026-10-10-g-import-run-schema-proposal.md)（含基线 `database.ts:418-600` 逐字 DDL） |
+| 新增表（9） | `import_runs` / `import_run_chapters` / `import_run_sources` / `import_run_source_chapters` / `import_source_chapter_map` / `import_run_receipts` / `import_run_knowledge_receipts` / `import_reference_documents` / `import_source_aliases` |
+| 新增索引（7） | `idx_import_runs_source_status` / `idx_import_runs_resumable` / `idx_import_run_chapters_page` / `idx_import_run_source_chapters` / `idx_import_run_receipts_state` / `idx_import_run_knowledge_receipts_affiliation` / `idx_import_source_aliases_source` |
+| 刻意省略 | `import_legacy_identity_bridge`（基线特有的旧版来源身份 AES-GCM 密存桥；L3 两栈项目目录刻意不互通，无遗留数据可桥） |
+| 测试（+3） | 建表幂等 + 9 表/关键列/7 索引齐备 + **刻意不建**校验；外键级联（删 run 清 4 张子表）；CHECK 取值域（locale / stage / status / purpose） |
+
+**批次 G 分批（已确认）**：G1 检视面（3 频道）→ G2 状态机主体（5）→ G3 租约与批次推进（11）→ G4 收口
+（`kb:import-reference-text` 去占位 + 前端登记 + GUI 冒烟）。**下一步从 G1 开始**。
+
+### 6. HNSW 偶发测试修正（提交 `1749554e`）
+
+本轮实测发现 `db/vector.rs::insert_same_doc_id_retires_old_point_test` **偶发失败**
+（3 次运行中 1 次）。根因：该断言隐含「近似检索必能找到活点」，而 HNSW 是近似检索，
+且用例的查询向量恰等于被墓碑化的旧点向量——取回的候选可能只含旧点（过滤后为 0）。
+
+→ 改为断言**真实不变量**：已墓碑化的旧点绝不出现，结果只含活点（`len <= 1`）。
+与本次 schema 改动无关（`vector.rs` 未被触碰，用例使用独立临时目录）。
+连续 5 次 `cargo test --lib` 均 **542/542** 稳定。
 
 ---
 
@@ -485,9 +511,13 @@ SQLite 事实删除**已真实提交**（`committed: true`）。
 
 ### 1. 当前工作区状态
 
-**工作区干净**。最近两轮（第三十三～三十四次）的 9 个提交（均在 `master`）：
+**工作区干净**。最近两轮 + 批次 G 预备的 13 个提交（均在 `master`）：
 
 ```
+1749554e test(tauri): 修正 HNSW 墓碑测试的过高断言（消除偶发失败）
+cca792cd feat(tauri): 批次 G schema —— import-run 9 张表（申报已获批准）
+2867b5ca docs(tauri): 批次 G（import-run）schema 申报书
+6dc820cf docs(tauri): 第三十四次快照（H3 更新域收口）
 70d114d8 feat(tauri): 迁移应用更新域（update:* 6 频道 + update:state 事件）
 d8d54832 docs(tauri): 新增 H3（update）开工清单
 06b282d4 docs(tauri): 记录第九轮 GUI 冒烟（批次 H 前三项 + B12 全部实测通过）
@@ -504,9 +534,14 @@ ee4a3f07 docs(tauri): H3/H4 依赖评估与决策（零新依赖 + B12）
 
 ### 2. 下一步（1-2-3）
 
-1. **批次 G**（当前最高优先）：import-run 19 频道 + `dialog:select-novel-files`（共 **20** 频道 →
-   未迁移 29 → 9）；落实后收口 `kb:import-reference-text`（当前为显式占位失败）。
-   注意执行租约 `ImportRunExecutionLease` 与断点恢复语义。
+1. **批次 G —— 从 G1 开始**（schema 已落地，可立即开工）：
+   - **G1**（3 频道，低风险）：`dialog:select-novel-files`（真实文件选择 + grant 签发）+ `import-inspection-store`
+     + `db:import-run-prepare-inspection` + `db:import-run-author-preview`；
+   - **G2**（5 频道）：`import-run` 状态机主体（prepare / beginParsing / commitParsedSource /
+     failParsedSource / finalizeParsing / get / listResumable / listChapterBatch）；
+   - **G3**（11 频道）：执行租约与批次推进 + effect receipts + `db:import-global-facts-commit`；
+   - **G4**：`kb:import-reference-text` 去占位 + 前端登记 + GUI 冒烟。
+   基线规模：`import-run-repository.ts` **2551 行**、controller 671 行（分批排期见申报书 §5）。
 2. **H4（mcp 9 频道）**：已暂缓（用户决定）；方案已评估——基线仅 stdio（SSE 明确未实现），
    `std::process` + 自研守卫即可零依赖（见
    [`docs-fork/research/2026-10-09-h3-h4-dependency-evaluation.md`](../research/2026-10-09-h3-h4-dependency-evaluation.md)）。
@@ -533,6 +568,8 @@ ee4a3f07 docs(tauri): H3/H4 依赖评估与决策（零新依赖 + B12）
 | B13 | 渲染层导航防护未接入 | ⚠️ 基线有 `preventRendererNavigation` + 新窗口拦截；Tauri 侧 `on_navigation` / 新窗口拦截**尚未接入**（第三十三次记录） |
 | B14 | 真正的 Windows 自动更新 | ⚠️ 需 `tauri-plugin-updater` + 签名公钥 + 打包链路；本轮 H3 只做 GitHub-Release 元数据方案 |
 | B15 | H4（mcp 9 频道） | ⚠️ **用户决定暂缓**；方案已评估（仅 stdio，`std::process` + 自研守卫） |
+| B16 | `db/vector.rs` HNSW 墓碑测试偶发失败 | ✅ **已修**（第三十四次补：断言改为「旧点绝不出现 + 只含活点」；连续 5 次 542/542 稳定） |
+| B17 | 批次 G schema | ✅ **已获批并落地 9 张表**（`cca792cd`）；G1～G4 待实现 |
 
 ### 4. 红线提醒（每次接手都要过一遍）
 
@@ -555,7 +592,7 @@ ee4a3f07 docs(tauri): H3/H4 依赖评估与决策（零新依赖 + B12）
 | 命令 | 工作目录 | 实测输出 |
 |---|---|---|
 | `pnpm run check:channels` | `tauri-app/` | 契约 invoke 频道 **193**（事件频道 4）· 已注册命令 **165** → 覆盖 **164** · 未迁移 **29** `[db=19 mcp=9 dialog=1]` · 命令名与契约频道一一对应 ✅ |
-| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 539 passed; 0 failed; 0 ignored` |
+| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 542 passed; 0 failed; 0 ignored`（连续 5 次复跑均稳定） |
 | `cargo check --all-targets` | `tauri-app/src-tauri/` | `Finished dev profile ... in 4.20s`（0 告警） |
 | `cargo fmt --check` | `tauri-app/src-tauri/` | 输出 **0 行**（干净） |
 | `pnpm typecheck` / `lint` | `tauri-app/` | exit 0 / exit 0 |
