@@ -60,9 +60,15 @@
 ### 4.1 ConfigChannels（2）— controller: `config-controller.ts` — 批次 A
 `config:get`、`config:set`。→ `config_get` / `config_set`。
 
-### 4.2 UpdateChannels（6 + 事件 1）— controller: `update-controller.ts`（main.ts 注册，G3）— 批次 H
+### 4.2 UpdateChannels（6 + 事件 1）— controller: `update-controller.ts`（main.ts 注册，G3）— 批次 H ✅
 `update:get-state`、`update:check`、`update:download`、`update:open-release`、`update:defer-reminder(days)`、`update:quit-and-install`。
-事件：`update:state → UpdateState`（迁移为 `tauri-plugin-updater` + `app.emit`）。macOS 语义：只打开 Release 页不下载。
+事件：`update:state → UpdateState`（迁移为 `app.emit`，见 `update/startup.rs` 的 publish 闭包）。
+
+> ✅ **2026-10-10（第三十四次 H3）**：6 频道 + 事件已迁移（`src/update/` 9 文件 + `commands/update.rs`）。
+> **零新依赖**：不引入 `tauri-plugin-updater`，后端恒为 GitHub-Release 只读元数据（仓库指向 fork）。
+> 刻意偏离：`updateAction` 全平台 `open-release` → `update:download`/`update:quit-and-install` 诚实返回
+> `DOWNLOAD_NOT_READY`/`INSTALL_NOT_READY`（真 Windows 自更新见 B14）；日历日节流用 UTC。
+> 门禁保留（`isPackaged` + 无 devUrl）：dev 下为 `disabled`，与基线一致。
 
 ### 4.3 SkinChannels（3）— controller: `skin-controller.ts` — 批次 A
 `skin:get-state`、`skin:execute(command)`、`skin:read-custom-asset`。皮肤服务初始化失败须降级不阻断（ipc-handlers 启动语义）。

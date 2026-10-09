@@ -11,7 +11,7 @@
 
 ---
 
-## 快照（最后更新：2026-10-09 · 第三十三次）
+## 快照（最后更新：2026-10-10 · 第三十四次）
 
 > 本表只填**最新一次自检的实测值**。改表前必须重跑对应命令，不得沿用旧数字、不得估算。
 > 本轮实测命令与输出见下方「[§5 自检记录](#5-自检记录2026-10-09-实测)」。
@@ -20,23 +20,81 @@
 |---|---|
 | 仓库 / 分支 | **`TanCan1998/Lorekeeper`**（`EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork）· `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 已注册命令 | **159** |
-| 覆盖 invoke 频道 | **158**（契约总数 193，事件频道 4） |
-| 未迁移 invoke 频道 | **35**（`db=19 mcp=9 update=6 dialog=1`） |
+| 已注册命令 | **165** |
+| 覆盖 invoke 频道 | **164**（契约总数 193，事件频道 4） |
+| 未迁移 invoke 频道 | **29**（`db=19 mcp=9 dialog=1`） |
 | orphan | **空** ✅ |
-| `cargo test --lib` | **510/510** ✅ |
+| `cargo test --lib` | **539/539** ✅ |
 | `cargo fmt --check` | **干净（0 差异）** ✅ 已纳入验收（第三十三次全量格式化） |
 | `cargo check --all-targets` | **0 告警** ✅ |
 | `pnpm typecheck` / `lint` | exit 0 / exit 0 ✅ |
 | 定向 `vitest` | **33/33**（8 文件：契约覆盖 / 入参结构体契约 / 源码契约 / locale / ipc-client 会话 / finalization-client / finalization-snapshot / writing-skills）✅（既有 2 个失败已修） |
-| 已完成批次 | A ✅ / B ✅（含遗留补齐） / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **G1 ✅** / **H1 ✅（fs:grant-* + 导出目录）** / **H2 ✅（prompt:* + skills:*）** / **B12 ✅（tauri-plugin-opener）** |
-| 当前阶段 | **批次 H 进行中**：H1（`fs:grant-*` 3 + `dialog:select-export-directory`）与 H2（`prompt:*` 3 + `skills:*` 4）已真实化，B12（打开外部链接）已修复 → **B3/B5/B8/B10/B12 全部解除**。下一步：① **H3（update 6 频道 + `update:state` 事件）** 走零依赖 GitHub-Release 后端（评估见 `docs-fork/research/2026-10-09-h3-h4-dependency-evaluation.md`）；② **批次 G**（import-run 19 + `dialog:select-novel-files`，20 频道）；③ H4（mcp）暂缓（用户决定） |
+| 已完成批次 | A ✅ / B ✅（含遗留补齐） / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅（update:*）** / **B12 ✅** |
+| 当前阶段 | **批次 H 基本收口**：H1（fs:grant-* / 导出目录）、H2（prompt:* / skills:*）、**H3（update:* 6 频道 + `update:state`）**、B12（打开外部链接）已完成；**H4（mcp）暂缓**（用户决定）。下一步：① **批次 G**（import-run 19 + `dialog:select-novel-files`，20 频道 → 收口 `kb:import-reference-text`）；② H4 或上游合并专项（502 提交）；③ B13（渲染层导航防护）、B14（真 Windows 自更新） |
 | 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、**`tauri-plugin-opener 2.7.0`**（第三十三次 B12 新增，连带 `open 5.4.4`；Ask first 已批准）。**F2 无新增依赖**：`hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio` 已在 `Cargo.toml`；**FTS5 由 `libsqlite3-sys` bundled 提供** |
 | GUI 冒烟 | ✅ 自 2026-10-07 起 **九轮**。**第九轮（2026-10-09，批次 H 前三项 + B12）**：vite `502 ms` + cargo `47.95s` → `lorekeeper.exe`（90 MB），**KB 界面导入→搜索→stats→删除全链路 ✅、导出成稿（合并 md + 分章 md）✅、官方主页/模型资源链接真实打开 ✅、提示词保存/删除与技能列表 ✅**（用户人工逐项验证，事后库/磁盘状态已复核）。近两轮：dialog 轮 vite `453 ms` + cargo `24.91s`；**第八轮（2026-10-09，G1）**：vite `533 ms` + cargo `1.33s`（增量）→ G1 定稿（两章 outbox `published` + `.txt` 落盘且标题剥离）+ B2 删除（两章实体稿真实删除、KB 文档真实清理）全部通过，过程中发现并修复 1 个入参契约缺陷（见第三十二次 §2） |
 | 双栈隔离 | **L0/L1/L2/L3 全部独立**：安装标识 / `~/.lorekeeper` / `<root>/.lore/`（库 `.lore/lorekeeper.db`、KB 向量 `.lore/kb/`）。基线为 `~/.vela` / `<root>/.vela/`。**两栈项目目录刻意不互通**（`ee40aaab`） |
 | Rust 工具链 | rustc/cargo **1.99.0 stable-msvc** @ `D:\Environment\rust\`（脚本内须显式设 `RUSTUP_HOME` / `CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
 
-<sub>*命令与频道差额：**159 命令**中 1 个为阶段 0 骨架（`app_health_check`，不对应任何契约频道），其余 **158** 与 invoke 频道一一对应。</sub>
+<sub>*命令与频道差额：**165 命令**中 1 个为阶段 0 骨架（`app_health_check`，不对应任何契约频道），其余 **164** 与 invoke 频道一一对应。</sub>
+
+---
+
+## 本次更新（第三十四次：批次 H3 —— `update:*` 6 频道 + `update:state` 事件）
+
+> 承接第三十三次，跨日到 **2026-10-10**。本批按用户确认的**零依赖方案**落地更新域；
+> **未迁移 35 → 29**（`update=6` 全部收口），批次 H 基本收尾（仅剩 H4 暂缓）。
+
+### 0. 决策（用户确认）
+
+| 决策 | 选择 |
+|---|---|
+| **更新源** | **fork `TanCan1998/Lorekeeper`**（与 B12 官方主页一致；基线指向上游 `EthanYoQ/AI-Novel-Writer`） |
+| **Windows 打包版策略** | **全平台 `updateAction = 'open-release'`**：Windows 也能查到新版本并打开 Release 页（不引入 `tauri-plugin-updater`） |
+
+### 1. 交付（提交 `70d114d8`）
+
+新增 `src/update/`（9 文件，与基线文件一一对应）+ `commands/update.rs` + 前端登记。
+
+| 模块 | 平移自 | 要点 |
+|---|---|---|
+| `update/types.rs` | `src/shared/update-types.ts`（111 行） | 类型全集镜像（8 态 / 11 错误码 / 6 阶段 / 17 reason / 18 项脱敏细节），serde 重命名逐字对齐 |
+| `update/version.rs` | `update-service.ts:61-69,175-186` | 稳定三段版本比较（`v` 前缀 / `+build` / 预发布一律不可比较） |
+| `update/time.rs` | `update-service.ts:71-76,495` | 日历日 + ISO8601 解析（复用 Hinnant 算法）；project.rs 的 `iso8601_utc_from_millis` 改为复用同一 `civil_date_from_days`（消除重复） |
+| `update/service.rs` | `update-service.ts`（585 行） | 状态机：严格更高版本才算可用、自动检查每天一次、手动可绕过、自动失败只留主进程、偏好不可写则**不自动联网**、可用更新/延后提醒叠加；锁纪律（状态锁不跨 `.await`，检查/下载用 `tokio::sync::Mutex` 串行化 = 基线 `checkQueue`） |
+| `update/backend.rs` | `github-release-update-backend.ts` + 错误分类器 | GitHub Releases 元数据（只读）+ `DisabledBackend`；分类器 403/404/429/proxy/tls/network/unknown（network 桶补充 `dns` 以适配 reqwest 文案） |
+| `update/preferences.rs` | `update-preferences-store.ts`（45 行） | 写全局配置 `updatePreferences`：**读宽容 / 写严格**，配置损坏时绝不覆盖用户其他设置 |
+| `update/runtime.rs` | `update-runtime.ts` | 复刻 `isPackaged + devServerUrl` 门禁；集中记录两处刻意偏离（`UPDATE_ACTION` / `update_configuration_available`） |
+| `update/startup.rs` | `update-startup.ts`（73 行） | 装配与降级：初始化失败→「更新不可用」；启动后 fire-and-forget 自动检查，**绝不阻塞启动** |
+| `commands/update.rs` | `update-controller.ts`（54 行） | 6 频道信封（失败不 reject）；`days` 宽容强制（非 7/30 → `INVALID_REMINDER_DELAY`） |
+
+**事件**：每次状态变更经注入的 `publish` 闭包 `app.emit("update:state", …)`（对应基线 `subscribe → publish`）。
+
+### 2. 刻意偏离（已评估，需在 B14 复活基线行为时逐条改回）
+
+1. **不引入 `tauri-plugin-updater`** → 后端恒为 GitHub-Release 只读元数据；
+2. **`updateAction` 全平台 `open-release`** → `update:download` / `update:quit-and-install`
+   诚实返回 `DOWNLOAD_NOT_READY` / `INSTALL_NOT_READY`（**不伪造已下载**）；
+3. **更新源指向 fork**（基线指向上游）；
+4. **无 `app-update.yml` 等价物** → `updateConfiguration` 恒 `available`（我们确实有可用的 GitHub-Release 配置）；
+5. **日历日节流用 UTC**（基线为本地时区）—— 仅跨零点边界偏移，节流语义不变。
+
+### 3. 验证（本轮实测）
+
+`cargo test --lib` **539/539**（510 → +29）；`cargo check --all-targets` **0 告警**；`cargo fmt --check` **干净**（452 → 0）；
+`pnpm typecheck` / `lint` **exit 0**；`check:channels` **193 契约 / 165 命令 / 164 覆盖 / 29 未迁移**，orphan 空；
+定向 vitest **8 文件 / 33 测试全过**。
+
+新增单测覆盖：类型序列化与枚举重命名、版本比较边界、ISO8601 互转、错误分类六桶、
+偏好读写（缺失/损坏/保留其他键）、平台门禁、状态机（disabled / 配置缺失 / 可用更新+延后提醒 /
+不可用清理 / 自动节流 / 分类失败的分模式差异 / 偏好不可写阻断联网 / 下载与安装诚实未就绪 /
+open-release 注入闭包 / 每次变更都发布快照）。
+
+### 4. 未做 / 后续
+
+- **GUI 冒烟未做**：dev（`tauri::is_dev()` 为真）下门禁关闭 → `update:get-state` 应为 `disabled`、
+  `update:check` 返回 `UPDATES_DISABLED`（与基线一致）；真正的检查/打开 Release 页需**打包版**验证。
+- **B14**（真正 Windows 自更新）与 **H4**（mcp）仍待做；**批次 G** 为下一批。
 
 ---
 
@@ -427,9 +485,13 @@ SQLite 事实删除**已真实提交**（`committed: true`）。
 
 ### 1. 当前工作区状态
 
-**工作区干净**。第三十三次的 6 个提交（均在 `master`）：
+**工作区干净**。最近两轮（第三十三～三十四次）的 9 个提交（均在 `master`）：
 
 ```
+70d114d8 feat(tauri): 迁移应用更新域（update:* 6 频道 + update:state 事件）
+d8d54832 docs(tauri): 新增 H3（update）开工清单
+06b282d4 docs(tauri): 记录第九轮 GUI 冒烟（批次 H 前三项 + B12 全部实测通过）
+b77bfee4 docs(tauri): 第三十三次快照（批次 H 前三项 + 遗留项 L）
 df9ceb75 feat(tauri): 真实化「打开外部链接」能力（tauri-plugin-opener）
 ee4a3f07 docs(tauri): H3/H4 依赖评估与决策（零新依赖 + B12）
 2b45c707 style(tauri): cargo fmt 全量格式化 src-tauri（66 文件）
@@ -442,15 +504,15 @@ ee4a3f07 docs(tauri): H3/H4 依赖评估与决策（零新依赖 + B12）
 
 ### 2. 下一步（1-2-3）
 
-1. **H3（update）**：**开工清单已就绪 → [`docs-fork/plans/2026-10-09-h3-update-kickoff.md`](../plans/2026-10-09-h3-update-kickoff.md)**
-   （含契约/类型全集、基线文件行级参系、11 步实现顺序、测试计划、验收命令、8 项风险与待确认点）。
-   方案：零依赖 GitHub-Release 后端 + 状态机 + 偏好 + 平台门禁；`update:open-release` 复用 B12 的
-   `external_link.rs`。背景与选项见
-   [`docs-fork/research/2026-10-09-h3-h4-dependency-evaluation.md`](../research/2026-10-09-h3-h4-dependency-evaluation.md)。
-2. **批次 G**：import-run 19 频道 + `dialog:select-novel-files`（落实后收口 `kb:import-reference-text`；
-   需注意执行租约与断点恢复语义）。
-3. **H4（mcp）/ 上游合并**：H4 已暂缓（仅 stdio，`std::process` + 自研守卫方案已评估）；
-   上游合并专项（502 提交）仍未启动，冲突面仅根目录 4 个文件。
+1. **批次 G**（当前最高优先）：import-run 19 频道 + `dialog:select-novel-files`（共 **20** 频道 →
+   未迁移 29 → 9）；落实后收口 `kb:import-reference-text`（当前为显式占位失败）。
+   注意执行租约 `ImportRunExecutionLease` 与断点恢复语义。
+2. **H4（mcp 9 频道）**：已暂缓（用户决定）；方案已评估——基线仅 stdio（SSE 明确未实现），
+   `std::process` + 自研守卫即可零依赖（见
+   [`docs-fork/research/2026-10-09-h3-h4-dependency-evaluation.md`](../research/2026-10-09-h3-h4-dependency-evaluation.md)）。
+3. **其它待办**：① **B14** 真正的 Windows 自动更新（需 `tauri-plugin-updater` + 签名公钥 + 打包链路）；
+   ② **B13** 渲染层导航防护（`on_navigation` / 新窗口拦截）；③ 上游合并专项（502 提交，冲突面仅根目录 4 个文件）。
+   GUI 冒烟（可选）：H3 在 dev 下应为 `disabled`（基线语义），真正的检查/打开 Release 页需**打包版**验证。
 
 ### 3. 阻塞项与待授权项（不得删除，须逐条确认后更新）
 
@@ -479,30 +541,22 @@ ee4a3f07 docs(tauri): H3/H4 依赖评估与决策（零新依赖 + B12）
 - 失败文案按基线 MUTATING 规则带 `"Error: "` 前缀（`commands/db.rs::mutating_error`）；但 `skills:*` 与 `prompt:load-global` 的 diagnostics 按基线**不带**前缀。
 - 定稿不可逆：`finalization:` 相关改动一律 **Ask first**。
 - 兜底约定：新增命令入参结构体必须带 `#[serde(rename_all = "camelCase")]`（`pi-development.md` §2.5 + 源码扫描测试）。
+- ⚠️ **F2 隔离红线已解除（`ee40aaab` L3）**：Tauri 项目目录 `.lore/`、向量快照 `.lore/kb/`，不再有互覆可能。
+- **更新域约定**：`update:*` 的后端恒为 GitHub-Release 只读元数据（B14 前），`updateAction` 恒 `open-release`；
+  不得伪造「已下载/已安装」，`defer-reminder` 写入全局配置时**必须保留**用户其他设置。
 - 提交消息**无 BOM / 无 CRLF / 无行尾空白**（2026-10-08 出过 BOM 事故）。
-
-### 4. 红线提醒（每次接手都要过一遍）
-
-- 🚫 Tauri 侧**禁止**读 `AI_NOVEL_VELA_HOME`、**禁止**回退 `~/.vela`、**禁止**写 `.vela/vela.db`。
-- 项目库 = `<root>/.lore/lorekeeper.db`；KB 向量 = `<root>/.lore/kb/`；全局数据根 = `AI_NOVEL_LOREKEEPER_HOME` 或 `~/.lorekeeper`。
-- 失败文案按基线 MUTATING 规则带 `"Error: "` 前缀（`commands/db.rs::mutating_error`）。
-- ⚠️ **F2 隔离红线**（2026-10-08 快照 §2）：基线 LanceDB 落在 `.vela/lancedb/`、`.vela/<registry>.json`、
-  `.vela/vectors.json`，Tauri 侧向量路径须 Tauri 专属。**✅ 已解除（`ee40aaab` L3）**：Tauri 项目目录改为 `.lore/`，
-  向量快照定为 `.lore/kb/`，不再有互覆可能。
-- 定稿不可逆：`finalization:` 相关改动一律 **Ask first**。
-- 提交消息**无 BOM / 无 CRLF / 无行尾空白**（2026-10-08 出过 BOM 事故，见 `pi-development.md` §10.1）。
 
 ---
 
-## 5. 自检记录（2026-10-09 实测，第三十三次）
+### 5. 自检记录（2026-10-10 实测，第三十四次）
 
 > 生成本表快照时在本机实跑，命令与输出如下。**下次更新快照表必须先重跑这些命令。**
 
 | 命令 | 工作目录 | 实测输出 |
 |---|---|---|
-| `pnpm run check:channels` | `tauri-app/` | 契约 invoke 频道 **193**（事件频道 4）· 已注册命令 **159** → 覆盖 **158** · 未迁移 **35** `[db=19 mcp=9 update=6 dialog=1]` · 命令名与契约频道一一对应 ✅ |
-| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 510 passed; 0 failed; 0 ignored` |
-| `cargo check --all-targets` | `tauri-app/src-tauri/` | `Finished dev profile ... in 3.89s`（0 告警） |
+| `pnpm run check:channels` | `tauri-app/` | 契约 invoke 频道 **193**（事件频道 4）· 已注册命令 **165** → 覆盖 **164** · 未迁移 **29** `[db=19 mcp=9 dialog=1]` · 命令名与契约频道一一对应 ✅ |
+| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 539 passed; 0 failed; 0 ignored` |
+| `cargo check --all-targets` | `tauri-app/src-tauri/` | `Finished dev profile ... in 4.20s`（0 告警） |
 | `cargo fmt --check` | `tauri-app/src-tauri/` | 输出 **0 行**（干净） |
 | `pnpm typecheck` / `lint` | `tauri-app/` | exit 0 / exit 0 |
 | `npx vitest run`（8 文件定向） | `tauri-app/` | `Test Files 8 passed`，`Tests 33 passed` |
