@@ -14,3 +14,5 @@
 pub mod chunks;
 pub mod fts;
 pub mod hybrid;
+pub mod store;
+pub mod vectors;

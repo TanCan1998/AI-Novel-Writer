@@ -12,6 +12,8 @@ pub mod db;
 #[cfg(test)]
 mod disk_e2e;
 mod draft_source_guard;
+// 批次 F2-3：外部文件授权注册表（内存态，知识库选择/导入与批次 H 共用）。
+pub mod external_grant;
 // 批次 E：定稿导入的字数契约（`src/shared/draft-units.ts` 的 Rust 单源，纯函数）。
 pub mod draft_units;
 mod json_store;

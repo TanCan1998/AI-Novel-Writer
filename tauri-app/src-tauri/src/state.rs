@@ -50,6 +50,11 @@ pub struct AppState {
     /// 批次 D2-b：活跃流式生成任务（`requestId` → 取消句柄）。
     /// 进程内存态；重启即失效（对齐基线 `activeStreams`）。
     pub(crate) llm_streams: Mutex<std::collections::HashMap<String, crate::commands::LlmStreamHandle>>,
+    /// 批次 F2-3：外部文件授权注册表（进程内存态）。
+    /// 知识库选择/导入与批次 H `fs:grant-*` 共用；渲染层只持有不透明 grantId。
+    pub(crate) external_grants: Mutex<crate::external_grant::ExternalGrantRegistry>,
+    /// 批次 F2-3：知识库向量索引管理器（按项目懒加载 HNSW 图）。
+    pub(crate) kb_vectors: Mutex<crate::db::kb::vectors::KbVectorManager>,
 }
 
 impl AppState {
@@ -66,6 +71,8 @@ impl AppState {
             fs_lock: Mutex::new(()),
             llm_leases: Mutex::new(crate::llm::lease::LlmLeaseStore::new()),
             llm_streams: Mutex::new(std::collections::HashMap::new()),
+            external_grants: Mutex::new(crate::external_grant::ExternalGrantRegistry::default()),
+            kb_vectors: Mutex::new(crate::db::kb::vectors::KbVectorManager::default()),
         }
     }
 
@@ -192,6 +199,52 @@ impl AppState {
             database_restored: active_project_path.is_none(),
             db_ready: active_project_path.is_none(),
             active_project_path,
+        }
+    }
+
+    /// 批次 F2-3：按「项目根 + 嵌入代际」懒加载知识库向量索引。
+    ///
+    /// 首次调用时在 `<project>/.lore/kb/` 建目录，并尝试从 `index-<generation>.hnsw.*`
+    /// 快照恢复（快照缺失或损坏时按空图起步）。索引实例常驻 `AppState`，
+    /// 后续调用直接命中缓存。
+    pub(crate) async fn kb_vector_index(
+        &self,
+        project_root: &str,
+        generation: i64,
+        dimension: usize,
+    ) -> Result<crate::db::vector::LocalVectorIndex, String> {
+        use crate::db::kb::vectors as kbv;
+        let key = kbv::index_key(project_root, generation);
+        if let Some(index) = self
+            .kb_vectors
+            .lock()
+            .ok()
+            .and_then(|guard| guard.get(&key))
+        {
+            return Ok(index);
+        }
+
+        let directory = kbv::snapshot_dir(project_root);
+        let index = crate::db::vector::LocalVectorIndex::new(
+            dimension,
+            kbv::DEFAULT_KB_MAX_ELEMENTS,
+            &directory,
+        )
+        .map_err(|error| error.to_string())?;
+        // 已有快照则恢复；不存在视为首次构建，按空图起步。
+        let _ = index.load_hnsw(&kbv::snapshot_basename(generation)).await;
+
+        let mut guard = self
+            .kb_vectors
+            .lock()
+            .map_err(|_| "知识库向量索引状态被污染".to_string())?;
+        Ok(guard.insert_if_absent(key, index))
+    }
+
+    /// 批次 F2-3：丢弃某项目已加载的全部代际向量索引（关闭项目 / 清空知识库）。
+    pub(crate) fn drop_kb_vectors(&self, project_root: &str) {
+        if let Ok(mut guard) = self.kb_vectors.lock() {
+            guard.remove_project(project_root);
         }
     }
 }
