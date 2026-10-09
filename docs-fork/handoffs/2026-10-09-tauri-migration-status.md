@@ -188,7 +188,7 @@ HEAD = `ee40aaab`。第二十七次快照里「5 个已修改 + 4 个新增文�
 
 | # | 项 | 状态 |
 |---|---|---|
-| B1 | `finalization:commit` / `finalization:retry`（G1） | ⛔ **阻塞于用户授权**（定稿不可逆核心） |
+| B1 | `finalization:commit` / `finalization:retry`（G1） | ⛔ **阻塞于用户授权**（定稿不可逆核心）。**落地时必须同时把 `src/services/finalization-client.ts` 的 `getVelaApi()`（真实读取 `window.velaAPI`）切换为 `ipc.invoke`**，否则 Tauri 下必抛 `不在 Electron 环境中` |
 | B2 | `chapter:*` 物理清理（删稿件 / 删 KB 文档） | ⛔ **阻塞于批次 H + F2**，当前为显式占位 |
 | B3 | `dialog:select-export-directory` | ⛔ 仍返回 `None`，阻塞于批次 H 的 grant 域 |
 | B4 | L3 双栈隔离（`.vela` 改名） | ⏸️ 主动押后 |
