@@ -535,13 +535,19 @@ ee4a3f07 docs(tauri): H3/H4 依赖评估与决策（零新依赖 + B12）
 ### 2. 下一步（1-2-3）
 
 1. **批次 G —— 从 G1 开始**（schema 已落地，可立即开工）：
-   - **G1**（3 频道，低风险）：`dialog:select-novel-files`（真实文件选择 + grant 签发）+ `import-inspection-store`
-     + `db:import-run-prepare-inspection` + `db:import-run-author-preview`；
-   - **G2**（5 频道）：`import-run` 状态机主体（prepare / beginParsing / commitParsedSource /
-     failParsedSource / finalizeParsing / get / listResumable / listChapterBatch）；
-   - **G3**（11 频道）：执行租约与批次推进 + effect receipts + `db:import-global-facts-commit`；
+   📋 **修订版开工清单（本次调研后重写，含决策与剩余规范）** →
+   [`docs-fork/plans/2026-10-10-g1-import-select-kickoff.md`](../plans/2026-10-10-g1-import-select-kickoff.md)。
+   **分批已修订**：渲染层只用结构化请求路径，且 `reference` 分支依赖 `beginParsing`（G2），故：
+   - **G1**：交付**「导入作者原稿」完整可用链路**——`dialog:select-novel-files`（author-manuscript 路径）+ 检视存储 + 章节解析 + `db:import-run-author-preview`（复用 E 批次已迁移的 `preview`）；`reference` 路径返回**诚实错误**（依赖 G2），`.epub` 同理（需解包依赖，待批）；
+   - **G2**：状态机主体 + `reference` 路径（`beginParsing` / `prepare` / `finalizeParsing` / get / listResumable / listChapterBatch）；
+   - **G3**：执行租约与批次推进 + effect receipts + `db:import-global-facts-commit`；
    - **G4**：`kb:import-reference-text` 去占位 + 前端登记 + GUI 冒烟。
-   基线规模：`import-run-repository.ts` **2551 行**、controller 671 行（分批排期见申报书 §5）。
+
+   **G1 已确认的刻意偏离**（均需在实现时写入代码注释与快照）：① 来源身份摘要改为**无密钥 sha256**
+   （基线为密钥化摘要；理由：身份从不进渲染层，且项目库已存文件名与正文，「隐藏路径」边际价值极低；
+   避免新增 `hmac` 依赖）；② 不迁移 `webContentsId` 归属校验（与 `external_grant.rs` 一致）；
+   ③ `ImportSourceIdentityRepository` 的 **legacy 解析路径整体跳过**（不建 `import_legacy_identity_bridge`）；
+   ④ 文件读取直接 `std::fs` + 字节上限（不引入基线句柄链）。
 2. **H4（mcp 9 频道）**：已暂缓（用户决定）；方案已评估——基线仅 stdio（SSE 明确未实现），
    `std::process` + 自研守卫即可零依赖（见
    [`docs-fork/research/2026-10-09-h3-h4-dependency-evaluation.md`](../research/2026-10-09-h3-h4-dependency-evaluation.md)）。
