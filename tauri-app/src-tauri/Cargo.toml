@@ -73,6 +73,18 @@ reqwest = { version = "0.13", default-features = false, features = [
 # 保持默认 features（`gtk3`）：该 feature 只影响 Linux/BSD 的 rfd 后端，Windows/macOS 无差异。
 tauri-plugin-dialog = "2"
 
+# 批次 H（B12，2026-10-09 Ask first 已批准）：打开外部链接。
+#
+# 动因：`official-homepage:open` 与 `model-provider-resource:open` 此前是**假成功占位**
+# （返回 success:true 但不打开任何 URL），H3 的 `update:open-release` 也需要同一能力。
+# 选官方 `tauri-plugin-opener`（而非 `tauri-plugin-shell`）：仅需「显式打开一个 URL」，
+# 不必引入完整 shell 执行面。
+#
+# 能力边界：本插件仅由 **Rust 侧**调用（`external_link.rs`），URL 均为编译期常量；
+# 渲染层不引入 `@tauri-apps/plugin-opener`，故**未**在 capabilities 中开放 opener 权限
+# （权限系统只门禁「渲染层→插件命令」，我们不开这条通道）。
+tauri-plugin-opener = "2"
+
 # 按需引入（不提前加，避免无用编译）：
 # - rusqlite（bundled feature，避免依赖系统 sqlite）→ 批次 C 数据库层
 # - tauri-plugin-{updater,shell,notification} → 批次 H 按频道批准

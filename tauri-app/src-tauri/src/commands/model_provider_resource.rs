@@ -6,7 +6,9 @@
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
-/// 模型资源 URL 映射（固定）
+use crate::external_link::open_external_url;
+
+/// 模型资源 URL 映射（固定；与 `src/shared/model-provider-resources.ts` 逐字对齐）
 const MODEL_PROVIDER_RESOURCE_URLS: &[(&str, &str)] = &[
     (
         "siliconflow-invite",
@@ -17,22 +19,36 @@ const MODEL_PROVIDER_RESOURCE_URLS: &[(&str, &str)] = &[
 ];
 
 /// Model Provider Resource:open 命令
+///
+/// 平移自 `electron/controllers/model-provider-resource-controller.ts`：
+/// 无效 id → `{ success:false, error:'Unsupported model provider resource.' }`（正常响应，非 reject）；
+/// 打开失败 → `{ success:false, error:'Unable to open the model provider resource.' }`（文案逐字对齐）。
 #[tauri::command]
 pub fn model_provider_resource_open(
-    _app: AppHandle,
+    app: AppHandle,
     resource: String,
 ) -> Result<ModelProviderResourceOpenResponse, String> {
-    // TODO: 实现打开模型资源逻辑（webbrowser/shell-opener）
-    let _url = MODEL_PROVIDER_RESOURCE_URLS
+    let Some(url) = MODEL_PROVIDER_RESOURCE_URLS
         .iter()
         .find(|(id, _)| id == &resource)
         .map(|(_, url)| *url)
-        .ok_or_else(|| format!("无效的资源 ID: {}", resource))?;
+    else {
+        return Ok(ModelProviderResourceOpenResponse {
+            success: false,
+            error: Some("Unsupported model provider resource.".to_string()),
+        });
+    };
 
-    Ok(ModelProviderResourceOpenResponse {
-        success: true,
-        error: None,
-    })
+    match open_external_url(&app, url) {
+        Ok(()) => Ok(ModelProviderResourceOpenResponse {
+            success: true,
+            error: None,
+        }),
+        Err(_) => Ok(ModelProviderResourceOpenResponse {
+            success: false,
+            error: Some("Unable to open the model provider resource.".to_string()),
+        }),
+    }
 }
 
 /// Model Provider Resource:open 的响应

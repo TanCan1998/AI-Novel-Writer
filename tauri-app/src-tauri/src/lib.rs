@@ -14,6 +14,8 @@ mod disk_e2e;
 mod draft_source_guard;
 // 批次 F2-3：外部文件授权注册表（内存态，知识库选择/导入与批次 H 共用）。
 pub mod external_grant;
+// 批次 H（B12）：打开受信常量外部链接（tauri-plugin-opener）。
+pub mod external_link;
 // 批次 E：定稿导入的字数契约（`src/shared/draft-units.ts` 的 Rust 单源，纯函数）。
 pub mod draft_units;
 mod json_store;
@@ -40,6 +42,7 @@ pub fn run() {
         // 仅供自研命令在 Rust 侧调用；webview 不直调插件的 `plugin:dialog|*` 命令，
         // 故 `capabilities/default.json` 维持最小权限（不追加 `dialog:*`）。
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         // 对齐基线 `ensureVelaHome()`：启动即保证 `~/.lorekeeper/{prompts,logs}` 存在。
         // 失败不阻断启动（首次写入时会再次建目录并给出可读错误）。
         .setup(|_app| {
