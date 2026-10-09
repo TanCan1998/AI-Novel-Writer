@@ -127,9 +127,9 @@ describe('channel migration coverage', () => {
     }
   })
 
-  it('未迁移频道会被前置拦截（如批次 F/G 的 kb 检索与更新链）', () => {
-    expect(MIGRATED_CHANNELS.has('kb:search')).toBe(false)
+  it('未迁移频道会被前置拦截（如批次 G/H 的导入与更新链）', () => {
     expect(MIGRATED_CHANNELS.has('update:get-state')).toBe(false)
+    expect(MIGRATED_CHANNELS.has('dialog:select-novel-files')).toBe(false)
     // 已迁频道不受影响
     expect(MIGRATED_CHANNELS.has('config:get')).toBe(true)
     expect(MIGRATED_CHANNELS.has('llm:list-models')).toBe(true)
@@ -158,9 +158,24 @@ describe('channel migration coverage', () => {
     expect(MIGRATED_CHANNELS.has('db:plot-tree-read')).toBe(true)
     expect(MIGRATED_CHANNELS.has('db:plot-tree-save')).toBe(true)
     expect(MIGRATED_CHANNELS.has('db:plot-tree-clear')).toBe(true)
-    // 批次 F 的另一半（kb 全部 + knowledge 文件选择）仍待迁移
-    expect(MIGRATED_CHANNELS.has('kb:search-writing-context')).toBe(false)
-    expect(MIGRATED_CHANNELS.has('dialog:select-knowledge-files')).toBe(false)
+    // 批次 F2-3：知识库（kb:* 15 频道 + knowledge 文件选择）已迁移
+    expect(MIGRATED_CHANNELS.has('kb:search')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('kb:search-writing-context')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('kb:search-with-scope')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('kb:import-document')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('kb:import-folder')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('kb:import-text')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('kb:import-planning-text')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('kb:import-reference-text')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('kb:list-documents')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('kb:remove-document')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('kb:clear-all')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('kb:stats')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('kb:get-vectorless-count')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('kb:get-vector-rebuild-status')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('kb:backfill-vectors')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('dialog:select-knowledge-files')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('dialog:select-knowledge-folder')).toBe(true)
   })
 
   /**

@@ -167,6 +167,23 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'llm:test-connection': ['model', 'creativeStrategy'],
   'llm:discover-models': ['request'],
 
+  // 批次 F2-3：知识库（kb:* 15 频道；dialog:select-knowledge-* 无参不登记）
+  'kb:import-document': ['grantId', 'expectedProjectPath'],
+  'kb:import-folder': ['grantId', 'expectedProjectPath'],
+  'kb:import-text': ['text', 'fileName', 'expectedProjectPath'],
+  'kb:import-planning-text': ['text', 'fileName', 'expectedProjectPath'],
+  'kb:import-reference-text': ['chapterNumber', 'runId', 'executionAuthority'],
+  'kb:search': ['query', 'topK', 'expectedProjectPath'],
+  'kb:search-writing-context': ['query', 'topK', 'expectedProjectPath'],
+  'kb:search-with-scope': ['query', 'fromChapter', 'toChapter', 'topK', 'expectedProjectPath'],
+  'kb:list-documents': ['expectedProjectPath'],
+  'kb:remove-document': ['docId', 'expectedProjectPath'],
+  'kb:clear-all': ['expectedProjectPath'],
+  'kb:stats': ['expectedProjectPath'],
+  'kb:get-vectorless-count': ['expectedProjectPath'],
+  'kb:get-vector-rebuild-status': ['expectedProjectPath'],
+  'kb:backfill-vectors': ['expectedProjectPath'],
+
   // 批次 E 第二部分：章节生命周期（chapter-lifecycle，4 频道）
   'chapter:delete-finalized': ['request', 'expectedProjectPath'],
   'chapter:retry-deletion': ['operationId', 'expectedProjectPath'],
