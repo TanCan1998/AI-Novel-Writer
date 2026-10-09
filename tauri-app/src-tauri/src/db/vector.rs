@@ -206,6 +206,19 @@ impl LocalVectorIndex {
         self.len().await == 0
     }
 
+    /// 当前活节点的 `doc_id` 快照（读锁）
+    ///
+    /// 供「回填计划 / vectorless 计数」使用：调用方拿它与本项目 `kb_chunks` 求差集。
+    /// 不含墓碑节点（墓碑只在检索时用于过滤）。
+    pub async fn live_doc_ids(&self) -> Vec<String> {
+        self.inner.read().await.doc_id_to_idx.keys().cloned().collect()
+    }
+
+    /// 是否已登记该 `doc_id` 的向量（读锁）
+    pub async fn contains(&self, doc_id: &str) -> bool {
+        self.inner.read().await.doc_id_to_idx.contains_key(doc_id)
+    }
+
     /// 登记向量（插入或更新）—— 写锁
     ///
     /// - 新 `doc_id`：分配新的图内 ID 后写入；
@@ -587,6 +600,25 @@ mod tests {
         let hits = restored.search_rag(&[0.0, 1.0, 0.0, 0.0], 5).await.unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].0, "doc-a", "删除语义不得因重启复活");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn live_doc_ids_and_contains_reflect_active_nodes_only_test() {
+        let dir = temp_dir("live-ids");
+        let index = LocalVectorIndex::new(4, 64, &dir).unwrap();
+
+        index.insert_vector("a", &[1.0, 0.0, 0.0, 0.0]).await.unwrap();
+        index.insert_vector("b", &[0.0, 1.0, 0.0, 0.0]).await.unwrap();
+        assert!(index.contains("a").await);
+        assert!(!index.contains("missing").await);
+
+        index.delete_vector("b").await;
+        let mut ids = index.live_doc_ids().await;
+        ids.sort();
+        assert_eq!(ids, vec!["a"]);
+        assert!(!index.contains("b").await, "墓碑节点不计入活集合");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
