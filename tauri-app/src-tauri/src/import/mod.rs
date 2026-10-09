@@ -25,6 +25,8 @@
 //! | D7 | （本批新增）来源文件按 **数字感知自然序** 排序，逼近但不等价于 `localeCompare(…, 'zh-CN', {numeric:true})` | 完整 zh-CN 拼音排序需 ICU 类新依赖（Ask first）；章号最终由正文/文件名解析决定，排序只影响来源处理顺序 |
 
 pub mod batch_checkpoint;
+// 批次 G2b：来源身份解析（无密钥版 resolveEncodedSources）
+pub mod identity;
 pub mod inspection_store;
 pub mod limits;
 pub mod parsing;
