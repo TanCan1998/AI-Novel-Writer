@@ -8,6 +8,41 @@
 
 ---
 
+## 0. `docs/` 与 `docs-fork/` 边界（硬规则，先读）
+
+本 fork 的文档分为两个物理隔离的根：
+
+| 目录 | 性质 | 规则 |
+|---|---|---|
+| `docs/` | **上游镜像** | 与 `upstream/master` **逐字节一致**。**永不修改、永不新增**。合并上游时直接接受上游版本。 |
+| `docs-fork/` | **fork 专属** | 所有 fork 新增文档一律放这里。目录结构镜像 `docs/` 的子目录（`agents/` `adr/` `handoffs/` `plans/` `research/`）。 |
+
+**六条硬规则**：
+
+1. **不写 `docs/`**：任何 fork 改动都不得落在 `docs/` 下的文件上。若确需修改上游文档，
+   把改动写入 `docs-fork/notes-on-upstream-changes.md`，并在其中注明位置、拟插入内容与保留理由。
+2. **新文档进 `docs-fork/`**：调研、快照、计划、规则一律写入 `docs-fork/` 对应子目录。
+3. **合并上游零冲突**：`git merge upstream/master` 时，`docs/` 整体接受上游版本，
+   `docs-fork/` 不受影响。合并后检查 `notes-on-upstream-changes.md` 是否需重新施加。
+4. **校验命令**：迁移或合并后跑 `git diff upstream/master -- docs/`，**必须无输出**。
+5. **不碰 `AGENTS.md` 的忽略状态**：根 `AGENTS.md` 是上游卫生规则禁止入库的本机文件
+   （见 `scripts/__tests__/public-repository-hygiene.test.ts` 的 `prohibitedPaths`）。
+   可以本地编辑其内容（引用路径随迁移更新），但**不得** `git add`、**不得**移入
+   `docs/` 或 `docs-fork/`、**不得**改动 `.gitignore:62` 的 `/AGENTS.md` 条目。
+6. **文档入口分工**：`docs-fork/README.md` 是 fork 的**公共入库入口**（clone 后可见，
+   供人 / CI / GitHub 阅读）；根 `AGENTS.md` 是**本机 Agent 会话入口**（不入库，
+   仅本机可见）。两者互补，不可互相替代。
+
+**与其他章节的关系**：§9 规定快照的文件名与结构，本节第 2 条规定快照的**存放位置**
+（`docs-fork/handoffs/`，而非 `docs/handoffs/`）；§9 第 6 条「同步两处指针」中的路径
+亦按本节更新。
+
+> 迁移历史：2026-10-09 由 `docs/` 整体迁至 `docs-fork/`，使 `docs/` 与上游逐字节一致，
+> 消除长期合并冲突。迁移前 fork 对上游 `docs/` 的改动见
+> [`notes-on-upstream-changes.md`](../notes-on-upstream-changes.md)。
+
+---
+
 ## 1. 迁移总览与基线
 
 **来源**（Electron，当前可运行基线）：
@@ -176,15 +211,15 @@ pub async fn chapter_finalize(
 
 ## 9. 交接快照命名与维护规则
 
-`docs/handoffs/` 下的进度快照是接续工作的**唯一入口文档**，按日期冻结。**硬规则**：
+`docs-fork/handoffs/` 下的进度快照是接续工作的**唯一入口文档**，按日期冻结。**硬规则**：
 
-1. **命名**：`docs/handoffs/YYYY-MM-DD-tauri-migration-status.md`，日期取**撰写当日**。
+1. **命名**：`docs-fork/handoffs/YYYY-MM-DD-tauri-migration-status.md`，日期取**撰写当日**。
 2. **一日一新文件**：每个有实质进展的工作日**新建**一份快照；**不得**在旧日期文件里追加当日章节。
 3. **旧文件冻结**：新快照产生后，旧文件即该日期的**冻结快照**，**不允许任何修改**（包括快照表、章节与头部）。
    历史轨迹由 Git 承担，不再用文件内指针维护。
 4. **新快照结构**（沿用既有格式）：
    - 头部：`# Tauri 迁移进度快照（YYYY-MM-DD）` + `> **用途**` 说明 + 本规则指向 + 模板链接 +
-     一行「全部历史快照见 `docs/handoffs/` 目录」+ channel 级盘点链接；
+     一行「全部历史快照见 `docs-fork/handoffs/` 目录」+ channel 级盘点链接；
    - `## 快照（最后更新：YYYY-MM-DD · 第 N 次）`：**活表格**（当前阶段 / 已注册命令 / GUI 冒烟 /
      自动化回归 / 双栈隔离 / 验证状态），随当日进展更新；
    - `## 本次更新（第 N 次：<批次> — <主题>）`：当日改动明细（决策 / 模块 / 接线 / 验证），
@@ -195,7 +230,7 @@ pub async fn chapter_finalize(
    `docs-fork/plans/tauri-migration-channel-inventory.md`（仅当频道口径变化时）。
 7. **简版原则**：快照是接续入口，不是工作总结。只保留 —— 当前状态 / 当日新增摘要 / 交接步骤 /
    阻塞与待授权项 / 红线提醒 / 自检记录。**不得复制**旧日期正文；**建议提交拆分表**、**逐条测试覆盖**、
-   **基线对照逐项明细**一律外链（`详见 commit message` / `docs/research/xxx`），不在快照正文展开。
+   **基线对照逐项明细**一律外链（`详见 commit message` / `docs-fork/research/xxx`），不在快照正文展开。
    **不写勘误记录**：对后续交接无意（历史轨迹在 Git，当前值以活表格为准）；旧数字直接改掉，不保留错误值。
 8. **数字硬约束**：顶部活表格只填**最新一次自检的实测值**。改表前**必须重跑**快照 `§5 自检记录`里的
    命令，把输出贴入 §5 再回填表格；不得沿用旧数字、不得估算、不得从上一份快照拷贝。
@@ -206,10 +241,16 @@ pub async fn chapter_finalize(
     「✅ 已解除（依据）」而**非删行**；新增红线必须标注来源。
 11. **模板**：新建快照一律从 `docs-fork/handoffs/_TEMPLATE-tauri-migration-status.md` 复制；
     模板末尾附「维护者检查清单」，提交前逐项打勾。
+12. **路径迁移例外**：当 fork 文档整体迁移目录（如 `docs/` → `docs-fork/`）时，历史快照中的
+    **路径字符串**允许批量替换，且**仅限路径字符串** —— 不得改动任何正文、数字、表格或结论。
+    受影响快照须在首行加一行路径说明（注明迁移日期与例外依据）。
+    该例外是第 3 条「旧文件冻结」的**唯一豁免**，其余情形一律不得触碰旧快照。
 
 > 首次按本规则产生的快照：`docs-fork/handoffs/2026-10-08-tauri-migration-status.md`（第二十三次，批次 D2-b）。
 > 首次按新增第 7–11 条（简版原则 / 数字硬约束 / 模板）精简的快照：`docs-fork/handoffs/2026-10-09-tauri-migration-status.md`。
 > **2026-10-09 规则变更**：旧文件改为「不允许任何修改」（取消前向指针）；快照不得写勘误记录。
+> **2026-10-09 路径迁移**：fork 文档整体从 `docs/` 迁至 `docs-fork/`；
+> 历史快照中的路径字符串按第 12 条批量更新，正文未改。
 
 ---
 

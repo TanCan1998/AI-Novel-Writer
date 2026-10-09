@@ -5,7 +5,7 @@
 > 旧文件冻结后不允许修改（见 [`docs-fork/agents/pi-development.md`](../agents/pi-development.md) §9）。
 > **模板**：[`_TEMPLATE-tauri-migration-status.md`](./_TEMPLATE-tauri-migration-status.md)。
 >
-> 全部历史快照见 `docs/handoffs/` 目录（按日期命名）。
+> 全部历史快照见 `docs-fork/handoffs/` 目录（按日期命名）。
 >
 > - channel 级盘点：[`docs-fork/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md)。
 

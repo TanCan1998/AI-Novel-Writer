@@ -6,6 +6,8 @@
 > 批次 A–C `project_core` / `characters` 的历史细节见
 > [`2026-10-06-tauri-migration-status.md`](./2026-10-06-tauri-migration-status.md)；
 > channel 级盘点见 [`docs-fork/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md)。
+> **路径说明**：本文档中的 `docs/…` 路径引用已于 2026-10-09 随 docs-fork 迁移更新为 `docs-fork/…`；
+> 该修订为 `pi-development.md` §9「旧文件冻结」的唯一例外（仅限路径字符串替换，正文未改）。
 
 ---
 
