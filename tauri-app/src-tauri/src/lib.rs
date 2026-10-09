@@ -210,6 +210,24 @@ pub fn run() {
             // 批次 D2-c：llm:* 收口（连通性探测 + 模型发现）
             commands::llm_test_connection,
             commands::llm_discover_models,
+            // 批次 F2-3：知识库（kb:* 15 频道 + dialog:select-knowledge-* 2 频道）
+            commands::kb_import_document,
+            commands::kb_import_folder,
+            commands::kb_import_text,
+            commands::kb_import_planning_text,
+            commands::kb_import_reference_text,
+            commands::kb_search,
+            commands::kb_search_writing_context,
+            commands::kb_search_with_scope,
+            commands::kb_list_documents,
+            commands::kb_remove_document,
+            commands::kb_clear_all,
+            commands::kb_stats,
+            commands::kb_get_vectorless_count,
+            commands::kb_get_vector_rebuild_status,
+            commands::kb_backfill_vectors,
+            commands::dialog_select_knowledge_files,
+            commands::dialog_select_knowledge_folder,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

@@ -3,20 +3,21 @@
 //! 平移自 `electron/controllers/chapter-lifecycle-controller.ts` +
 //! `electron/services/chapter-deletion-service.ts`（操作状态机 + 断点恢复）。
 //!
-//! 诚实化边界（对齐 `dialog:select-export-directory` 先例）：
-//! `resume` 的两个物理清理投影当前**不可真实执行**：
-//! - `removePublishedManuscript`（删实体稿文件）→ 依赖批次 H 的 fs 授权域；
-//! - `knowledgeBaseLoader.removeDocument`（删知识库文档）→ 依赖批次 F2 的 kb 能力。
-//! 因此占位 cleaner 显式返回 `Err`，投影被标为 `failed`（附可读原因）；
+//! 物理清理投影状态（2026-10-10 更新，批次 F2-3 收口）：
+//! - `removePublishedManuscript`（删实体稿文件）→ **仍为诚实化占位**（依赖批次 H 的 fs 授权域）；
+//! - 知识库文档清理 → **已真实化**：调用 `db/kb/store::remove_document` 删除 SQLite 事实
+//!   并同步清除 HNSW 向量（与 `kb:remove-document` 同一路径）。
+//!
 //! SQLite 事实删除（`begin` 事务内 `deleteChapterFacts`）已真实提交（`committed: true`），
-//! 渲染层可经 `chapter:retry-deletion` 在批次 H / F2 落地后继续断点恢复——
-//! 与基线「清理失败 → 收据 failed → 重试」语义一致，仅失败原因固定为能力未迁移。
+//! 渲染层可经 `chapter:retry-deletion` 断点恢复；批次 H 落地后替换实体稿 cleaner 即恢复完整语义。
 
 use rusqlite::Connection;
 use serde::Serialize;
 use tauri::State;
 
 use crate::commands::db::{guard_read, mutating_error};
+use crate::commands::kb::purge_vectors;
+use crate::db::kb::{hybrid, store};
 use crate::project_access::random_uuid_v4;
 use crate::repositories::chapter_deletion_repository as repo;
 use crate::security::ProjectSessionContext;
@@ -86,20 +87,44 @@ fn legacy_authorization_receipt(
     }
 }
 
-/// 物理清理占位（诚实化）：能力未迁移前一律显式失败
+/// 实体稿物理清理占位（诚实化）：批次 H 前一律显式失败
 fn manuscript_cleanup_unavailable() -> Result<(), String> {
     Err("实体稿文件清理尚未迁移（依赖批次 H 的外部文件授权），已保留实体稿".to_string())
 }
 
-fn knowledge_cleanup_unavailable() -> Result<(), String> {
-    Err("知识库文档清理尚未迁移（依赖批次 F2 的知识库能力），已保留知识库内容".to_string())
+/// 知识库文档真实清理：删除 `kb_documents` / `kb_chunks` / `kb_fts` 事实并清除向量。
+///
+/// 与 `kb:remove-document` 同一路径；文档不存在视为幂等成功（对齐基线 cleaner 语义）。
+async fn knowledge_cleanup(
+    state: &AppState,
+    project_root: &str,
+    operation: &repo::ChapterDeletionOperation,
+) -> Result<(), String> {
+    let doc_id = operation.knowledge_document_id.clone();
+    if doc_id.is_empty() {
+        return Ok(());
+    }
+    let (ids, spaces) = state.with_project_db(|conn| {
+        let ids = store::document_chunk_ids(conn, &doc_id)?;
+        let spaces = hybrid::list_spaces(conn).map_err(|error| error.to_string())?;
+        store::remove_document(conn, &doc_id)?;
+        Ok((ids, spaces))
+    })?;
+    for space in spaces {
+        purge_vectors(state, project_root, space.generation, space.dimension, &ids).await;
+    }
+    Ok(())
 }
 
 /// 基线 `ChapterDeletionService.resume`：断点恢复。
 ///
-/// 两个物理清理投影当前走诚实化占位（显式 failed），状态机流转与基线逐字对齐。
-fn resume(conn: &Connection, operation_id: &str) -> Result<ChapterDeletionResult, String> {
-    let existing = repo::get(conn, operation_id)?;
+/// 实体稿投影为诚实化占位（显式 failed）；知识库投影为真实清理。
+async fn resume(
+    state: &AppState,
+    project_root: &str,
+    operation_id: &str,
+) -> Result<ChapterDeletionResult, String> {
+    let existing = state.with_project_db(|conn| repo::get(conn, operation_id))?;
     let Some(mut operation) = existing else {
         return Ok(ChapterDeletionResult {
             success: false,
@@ -117,30 +142,38 @@ fn resume(conn: &Connection, operation_id: &str) -> Result<ChapterDeletionResult
         });
     }
 
-    repo::start_attempt(conn, operation_id)?;
+    state.with_project_db(|conn| repo::start_attempt(conn, operation_id))?;
 
     // 投影一：实体稿文件清理（占位：批次 H 前 always failed）
     if operation.manuscript_status == "pending" || operation.manuscript_status == "failed" {
         match manuscript_cleanup_unavailable() {
-            Ok(()) => repo::mark_projection(conn, operation_id, "manuscript", "completed", "")?,
-            Err(error) => {
-                repo::mark_projection(conn, operation_id, "manuscript", "failed", &error)?
-            }
+            Ok(()) => state.with_project_db(|conn| {
+                repo::mark_projection(conn, operation_id, "manuscript", "completed", "")
+            })?,
+            Err(error) => state.with_project_db(|conn| {
+                repo::mark_projection(conn, operation_id, "manuscript", "failed", &error)
+            })?,
         }
     }
 
-    // 投影二
-    operation = repo::get(conn, operation_id)?.ok_or_else(|| format!("章节删除操作不存在：{operation_id}"))?;
+    // 投影二：知识库文档清理（真实）
+    operation = state
+        .with_project_db(|conn| repo::get(conn, operation_id))?
+        .ok_or_else(|| format!("章节删除操作不存在：{operation_id}"))?;
     if operation.knowledge_status == "pending" || operation.knowledge_status == "failed" {
-        match knowledge_cleanup_unavailable() {
-            Ok(()) => repo::mark_projection(conn, operation_id, "knowledge", "completed", "")?,
-            Err(error) => {
-                repo::mark_projection(conn, operation_id, "knowledge", "failed", &error)?
-            }
+        match knowledge_cleanup(state, project_root, &operation).await {
+            Ok(()) => state.with_project_db(|conn| {
+                repo::mark_projection(conn, operation_id, "knowledge", "completed", "")
+            })?,
+            Err(error) => state.with_project_db(|conn| {
+                repo::mark_projection(conn, operation_id, "knowledge", "failed", &error)
+            })?,
         }
     }
 
-    let operation = repo::get(conn, operation_id)?.unwrap_or(operation);
+    let operation = state
+        .with_project_db(|conn| repo::get(conn, operation_id))?
+        .unwrap_or(operation);
     Ok(ChapterDeletionResult {
         success: operation.status == "completed",
         committed: true,
@@ -198,98 +231,121 @@ struct OutboxIdentity {
     knowledge_document_id: String,
 }
 
-/// 基线 `ChapterDeletionService.delete`
-fn delete_finalized_inner(
+/// 基线 `ChapterDeletionService.delete`（异步：知识库清理需要 await 向量层）
+async fn delete_finalized_inner(
     state: &AppState,
     request: &repo::DeleteFinalizedChapterRequest,
     expected_project_path: &str,
     session: Option<&ProjectSessionContext>,
 ) -> Result<ChapterDeletionResult, String> {
     guard_read(state, expected_project_path, session)?;
-    state.with_project_db(|conn| {
+
+    enum Flow {
+        Receipt(ChapterDeletionResult),
+        Resume(String),
+    }
+
+    let flow = state.with_project_db(|conn| {
         let existing = repo::get_by_draft_id(conn, request.draft_id)?;
         if let Some(existing) = existing {
             if existing.chapter_number != request.chapter_number {
-                return Ok(ChapterDeletionResult {
+                return Ok(Flow::Receipt(ChapterDeletionResult {
                     success: false,
                     committed: false,
                     operation: Some(existing),
                     error: Some("章节删除请求与已冻结操作身份不匹配".to_string()),
-                });
+                }));
             }
             if existing.legacy_knowledge_authorization == "required" {
-                return Ok(legacy_authorization_receipt(existing));
+                return Ok(Flow::Receipt(legacy_authorization_receipt(existing)));
             }
-            return resume(conn, &existing.operation_id);
+            return Ok(Flow::Resume(existing.operation_id));
         }
         let requires_authorization = requires_legacy_knowledge_authorization(conn, request)?;
         let frozen = repo::begin(conn, &random_uuid_v4(), request, requires_authorization)?;
         if requires_authorization {
-            return Ok(legacy_authorization_receipt(frozen));
+            return Ok(Flow::Receipt(legacy_authorization_receipt(frozen)));
         }
-        resume(conn, &frozen.operation_id)
-    })
+        Ok(Flow::Resume(frozen.operation_id))
+    })?;
+
+    match flow {
+        Flow::Receipt(result) => Ok(result),
+        Flow::Resume(operation_id) => {
+            resume(state, expected_project_path, &operation_id).await
+        }
+    }
 }
 
 // ===== 命令 =====
 
 /// `chapter:delete-finalized`
 #[tauri::command]
-pub fn chapter_delete_finalized(
+pub async fn chapter_delete_finalized(
     state: State<'_, AppState>,
     request: repo::DeleteFinalizedChapterRequest,
     expected_project_path: String,
     project_session: Option<ProjectSessionContext>,
-) -> ChapterDeletionResult {
-    match delete_finalized_inner(state.inner(), &request, &expected_project_path, project_session.as_ref()) {
-        Ok(result) => result,
-        Err(error) => failing_receipt(mutating_error(error)),
+) -> Result<ChapterDeletionResult, String> {
+    match delete_finalized_inner(
+        state.inner(),
+        &request,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .await
+    {
+        Ok(result) => Ok(result),
+        Err(error) => Ok(failing_receipt(mutating_error(error))),
     }
 }
 
 /// `chapter:retry-deletion`
 #[tauri::command]
-pub fn chapter_retry_deletion(
+pub async fn chapter_retry_deletion(
     state: State<'_, AppState>,
     operation_id: String,
     expected_project_path: String,
     project_session: Option<ProjectSessionContext>,
-) -> ChapterDeletionResult {
-    let outcome = guard_read(state.inner(), &expected_project_path, project_session.as_ref()).and_then(|()| {
-        state.with_project_db(|conn| {
-            let operation = repo::get(conn, &operation_id)?;
-            match operation {
-                None => Ok(receipt_uncommitted("未找到可重试的章节删除操作")),
-                Some(operation) if operation.legacy_knowledge_authorization == "required" => {
-                    Ok(legacy_authorization_receipt(operation))
-                }
-                Some(_) => resume(conn, &operation_id),
-            }
-        })
-    });
-    match outcome {
-        Ok(result) => result,
-        Err(error) => failing_receipt(mutating_error(error)),
+) -> Result<ChapterDeletionResult, String> {
+    if let Err(error) = guard_read(state.inner(), &expected_project_path, project_session.as_ref()) {
+        return Ok(failing_receipt(mutating_error(error)));
+    }
+    let operation = match state.with_project_db(|conn| repo::get(conn, &operation_id)) {
+        Ok(operation) => operation,
+        Err(error) => return Ok(failing_receipt(mutating_error(error))),
+    };
+    match operation {
+        None => Ok(receipt_uncommitted("未找到可重试的章节删除操作")),
+        Some(operation) if operation.legacy_knowledge_authorization == "required" => {
+            Ok(legacy_authorization_receipt(operation))
+        }
+        Some(_) => match resume(state.inner(), &expected_project_path, &operation_id).await {
+            Ok(result) => Ok(result),
+            Err(error) => Ok(failing_receipt(mutating_error(error))),
+        },
     }
 }
 
 /// `chapter:confirm-legacy-knowledge-absent`
 #[tauri::command]
-pub fn chapter_confirm_legacy_knowledge_absent(
+pub async fn chapter_confirm_legacy_knowledge_absent(
     state: State<'_, AppState>,
     operation_id: String,
     expected_project_path: String,
     project_session: Option<ProjectSessionContext>,
-) -> ChapterDeletionResult {
-    let outcome = guard_read(state.inner(), &expected_project_path, project_session.as_ref()).and_then(|()| {
-        state.with_project_db(|conn| {
-            repo::confirm_legacy_knowledge_absent(conn, &operation_id)?;
-            resume(conn, &operation_id)
-        })
-    });
-    match outcome {
-        Ok(result) => result,
-        Err(error) => failing_receipt(mutating_error(error)),
+) -> Result<ChapterDeletionResult, String> {
+    if let Err(error) = guard_read(state.inner(), &expected_project_path, project_session.as_ref()) {
+        return Ok(failing_receipt(mutating_error(error)));
+    }
+    if let Err(error) = state.with_project_db(|conn| {
+        repo::confirm_legacy_knowledge_absent(conn, &operation_id)
+    }) {
+        return Ok(failing_receipt(mutating_error(error)));
+    }
+    match resume(state.inner(), &expected_project_path, &operation_id).await {
+        Ok(result) => Ok(result),
+        Err(error) => Ok(failing_receipt(mutating_error(error))),
     }
 }
 
@@ -340,9 +396,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn projection_placeholders_fail_explicitly() {
+    fn manuscript_placeholder_fails_explicitly() {
         assert!(manuscript_cleanup_unavailable().is_err());
-        assert!(knowledge_cleanup_unavailable().is_err());
     }
 
     #[test]
@@ -353,7 +408,7 @@ mod tests {
         operation.manuscript_error = "实体稿文件清理尚未迁移".into();
         assert!(operation_error(&operation).unwrap().starts_with("实体稿清理失败："));
         operation.knowledge_status = "failed".into();
-        operation.knowledge_error = "知识库文档清理尚未迁移".into();
+        operation.knowledge_error = "知识库文档清理失败".into();
         let merged = operation_error(&operation).unwrap();
         assert!(merged.contains("；"), "双通道失败应合并为一句");
     }
