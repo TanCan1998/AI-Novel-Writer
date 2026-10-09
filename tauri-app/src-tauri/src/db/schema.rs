@@ -310,9 +310,8 @@ CREATE TABLE IF NOT EXISTS llm_calls (
   error_message TEXT DEFAULT '',
   created_at TEXT DEFAULT (datetime('now'))
 );
+CREATE INDEX IF NOT EXISTS idx_llm_calls_time ON llm_calls(created_at);
 "#;
-
-/// summary_snapshots —— 跨用表：角色状态快照（含定稿连续性投影列）
 ///
 /// `draft_id IS NULL` 的行是旧式快照（`getLatestSnapshot` 只看这些行）；
 /// 绑定定稿的行由连续性投影写入（批次 E）。
@@ -432,6 +431,89 @@ CREATE TABLE IF NOT EXISTS consistency_exemptions (
 );
 "#;
 
+/// recovery_candidates —— 生成失败恢复候选（批次 E）
+///
+/// 逐列对齐 `electron/database.ts:179-204` + 迁移 602-608 补列后的最终列集：
+/// - `candidate_id` 为业务键主键（非 UUID 自增）；
+/// - `source_draft_*` 三列在基线是旧库 ALTER 补列，此处直接并入；
+/// - `replaces_candidate_id` 自引用实现候选替换链；
+/// - 状态机 `pending/continued/discarded` 与基线一致。
+pub const CREATE_RECOVERY_CANDIDATES: &str = r#"
+CREATE TABLE IF NOT EXISTS recovery_candidates (
+  candidate_id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL,
+  step_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  chapter_number INTEGER NOT NULL CHECK(chapter_number > 0),
+  chapter_title TEXT NOT NULL DEFAULT '',
+  source_snapshot TEXT NOT NULL,
+  source_hash TEXT NOT NULL,
+  source_draft_id INTEGER DEFAULT NULL,
+  source_draft_version INTEGER DEFAULT NULL,
+  source_draft_identity_captured INTEGER NOT NULL DEFAULT 0
+    CHECK(source_draft_identity_captured IN (0, 1)),
+  visible_text TEXT NOT NULL,
+  content_hash TEXT NOT NULL,
+  failure_code TEXT NOT NULL DEFAULT '',
+  failure_reason TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK(status IN ('pending', 'continued', 'discarded')),
+  replaces_candidate_id TEXT DEFAULT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  resolved_at TEXT DEFAULT NULL,
+  FOREIGN KEY (replaces_candidate_id) REFERENCES recovery_candidates(candidate_id)
+);
+CREATE INDEX IF NOT EXISTS idx_recovery_candidates_pending
+  ON recovery_candidates(status, created_at);
+"#;
+
+/// continuity_projection_meta —— 连续性投影全局代际元数据（批次 E）
+///
+/// 平移自 `electron/database.ts:657-662`：单行表（`id = 'main'`），建表后种子化。
+/// 逐章连续性事实存于 `summary_snapshots.continuity_facts`（已有），本表只推进
+/// 投影代际指针；写入受【定稿不可逆红线】约束（投影内容落盘后禁止 UPDATE）。
+pub const CREATE_CONTINUITY_PROJECTION_META: &str = r#"
+CREATE TABLE IF NOT EXISTS continuity_projection_meta (
+  id TEXT PRIMARY KEY CHECK (id = 'main'),
+  generation INTEGER NOT NULL DEFAULT 0 CHECK (generation >= 0),
+  stale_from_chapter INTEGER DEFAULT NULL CHECK (stale_from_chapter IS NULL OR stale_from_chapter > 0)
+);
+INSERT OR IGNORE INTO continuity_projection_meta (id) VALUES ('main');
+"#;
+
+/// chapter_deletion_operations —— 已定稿章节可恢复删除操作日志（批次 E，ADR 0011）
+///
+/// 逐列对齐 `electron/database.ts:233-255` + 迁移 995-1005 补列后的最终列集：
+/// - 幂等靠 `draft_id UNIQUE`（同一草稿同时只有一个删除事务）；
+/// - `manuscript_*` / `knowledge_*` 双通道独立清理状态；
+/// - `legacy_knowledge_*` 对应 `chapter:confirm-legacy-knowledge-absent` 频道；
+/// - `finalization_id` / `knowledge_document_id` 为跨存储引用，不建 SQL 外键（对齐基线）。
+pub const CREATE_CHAPTER_DELETION_OPERATIONS: &str = r#"
+CREATE TABLE IF NOT EXISTS chapter_deletion_operations (
+  operation_id TEXT PRIMARY KEY,
+  draft_id INTEGER NOT NULL UNIQUE,
+  chapter_number INTEGER NOT NULL,
+  chapter_title TEXT NOT NULL DEFAULT '',
+  finalization_id TEXT NOT NULL,
+  target_file_name TEXT NOT NULL DEFAULT '',
+  knowledge_document_id TEXT NOT NULL DEFAULT '',
+  post_process_run_ids TEXT NOT NULL DEFAULT '[]',
+  manuscript_status TEXT NOT NULL DEFAULT 'pending',
+  manuscript_error TEXT NOT NULL DEFAULT '',
+  knowledge_status TEXT NOT NULL DEFAULT 'pending',
+  knowledge_error TEXT NOT NULL DEFAULT '',
+  legacy_knowledge_authorization TEXT NOT NULL DEFAULT 'not_required',
+  legacy_knowledge_authorized_at TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'pending',
+  attempt_count INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now')),
+  completed_at TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_chapter_deletion_status
+  ON chapter_deletion_operations(status);
+"#;
+
 /// 建表入口（幂等）：所有分批 DDL 在此汇总执行后再跑迁移
 pub fn create_tables(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(CREATE_PROJECT_CORE)?;
@@ -447,6 +529,10 @@ pub fn create_tables(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(CREATE_SUMMARY_SNAPSHOTS)?;
     conn.execute_batch(CREATE_IMPORT_OPERATIONS)?;
     conn.execute_batch(CREATE_FINALIZATION_OUTBOX)?;
+    // 批次 E：恢复候选 + 连续性投影代际 + 章节可恢复删除（3 张表，Schema 申报 v2.0 已批准）
+    conn.execute_batch(CREATE_RECOVERY_CANDIDATES)?;
+    conn.execute_batch(CREATE_CONTINUITY_PROJECTION_META)?;
+    conn.execute_batch(CREATE_CHAPTER_DELETION_OPERATIONS)?;
     // 批次 F1：叙事线索 + 一致性豁免（3 张表）
     conn.execute_batch(CREATE_NARRATIVE_THREADS)?;
     conn.execute_batch(CREATE_CONSISTENCY_EXEMPTIONS)?;
@@ -697,6 +783,97 @@ mod tests {
     }
 
     #[test]
+    fn batch_e_tables_have_baseline_final_column_set_test() {
+        let conn = memory_db();
+        create_tables(&conn).unwrap();
+        create_tables(&conn).unwrap(); // 幂等性由本调用一并验证
+
+        // 批次 E 三张表最终列集（对齐 electron/database.ts 含迁移补列）
+        let expected: &[(&str, &[&str])] = &[
+            (
+                "recovery_candidates",
+                &[
+                    "candidate_id",
+                    "run_id",
+                    "step_id",
+                    "project_id",
+                    "chapter_number",
+                    "chapter_title",
+                    "source_snapshot",
+                    "source_hash",
+                    "source_draft_id",
+                    "source_draft_version",
+                    "source_draft_identity_captured",
+                    "visible_text",
+                    "content_hash",
+                    "failure_code",
+                    "failure_reason",
+                    "status",
+                    "replaces_candidate_id",
+                    "created_at",
+                    "resolved_at",
+                ],
+            ),
+            (
+                "continuity_projection_meta",
+                &["id", "generation", "stale_from_chapter"],
+            ),
+            (
+                "chapter_deletion_operations",
+                &[
+                    "operation_id",
+                    "draft_id",
+                    "chapter_number",
+                    "chapter_title",
+                    "finalization_id",
+                    "target_file_name",
+                    "knowledge_document_id",
+                    "post_process_run_ids",
+                    "manuscript_status",
+                    "manuscript_error",
+                    "knowledge_status",
+                    "knowledge_error",
+                    "legacy_knowledge_authorization",
+                    "legacy_knowledge_authorized_at",
+                    "status",
+                    "attempt_count",
+                    "created_at",
+                    "updated_at",
+                    "completed_at",
+                ],
+            ),
+        ];
+        for (table, columns) in expected {
+            let actual = table_columns(&conn, table).unwrap();
+            for column in *columns {
+                assert!(actual.contains(*column), "{table} 缺少列: {column}");
+            }
+            assert_eq!(actual.len(), columns.len(), "{table} 列数与基线不一致");
+        }
+
+        // continuity_projection_meta：单行种子化 + 代际默认值
+        let (count, generation): (i64, i64) = conn
+            .query_row(
+                "SELECT COUNT(*), COALESCE(MAX(generation), -1) FROM continuity_projection_meta",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "continuity_projection_meta 应种子化单行 main");
+        assert_eq!(generation, 0, "初始代际应为 0");
+
+        // 批次 D 遗漏修正：llm_calls 时间索引
+        let index_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_llm_calls_time'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(index_count, 1, "缺少索引 idx_llm_calls_time");
+    }
+
+    #[test]
     fn character_domain_tables_exist_test() {
         let conn = memory_db();
         create_tables(&conn).unwrap();
@@ -708,6 +885,10 @@ mod tests {
             "finalization_outbox",
             "character_roster_meta",
             "character_roster_operations",
+            // 批次 E（Schema 申报 v2.0）
+            "recovery_candidates",
+            "continuity_projection_meta",
+            "chapter_deletion_operations",
         ] {
             let count: i64 = conn
                 .query_row(
