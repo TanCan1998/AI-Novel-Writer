@@ -40,7 +40,13 @@ pub struct ChapterDeletionOperation {
 }
 
 /// 基线 `DeleteFinalizedChapterRequest`
+/// 基线 `DeleteFinalizedChapterRequest`
+///
+/// ⚠️ IPC 入参结构体必须带 `rename_all = "camelCase"`：渲染层发的是
+/// `{ draftId, chapterNumber }`，缺此属性会让 Tauri 参数反序列化直接失败
+/// （`missing field \`draft_id\``），且失败表现为**无提示的 unhandled rejection**。
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeleteFinalizedChapterRequest {
     pub draft_id: i64,
     pub chapter_number: i64,
@@ -465,6 +471,22 @@ mod tests {
         )
         .unwrap();
         draft_id
+    }
+
+    /// 契约回归：渲染层发的是 camelCase（`draftId` / `chapterNumber`）。
+    /// 缺此覆盖时 `#[serde(rename_all = "camelCase")]` 一旦丢失，GUI 删除会在
+    /// Tauri 入参反序列化阶段失败，且表现为无提示的 unhandled rejection。
+    #[test]
+    fn delete_request_deserializes_frontend_camel_case_payload_test() {
+        let request: DeleteFinalizedChapterRequest =
+            serde_json::from_str(r#"{"draftId":7,"chapterNumber":3}"#).unwrap();
+        assert_eq!(request.draft_id, 7);
+        assert_eq!(request.chapter_number, 3);
+        // 旧 snake_case 载荷不再兼容（Tauri 只传 camelCase）
+        assert!(serde_json::from_str::<DeleteFinalizedChapterRequest>(
+            r#"{"draft_id":7,"chapter_number":3}"#
+        )
+        .is_err());
     }
 
     #[test]

@@ -83,6 +83,8 @@ src/
 2. 命令 kebab-case 命名（`tauri` 约定），与 channel 名对应，如 `config_get`、`update_check`。
 3. Rust 入参/返回值与 `ipc-channels.ts` 的 `args`/`return` **类型一一对应**（`String`/`u32`/struct/`Option`/列表）。复杂联合类型先转换为 Rust `enum`（serde）。
 4. 事件类频道（`UpdateStateEvents['update:state']`）→ 迁移为 Tauri `Event`（`app.emit(...)` / 前端 `listen(...)`）。
+5. **结构体入参必须显式 `#[serde(rename_all = "camelCase")]`**。渲染层发的是 camelCase（如 `{ draftId, chapterNumber }`），Tauri 只对**参数名**做 camelCase→snake_case 归一，**不会**转换结构体字段。缺该属性会在参数反序列化阶段失败并 **reject promise**（`invalid args ...: missing field \`draft_id\``）；调用点通常不 catch → 表现为「确认框关闭但什么都没发生」的**静默失败**，后端零记录（连一行都不会落）。⚠️ 单元测试直接构造 Rust 结构体，**永远抓不到**这类缺陷。
+   防线：`tauri-app/test/ipc-arg-struct-contract.test.ts`（源码扫描，内部结构体走白名单）；新增命令入参结构体时一并补契约测试（从 camelCase JSON 反序列化）。
 
 ```rust
 // 迁移自 ConfigChannels['config:get']（args: [],  return: GlobalConfig）
