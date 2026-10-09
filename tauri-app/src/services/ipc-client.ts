@@ -193,6 +193,12 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   // 不走 ipc-client 的项目域自动注入）
   'finalization:commit': ['snapshot', 'projectSession'],
   'finalization:retry': ['finalizationId', 'projectSession'],
+  // 批次 H：应用数据域（prompt:* 3 + skills:* 4；能力域，不注入项目会话）
+  'prompt:save-global': ['template'],
+  'prompt:delete-global': ['key', 'writingLanguage'],
+  'skills:inspect-github': ['sourceUrl'],
+  'skills:install-github': ['sourceUrl'],
+  'skills:uninstall-user': ['name'],
 
   // 批次 E 第一部分补登记（E 收尾时补齐，测试 channel-migration-coverage 断言）
   'db:recovery-candidate-record': ['request', 'expectedProjectPath'],

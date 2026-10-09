@@ -55,6 +55,10 @@ pub struct AppState {
     pub(crate) external_grants: Mutex<crate::external_grant::ExternalGrantRegistry>,
     /// 批次 F2-3：知识库向量索引管理器（按项目懒加载 HNSW 图）。
     pub(crate) kb_vectors: Mutex<crate::db::kb::vectors::KbVectorManager>,
+    /// 批次 H：`skills:inspect-github` 的「先检查后安装」一次性确认缓存
+    /// （`sourceUrl` → `(contentSha256, resolvedUrl)`；进程内存态，重启即失效）。
+    pub(crate) writing_skill_inspections:
+        Mutex<std::collections::HashMap<String, (String, String)>>,
 }
 
 impl AppState {
@@ -73,6 +77,7 @@ impl AppState {
             llm_streams: Mutex::new(std::collections::HashMap::new()),
             external_grants: Mutex::new(crate::external_grant::ExternalGrantRegistry::default()),
             kb_vectors: Mutex::new(crate::db::kb::vectors::KbVectorManager::default()),
+            writing_skill_inspections: Mutex::new(std::collections::HashMap::new()),
         }
     }
 

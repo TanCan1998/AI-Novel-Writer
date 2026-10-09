@@ -29,6 +29,8 @@ mod project_access;
 mod repositories;
 mod security;
 mod state;
+// 批次 H：Writing Skill 检查与 GitHub 地址解析（`src/shared/writing-skills.ts` 的 Rust 单源）。
+pub mod writing_skills;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -197,6 +199,14 @@ pub fn run() {
             // 批次 E（G1）：定稿提交 / 实体稿重试（finalization:* 2 频道）
             commands::finalization_commit,
             commands::finalization_retry,
+            // 批次 H：应用数据域（prompt:* 3 + skills:* 4）
+            commands::prompt_load_global,
+            commands::prompt_save_global,
+            commands::prompt_delete_global,
+            commands::skills_list_user,
+            commands::skills_inspect_github,
+            commands::skills_install_github,
+            commands::skills_uninstall_user,
             // 批次 D1：LLM 模型管理（7 频道）
             commands::llm_list_models,
             commands::llm_save_model,

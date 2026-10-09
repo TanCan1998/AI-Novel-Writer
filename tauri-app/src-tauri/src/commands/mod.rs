@@ -28,9 +28,11 @@ mod llm_execution; // 批次 D2：LLM 生成执行（租约 2 频道）
 mod llm_generation; // 批次 D2-b：LLM 生成 / 流式 / 取消（3 频道 + 3 事件）
 mod llm_management; // 批次 D2-c：连通性探测 + 模型发现（llm:* 收口 2 频道）
 pub mod kb; // 批次 F2-3：知识库（kb:* 15 频道 + dialog 2）
+pub mod app_data; // 批次 H：应用数据域（prompt:* 3 + skills:* 4）
 
 /// 再导出各批次模块的全部公开项（含 Tauri 命令宏 `__cmd__*`），
 /// 供 `lib.rs` 的 `generate_handler![commands::xxx]` 与 `state.rs` 引用。
+pub use app_data::*;
 pub use config::*;
 pub use chapter_lifecycle::*;
 pub use finalization::*;

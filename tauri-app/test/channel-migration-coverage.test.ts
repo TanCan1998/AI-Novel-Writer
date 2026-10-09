@@ -183,6 +183,14 @@ describe('channel migration coverage', () => {
     // 批次 E（G1）：定稿提交 / 实体稿重试（finalization:* 2 频道）
     expect(MIGRATED_CHANNELS.has('finalization:commit')).toBe(true)
     expect(MIGRATED_CHANNELS.has('finalization:retry')).toBe(true)
+    // 批次 H：应用数据域（prompt:* 3 + skills:* 4）
+    expect(MIGRATED_CHANNELS.has('prompt:load-global')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('prompt:save-global')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('prompt:delete-global')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('skills:list-user')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('skills:inspect-github')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('skills:install-github')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('skills:uninstall-user')).toBe(true)
   })
 
   /**
