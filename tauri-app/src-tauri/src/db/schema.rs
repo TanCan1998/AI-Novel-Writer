@@ -579,6 +579,189 @@ CREATE VIRTUAL TABLE IF NOT EXISTS kb_fts USING fts5(
 );
 "#;
 
+/// 批次 G：import-run 状态机表（**Schema 申报已获批准**，见
+/// `docs-fork/research/2026-10-10-g-import-run-schema-proposal.md`）。
+///
+/// 逐字平移自 `electron/database.ts:418-600`，**仅刻意省略**
+/// `import_legacy_identity_bridge`（基线特有的「旧版来源身份 AES-GCM 密存桥」；
+/// L3 规定两栈项目目录刻意不互通，Tauri 侧无 Electron 时代旧身份可桥）。
+///
+/// 约束：`IF NOT EXISTS` 幂等；列集对齐基线最终列集；外键依赖 `PRAGMA foreign_keys = ON`。
+pub const CREATE_IMPORT_RUN: &str = r#"
+-- import_runs：运行主台账（28 列）
+CREATE TABLE IF NOT EXISTS import_runs (
+  id TEXT PRIMARY KEY,
+  purpose TEXT NOT NULL DEFAULT 'reference'
+    CHECK(purpose IN ('reference', 'author-manuscript')),
+  root_run_id TEXT NOT NULL,
+  effect_namespace TEXT NOT NULL,
+  source_fingerprint TEXT NOT NULL,
+  manifest_fingerprint TEXT NOT NULL,
+  authority_fingerprint TEXT NOT NULL DEFAULT '',
+  legacy_source_fingerprint TEXT NOT NULL DEFAULT '',
+  source_display_json TEXT NOT NULL DEFAULT '[]',
+  locale TEXT NOT NULL CHECK(locale IN ('zh-CN', 'en-US')),
+  stage TEXT NOT NULL DEFAULT 'knowledge'
+    CHECK(stage IN (
+      'parsing', 'prepared', 'knowledge', 'global', 'style', 'blueprints',
+      'author-commit', 'author-publish', 'author-postprocess',
+      'refresh', 'completed'
+    )),
+  status TEXT NOT NULL DEFAULT 'ready'
+    CHECK(status IN ('ready', 'running', 'failed', 'cancelled', 'completed')),
+  completed_batches_json TEXT NOT NULL DEFAULT '{}',
+  last_error TEXT NOT NULL DEFAULT '',
+  resumable INTEGER NOT NULL DEFAULT 1 CHECK(resumable IN (0, 1)),
+  cancel_requested INTEGER NOT NULL DEFAULT 0 CHECK(cancel_requested IN (0, 1)),
+  execution_owner TEXT NOT NULL DEFAULT '',
+  execution_epoch INTEGER NOT NULL DEFAULT 0,
+  lease_expires_at INTEGER NOT NULL DEFAULT 0,
+  total_chapters INTEGER NOT NULL,
+  total_content_size INTEGER NOT NULL DEFAULT 0,
+  manifest_chapter_count INTEGER NOT NULL,
+  manifest_content_size INTEGER NOT NULL DEFAULT 0,
+  manifest_word_count INTEGER NOT NULL DEFAULT 0,
+  completed_chapters INTEGER NOT NULL DEFAULT 0,
+  base_run_id TEXT DEFAULT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at TEXT DEFAULT NULL,
+  FOREIGN KEY (base_run_id) REFERENCES import_runs(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_import_runs_source_status
+  ON import_runs(source_fingerprint, status, updated_at);
+CREATE INDEX IF NOT EXISTS idx_import_runs_resumable
+  ON import_runs(resumable, status, updated_at);
+
+-- import_run_chapters：定稿章快照（8 列）
+CREATE TABLE IF NOT EXISTS import_run_chapters (
+  run_id TEXT NOT NULL,
+  chapter_number INTEGER NOT NULL,
+  source_id TEXT NOT NULL DEFAULT '',
+  source_chapter_number INTEGER NOT NULL DEFAULT 0,
+  title TEXT NOT NULL DEFAULT '',
+  content_fingerprint TEXT NOT NULL,
+  content_size INTEGER NOT NULL,
+  content_snapshot TEXT NOT NULL,
+  PRIMARY KEY (run_id, chapter_number),
+  FOREIGN KEY (run_id) REFERENCES import_runs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_import_run_chapters_page
+  ON import_run_chapters(run_id, chapter_number);
+
+-- import_run_sources：来源进度（13 列）
+CREATE TABLE IF NOT EXISTS import_run_sources (
+  run_id TEXT NOT NULL,
+  source_index INTEGER NOT NULL,
+  source_id TEXT NOT NULL,
+  source_fingerprint TEXT NOT NULL,
+  legacy_source_fingerprint TEXT NOT NULL DEFAULT '',
+  display_json TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'completed', 'failed')),
+  manifest_fingerprint TEXT NOT NULL DEFAULT '',
+  chapter_count INTEGER NOT NULL DEFAULT 0,
+  content_size INTEGER NOT NULL DEFAULT 0,
+  word_count INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT NOT NULL DEFAULT '',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (run_id, source_id),
+  UNIQUE (run_id, source_index),
+  FOREIGN KEY (run_id) REFERENCES import_runs(id) ON DELETE CASCADE
+);
+
+-- import_run_source_chapters：来源原始章快照（8 列）
+CREATE TABLE IF NOT EXISTS import_run_source_chapters (
+  run_id TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  source_chapter_number INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  content_fingerprint TEXT NOT NULL,
+  content_size INTEGER NOT NULL,
+  word_count INTEGER NOT NULL,
+  content_snapshot TEXT NOT NULL,
+  PRIMARY KEY (run_id, source_id, source_chapter_number),
+  FOREIGN KEY (run_id, source_id) REFERENCES import_run_sources(run_id, source_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_import_run_source_chapters
+  ON import_run_source_chapters(run_id, source_id, source_chapter_number);
+
+-- import_source_aliases：来源位置/文件别名摘要（对 Tauri 自身的重命名识别有用）
+CREATE TABLE IF NOT EXISTS import_source_aliases (
+  alias_digest TEXT PRIMARY KEY,
+  alias_kind TEXT NOT NULL CHECK(alias_kind IN ('location', 'file')),
+  source_id TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_import_source_aliases_source
+  ON import_source_aliases(source_id);
+
+-- import_source_chapter_map：章节号映射（4 列）
+CREATE TABLE IF NOT EXISTS import_source_chapter_map (
+  purpose TEXT NOT NULL CHECK(purpose IN ('reference', 'author-manuscript')),
+  source_id TEXT NOT NULL,
+  source_chapter_number INTEGER NOT NULL,
+  chapter_number INTEGER NOT NULL,
+  PRIMARY KEY (purpose, source_id, source_chapter_number),
+  UNIQUE (purpose, chapter_number)
+);
+
+-- import_run_receipts：效果收据（12 列）
+CREATE TABLE IF NOT EXISTS import_run_receipts (
+  run_id TEXT NOT NULL,
+  schema_version INTEGER NOT NULL DEFAULT 1,
+  effect_namespace TEXT NOT NULL,
+  effect_key TEXT NOT NULL,
+  stage TEXT NOT NULL,
+  batch_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  payload_hash TEXT NOT NULL,
+  state TEXT NOT NULL DEFAULT 'prepared' CHECK(state IN ('prepared', 'committed')),
+  effect_receipt_json TEXT DEFAULT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (run_id, stage, batch_id),
+  UNIQUE (effect_namespace, effect_key),
+  FOREIGN KEY (run_id) REFERENCES import_runs(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_import_run_receipts_state
+  ON import_run_receipts(run_id, state, stage);
+
+-- import_run_knowledge_receipts：知识库投影收据（10 列）
+CREATE TABLE IF NOT EXISTS import_run_knowledge_receipts (
+  run_id TEXT NOT NULL,
+  chapter_number INTEGER NOT NULL,
+  purpose TEXT NOT NULL,
+  source_id TEXT NOT NULL,
+  source_chapter_number INTEGER NOT NULL,
+  content_fingerprint TEXT NOT NULL,
+  document_id TEXT NOT NULL,
+  state TEXT NOT NULL CHECK(state = 'committed'),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (run_id, chapter_number),
+  FOREIGN KEY (run_id, chapter_number)
+    REFERENCES import_run_chapters(run_id, chapter_number) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_import_run_knowledge_receipts_affiliation
+  ON import_run_knowledge_receipts(
+    purpose, source_id, source_chapter_number, content_fingerprint, state
+  );
+
+-- import_reference_documents：参考文档幂等（9 列）
+CREATE TABLE IF NOT EXISTS import_reference_documents (
+  document_id TEXT PRIMARY KEY,
+  idempotency_key_hash TEXT NOT NULL UNIQUE,
+  content_hash TEXT NOT NULL,
+  chunk_set_hash TEXT NOT NULL,
+  expected_chunk_count INTEGER NOT NULL,
+  corpus_kind TEXT NOT NULL CHECK(corpus_kind = 'reference'),
+  state TEXT NOT NULL DEFAULT 'prepared' CHECK(state IN ('prepared', 'committed')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"#;
+
 /// 建表入口（幂等）：所有分批 DDL 在此汇总执行后再跑迁移
 pub fn create_tables(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(CREATE_PROJECT_CORE)?;
@@ -593,6 +776,8 @@ pub fn create_tables(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(CREATE_LLM_CALLS)?;
     conn.execute_batch(CREATE_SUMMARY_SNAPSHOTS)?;
     conn.execute_batch(CREATE_IMPORT_OPERATIONS)?;
+    // 批次 G：import-run 状态机（9 张表 + 7 索引，Schema 申报已获批准）
+    conn.execute_batch(CREATE_IMPORT_RUN)?;
     conn.execute_batch(CREATE_FINALIZATION_OUTBOX)?;
     // 批次 E：恢复候选 + 连续性投影代际 + 章节可恢复删除（3 张表，Schema 申报 v2.0 已批准）
     conn.execute_batch(CREATE_RECOVERY_CANDIDATES)?;
@@ -1070,5 +1255,201 @@ mod tests {
         assert_eq!(revision, 7);
         assert_eq!(state, "ready");
         assert_eq!(fact_hash, "");
+    }
+
+    #[test]
+    fn import_run_schema_creates_approved_tables_indexes_and_is_idempotent_test() {
+        let conn = memory_db();
+        // 幂等：重复建表不报错（read/commit 路径会反复调用）
+        create_tables(&conn).unwrap();
+
+        for table in [
+            "import_runs",
+            "import_run_chapters",
+            "import_run_sources",
+            "import_run_source_chapters",
+            "import_source_chapter_map",
+            "import_run_receipts",
+            "import_run_knowledge_receipts",
+            "import_reference_documents",
+            "import_source_aliases",
+        ] {
+            let exists: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                    [table],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(exists, 1, "缺表：{table}");
+        }
+
+        // 申报书明确**不建**的遗留桥接表
+        let legacy: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'import_legacy_identity_bridge'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(legacy, 0, "import_legacy_identity_bridge 已批准为不建");
+
+        for column in [
+            "effect_namespace",
+            "execution_epoch",
+            "lease_expires_at",
+            "manifest_word_count",
+            "base_run_id",
+            "completed_batches_json",
+            "cancel_requested",
+        ] {
+            assert!(
+                table_columns(&conn, "import_runs")
+                    .unwrap()
+                    .contains(column),
+                "import_runs 缺列：{column}"
+            );
+        }
+        for column in ["payload_hash", "effect_receipt_json", "state", "effect_key"] {
+            assert!(
+                table_columns(&conn, "import_run_receipts")
+                    .unwrap()
+                    .contains(column),
+                "import_run_receipts 缺列：{column}"
+            );
+        }
+        for column in [
+            "idempotency_key_hash",
+            "chunk_set_hash",
+            "expected_chunk_count",
+        ] {
+            assert!(
+                table_columns(&conn, "import_reference_documents")
+                    .unwrap()
+                    .contains(column),
+                "import_reference_documents 缺列：{column}"
+            );
+        }
+
+        for index in [
+            "idx_import_runs_source_status",
+            "idx_import_runs_resumable",
+            "idx_import_run_chapters_page",
+            "idx_import_run_source_chapters",
+            "idx_import_run_receipts_state",
+            "idx_import_run_knowledge_receipts_affiliation",
+            "idx_import_source_aliases_source",
+        ] {
+            let exists: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = ?1",
+                    [index],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(exists, 1, "缺索引：{index}");
+        }
+    }
+
+    #[test]
+    fn import_run_foreign_keys_cascade_test() {
+        let conn = memory_db();
+        create_tables(&conn).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+        conn.execute(
+            "INSERT INTO import_runs (id, root_run_id, effect_namespace, source_fingerprint,
+                manifest_fingerprint, locale, total_chapters, manifest_chapter_count)
+             VALUES ('run-1', 'run-1', 'ns', 'sf', 'mf', 'zh-CN', 1, 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO import_run_chapters (run_id, chapter_number, content_fingerprint,
+                content_size, content_snapshot)
+             VALUES ('run-1', 1, 'cf', 3, 'body')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO import_run_sources (run_id, source_index, source_id, source_fingerprint, display_json)
+             VALUES ('run-1', 0, 'src-1', 'sf', '{}')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO import_run_source_chapters (run_id, source_id, source_chapter_number,
+                title, content_fingerprint, content_size, word_count, content_snapshot)
+             VALUES ('run-1', 'src-1', 1, 't', 'cf', 3, 3, 'body')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO import_run_knowledge_receipts (run_id, chapter_number, purpose, source_id,
+                source_chapter_number, content_fingerprint, document_id, state)
+             VALUES ('run-1', 1, 'reference', 'src-1', 1, 'cf', 'doc-1', 'committed')",
+            [],
+        )
+        .unwrap();
+
+        // 删 run → 级联清除子表（含引引用 import_run_chapters 的 knowledge_receipts）
+        conn.execute("DELETE FROM import_runs WHERE id = 'run-1'", [])
+            .unwrap();
+        for table in [
+            "import_run_chapters",
+            "import_run_sources",
+            "import_run_source_chapters",
+            "import_run_knowledge_receipts",
+        ] {
+            let remaining: i64 = conn
+                .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| {
+                    row.get(0)
+                })
+                .unwrap();
+            assert_eq!(remaining, 0, "{table} 应随 run 级联删除");
+        }
+    }
+
+    #[test]
+    fn import_run_check_constraints_reject_invalid_values_test() {
+        let conn = memory_db();
+        create_tables(&conn).unwrap();
+        conn.execute_batch("PRAGMA foreign_keys = ON").unwrap();
+        // 非法 locale 被拒
+        assert!(conn
+            .execute(
+                "INSERT INTO import_runs (id, root_run_id, effect_namespace, source_fingerprint,
+                    manifest_fingerprint, locale, total_chapters, manifest_chapter_count)
+                 VALUES ('run-2', 'run-2', 'ns', 'sf', 'mf', 'ja-JP', 1, 1)",
+                [],
+            )
+            .is_err());
+
+        conn.execute(
+            "INSERT INTO import_runs (id, root_run_id, effect_namespace, source_fingerprint,
+                manifest_fingerprint, locale, total_chapters, manifest_chapter_count)
+             VALUES ('run-3', 'run-3', 'ns', 'sf', 'mf', 'zh-CN', 1, 1)",
+            [],
+        )
+        .unwrap();
+        // stage / status 取值域与 _purpose_ 保持一致
+        assert!(conn
+            .execute(
+                "UPDATE import_runs SET stage = 'nonsense' WHERE id = 'run-3'",
+                []
+            )
+            .is_err());
+        assert!(conn
+            .execute(
+                "UPDATE import_runs SET status = 'nonsense' WHERE id = 'run-3'",
+                []
+            )
+            .is_err());
+        assert!(conn
+            .execute(
+                "INSERT INTO import_source_chapter_map (purpose, source_id, source_chapter_number, chapter_number)
+                 VALUES ('other', 's', 1, 1)",
+                [],
+            )
+            .is_err());
     }
 }
