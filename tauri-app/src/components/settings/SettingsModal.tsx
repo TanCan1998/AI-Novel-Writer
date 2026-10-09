@@ -100,15 +100,49 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [open, onClose])
 
-  if (!open) return null
+  // 退场动画（fork 侧补，2026-10-10，B23）：本组件由 App 常驻挂载，原先 `open=false`
+  // 直接 `return null`，关闭“生硬”。此处沿用本仓库 `AlertDialog` / `Confirm` 的既有范式：
+  // 先置退场态播放 CSS 动画，200ms 后再真正卸载（`both` 填充避免闪烁）。
+  const [isExiting, setIsExiting] = useState(false)
+  const [rendered, setRendered] = useState(open)
+  const [lastOpen, setLastOpen] = useState(open)
+
+  // 用「渲染期同步」调整派生状态（React 官方推荐做法）：
+  // 若放在 effect 里同步 setState 会触发级联渲染（`react-hooks/set-state-in-effect`）。
+  if (lastOpen !== open) {
+    setLastOpen(open)
+    if (open) {
+      setRendered(true)
+      setIsExiting(false)
+    } else if (rendered) {
+      setIsExiting(true)
+    }
+  }
+
+  useEffect(() => {
+    if (!isExiting) return
+    const timer = window.setTimeout(() => {
+      setRendered(false)
+      setIsExiting(false)
+    }, 200)
+    return () => window.clearTimeout(timer)
+  }, [isExiting])
+
+  if (!rendered) return null
 
   return (
     <div
-      className="skin-solid-surface fixed inset-0 z-50 flex items-center justify-center"
-      style={{ backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+      className="skin-solid-surface lk-dialog-backdrop fixed inset-0 z-50 flex items-center justify-center"
+      data-state={isExiting ? 'closed' : 'open'}
+      style={{
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        backdropFilter: 'blur(4px)',
+        pointerEvents: isExiting ? 'none' : 'auto',
+      }}
     >
       <div
-        className="relative flex w-[880px] h-[600px] rounded-2xl overflow-hidden shadow-2xl"
+        className="lk-dialog-panel relative flex w-[880px] h-[600px] rounded-2xl overflow-hidden shadow-2xl"
+        data-state={isExiting ? 'closed' : 'open'}
         style={{
           backgroundColor: 'var(--color-editor-bg)',
           border: '1px solid var(--color-border)',

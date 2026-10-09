@@ -61,8 +61,7 @@ const DialogOverlay = React.forwardRef<
     ref={ref}
     className={cn(
       'fixed inset-0 z-50 bg-black/30 backdrop-blur-sm',
-      'data-[state=open]:animate-in data-[state=closed]:animate-out',
-      'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
+      'lk-dialog-backdrop',
       className
     )}
     style={{
@@ -119,18 +118,19 @@ const DialogContent = React.forwardRef<
   return (
   <DialogPortal>
     <DialogOverlay />
+    {/* 用 flex 居中包裹层取代 `left-1/2 top-1/2 -translate-x/y-1/2`：
+       面板自身不再携带定位 transform，才能安全套用与手写弹层完全相同的
+       `dialog-enter/dialog-exit` 关键帧（否则关键帧里的 transform 会抵消居中位移）。
+       包裹层 `pointer-events-none`，保留点击遮罩关闭；面板自身恢复可点击。 */}
+    <div className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center">
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-[50%] top-[50%] z-50 w-full max-w-lg translate-x-[-50%] translate-y-[-50%]',
+        'pointer-events-auto w-full max-w-lg',
         'rounded-2xl outline-none',
         'bg-[var(--color-bg)] border border-[var(--color-border)]',
         'shadow-2xl shadow-black/20',
-        'duration-300 ease-out data-[state=open]:animate-in data-[state=closed]:animate-out',
-        'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-        'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-        'data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[50%]',
-        'data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[50%]',
+        'lk-dialog-panel',
         className
       )}
       style={{
@@ -155,6 +155,7 @@ const DialogContent = React.forwardRef<
         <span className="sr-only">{text('关闭', 'Close')}</span>
       </DialogPrimitive.Close>
     </DialogPrimitive.Content>
+    </div>
   </DialogPortal>
   )
 })

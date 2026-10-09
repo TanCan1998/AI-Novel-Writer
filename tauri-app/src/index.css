@@ -276,10 +276,22 @@
     --shadow-popover: 0 16px 40px -8px rgba(43, 42, 38, 0.14), 0 4px 16px -4px rgba(43, 42, 38, 0.07);
     --shadow-tooltip: 0 4px 12px rgba(43, 42, 38, 0.16);
 
-    /* 过渡（加入顺滑阻尼） */
+    /* 过渡（加入顺滑阻尼）
+       ⚠️ 这些变量内含“时长”，只能用于 `transition:`/`animation` 的完整简写占位处，
+       不得当作“缓动函数”插到 `animation: x 0.2s var(--…)` 里 ——
+       那样 0.4s 会被解析成 animation-delay（曾导致弹窗动画凭空慢 0.4s）。 */
     --transition-fast: 0.12s cubic-bezier(0.16, 1, 0.3, 1);
     --transition-normal: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     --transition-spring: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+    /* ===== 弹窗进出场单源（唯一调参处；时长与缓动严格分开）=====
+       体感基准：进场 ≈170ms（可见但不拖），退场 ≈120ms（消失要快）。 */
+    --dialog-enter-duration: 170ms;
+    --dialog-exit-duration: 120ms;
+    --dialog-backdrop-enter-duration: 170ms;
+    --dialog-backdrop-exit-duration: 120ms;
+    --dialog-enter-ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --dialog-exit-ease: cubic-bezier(0.4, 0, 1, 1);
 
     /* 字体 */
     --font-sans: 'Noto Sans SC', system-ui, -apple-system, sans-serif;
@@ -1447,6 +1459,29 @@
 @keyframes backdrop-exit {
   0% { opacity: 1; backdrop-filter: blur(8px); }
   100% { opacity: 0; backdrop-filter: blur(0px); }
+}
+
+/* ===== 弹窗进出场统一入口（全应用唯一实现）=====
+   - Radix Dialog 自带上 `data-state="open|closed"`；手写弹层需显式传 `data-state`。
+   - 只动 opacity / transform（合成层），不触发重排。
+   - 新增弹窗一律用这两个 class，不要再写内联 animation。 */
+.lk-dialog-backdrop {
+  animation: backdrop-enter var(--dialog-backdrop-enter-duration) var(--dialog-enter-ease) both;
+}
+.lk-dialog-backdrop[data-state='closed'] {
+  animation: backdrop-exit var(--dialog-backdrop-exit-duration) var(--dialog-exit-ease) both;
+}
+.lk-dialog-panel {
+  animation: dialog-enter var(--dialog-enter-duration) var(--dialog-enter-ease) both;
+}
+.lk-dialog-panel[data-state='closed'] {
+  animation: dialog-exit var(--dialog-exit-duration) var(--dialog-exit-ease) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .lk-dialog-backdrop,
+  .lk-dialog-panel {
+    animation-duration: 1ms;
+  }
 }
 
 /* 骨架屏呼吸动画 */

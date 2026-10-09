@@ -66,8 +66,10 @@ function AlertDialog({
   }, [handleClose])
 
   return (
-    /* 遮罩 — 使用统一 CSS 变量和动画 */
+    /* 遮罩 — 统一进出场（单源 class） */
     <div
+      className="lk-dialog-backdrop"
+      data-state={isExiting ? 'closed' : 'open'}
       style={{
         position: 'fixed',
         inset: 0,
@@ -78,15 +80,13 @@ function AlertDialog({
         backgroundColor: 'var(--color-backdrop)',
         backdropFilter: 'blur(8px)',
         pointerEvents: 'auto',
-        /* 使用 both 填充模式，让 0% 关键帧在动画前就应用，杜绝闪烁 */
-        animation: isExiting
-          ? 'backdrop-exit 0.15s ease-out both'
-          : 'backdrop-enter 0.25s ease-out both',
       }}
       onClick={handleClose}
     >
       {/* 弹窗主体 */}
       <div
+        className="lk-dialog-panel"
+        data-state={isExiting ? 'closed' : 'open'}
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="alert-title"
@@ -100,10 +100,6 @@ function AlertDialog({
           minWidth: 360,
           maxWidth: 460,
           width: '90vw',
-          /* CSS 动画，使用 both 从而提前应用 0% 关键帧，彻底杜绝闪烁现象 */
-          animation: isExiting
-            ? 'dialog-exit 0.15s ease-out both'
-            : 'dialog-enter 0.3s var(--transition-spring) both',
         }}
         onClick={e => e.stopPropagation()}
       >

@@ -72,6 +72,8 @@ function ConfirmDialog({
   return (
     /* 遮罩层 — 统一 CSS 变量和动画 */
     <div
+      className="lk-dialog-backdrop"
+      data-state={isExiting ? 'closed' : 'open'}
       style={{
         position: 'fixed',
         inset: 0,
@@ -82,15 +84,13 @@ function ConfirmDialog({
         backgroundColor: 'var(--color-backdrop)',
         backdropFilter: 'blur(8px)',
         pointerEvents: 'auto',
-        /* 为遮罩层的进场同样加入 both 属性防闪烁 */
-        animation: isExiting
-          ? 'backdrop-exit 0.15s ease-out both'
-          : 'backdrop-enter 0.25s ease-out both',
       }}
       onClick={handleCancel}
     >
       {/* 弹窗主体 */}
       <div
+        className="lk-dialog-panel"
+        data-state={isExiting ? 'closed' : 'open'}
         role="dialog"
         aria-modal="true"
         style={{
@@ -101,10 +101,6 @@ function ConfirmDialog({
           padding: '20px 24px',
           minWidth: 320,
           maxWidth: 460,
-          /* CSS 动画，使用 both 从而提前应用 0% 关键帧，彻底杜绝闪烁现象 */
-          animation: isExiting
-            ? 'dialog-exit 0.15s ease-out both'
-            : 'dialog-enter 0.25s var(--transition-spring) both',
         }}
         onClick={e => e.stopPropagation()}
       >
