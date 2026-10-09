@@ -12,6 +12,8 @@ pub mod db;
 #[cfg(test)]
 mod disk_e2e;
 mod draft_source_guard;
+// 批次 E：定稿导入的字数契约（`src/shared/draft-units.ts` 的 Rust 单源，纯函数）。
+pub mod draft_units;
 mod json_store;
 // 批次 F1：剧情树快照的**结构校验**（`src/shared/plot-tree.ts` 的 Rust 单源，
 // 纯函数、不依赖数据库，故置于 crate 根而非 repositories）。
@@ -181,6 +183,8 @@ pub fn run() {
             commands::db_draft_authority_sequence,
             commands::db_draft_export_snapshot,
             commands::db_draft_export_authority_current,
+            // 批次 E：原稿导入幂等提交（draft 收尾最后一频道）
+            commands::db_draft_import_finalized_batch,
             // 批次 D1：LLM 模型管理（7 频道）
             commands::llm_list_models,
             commands::llm_save_model,

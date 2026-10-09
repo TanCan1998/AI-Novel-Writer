@@ -2711,6 +2711,44 @@ pub fn db_draft_export_authority_current(
         .with_project_db(|conn| Ok(finalization::matches_authoritative_export_receipt(conn, &receipt)))
 }
 
+/// `db:draft-import-finalized-batch` 的 IPC 信封（对齐基线 `{ success, receipt?, error? }`）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FinalizedDraftImportResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt: Option<draft_import::FinalizedDraftImportReceipt>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// `db:draft-import-finalized-batch` —— projectRoot 取自已校验路径（基线 currentProjectPath）
+#[tauri::command]
+pub fn db_draft_import_finalized_batch(
+    state: State<'_, AppState>,
+    request: draft_import::FinalizedDraftImportRequest,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> FinalizedDraftImportResult {
+    let outcome = guard_read(state.inner(), &expected_project_path, project_session.as_ref())
+        .and_then(|()| state.with_project_db(|conn| draft_import::commit(conn, &expected_project_path, &request)));
+    match outcome {
+        Ok(receipt) => FinalizedDraftImportResult {
+            success: true,
+            receipt: Some(receipt),
+            error: None,
+        },
+        Err(error) => {
+            eprintln!("[db:draft-import-finalized-batch] 失败: {error}");
+            FinalizedDraftImportResult {
+                success: false,
+                receipt: None,
+                error: Some(mutating_error(error)),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
