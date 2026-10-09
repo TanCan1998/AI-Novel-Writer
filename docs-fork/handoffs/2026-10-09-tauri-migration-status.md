@@ -11,7 +11,7 @@
 
 ---
 
-## 快照（最后更新：2026-10-09 · 第二十八次）
+## 快照（最后更新：2026-10-09 · 第二十九次）
 
 > 本表只填**最新一次自检的实测值**。改表前必须重跑对应命令，不得沿用旧数字、不得估算。
 > 本轮实测命令与输出见下方「[§5 自检记录](#5-自检记录2026-10-09-实测)」。
@@ -28,20 +28,66 @@
 | `cargo check --all-targets` | **0 告警** ✅ |
 | `pnpm typecheck` / `lint` | exit 0 / exit 0 ✅ |
 | 定向 `vitest` | **70/72**（2 个失败为阶段 0 起就失效的既有测试，见 10-08 快照 §6） |
-| 已完成批次 | A ✅ / B ✅（含遗留补齐） / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅（两部分全部完成）** / **F1 ✅** |
-| 当前阶段 | **批次 E 全部完成**（28 频道）。下一里程碑为 **F2**（已评估定案，待批准实施） |
-| 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（Cargo.lock 锁 **2.8.1**）。**E / F1 均未新增依赖**；`futures-util` / `tokio` 未引入。F2 预计新增 `jieba-rs 0.7` + HNSW 相关 crate（**开工前必须 `cargo tree` 实测**） |
+| 已完成批次 | A ✅ / B ✅（含遗留补齐） / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅（两部分全部完成）** / **F1 ✅** / **L3 ✅** |
+| 当前阶段 | **批次 F2 进行中**：向量层已落地（`4aff3f65`）；schema 申报书已获批（`docs-fork/research/2026-10-09-f2-kb-schema-proposal.md`），下一步 **F2-1**（`chunks` + `fts`）。**L3 已执行** |
+| 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（Cargo.lock 锁 **2.8.1**）。**F2 无新增依赖**：`hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio` 已在 `Cargo.toml`（`4aff3f65`）；**FTS5 由 `libsqlite3-sys` bundled 提供**（`-DSQLITE_ENABLE_FTS5` 实测） |
 | GUI 冒烟 | ✅ 自 2026-10-07 起 **七轮**（末轮 2026-10-08）。近三轮记录：F1 轮 `pnpm tauri dev` 编译 **35.19s** 功能正常；E 轮 `cargo test --lib` **418/418** 无 panic；dialog 轮 vite `453 ms` + cargo `24.91s`。渲染层 `ipc-client` 已联通。**⚠️ E 第二部分的 GUI 冒烟未做**（chapter-lifecycle 依赖含正文项目） |
-| 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；**L3（`.vela` 改名）押后** |
+| 双栈隔离 | **L0/L1/L2/L3 全部独立**：安装标识 / `~/.lorekeeper` / `<root>/.lore/`（库 `.lore/lorekeeper.db`、KB 向量 `.lore/kb/`）。基线为 `~/.vela` / `<root>/.vela/`。**两栈项目目录刻意不互通**（`ee40aaab`） |
 | Rust 工具链 | rustc/cargo **1.99.0 stable-msvc** @ `D:\Environment\rust\`（脚本内须显式设 `RUSTUP_HOME` / `CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
 
 <sub>*命令与频道差额：**133 命令**中 1 个为骨架（`dialog:select-export-directory`），不产生独立频道覆盖；其余 **132** 与 invoke 频道一一对应。</sub>
 
 ---
 
-## 本次更新（第二十八次：批次 E 第二部分完成 —— chapter-lifecycle 收口）
+## 本次更新（第二十九次：L3 项目目录改名 + F2 知识库 schema 申报）
 
-> **本文件同日含两份内容**：第二十八次（本正文）+ 第二十七次（批次 E 第一部分，见下方摘要）。
+> 承接第二十八次，同属 **2026-10-09**。本轮以 **L3 双栈隔离**为主，兼落 F2 首个交付物（schema 申报书）。
+> 实现细节见 `ee40aaab` 的 commit message；本批**无 Schema 变更**（F2 申报书尚未实施）。
+
+### 0. 决策（用户确认）
+
+- **L3 解锁**：原先因「两栈共享 `.vela` 项目目录」而押后；用户明确「两栈项目本就互不相通」，故 **Tauri 项目目录改用 `.lore`**，两栈项目目录**刻意不互通**。
+- **F2 schema 获批**：申报书四条 DDL 获批；向量快照目录定为 **`<project>/.lore/kb/`**（原提案 `.vela/lorekeeper-kb/` 被否决后随 L3 定名）。
+- **F2 本批范围**：先做 **F2-1**（`chunks` + `fts`）；`kb:import-reference-text` 依赖未迁移的 import-run 域 → 先注册但 **占位失败**（沿用批次 E 诚实化占位先例，待批次 G 收口）。
+
+### 1. L3 改名实现（commit `ee40aaab`，36 文件）
+
+| 层 | 文件 | 改动 |
+|---|---|---|
+| Rust | `db/mod.rs` | `PROJECT_DIR_NAME` `".vela"` → `".lore"` |
+| Rust | `project_access.rs` | `PROJECT_MANIFEST_DIR` → `.lore`；`DIR_PROMPTS_RELATIVE` → `.lore/prompts` |
+| Rust | `project_clear_repository.rs` | 回收站 `.vela/trash` → `.lore/trash` |
+| Rust | `disk_e2e.rs` | 断言与文档字符串 |
+| 前端 | `shared/project-paths.ts` | `DIR_VELA_INTERNAL` → **`DIR_LORE_INTERNAL`**（值 `'.lore'`）；`DIR_PROMPTS = '.lore/prompts'` |
+| 前端 | 其余 30 文件 | `prompt-catalog` / `agent/skill-registry` / `writing-skill-bindings` / `read-file.tool` / `architecture.command` / `WorldBuildingEditor` / `ChapterCreationDialog` / i18n 文案 + 相应用例 |
+
+**刻意保留（非项目目录，不得改）**：`vela://` 应用内伪协议、`window.velaAPI` 测试桥、`.vela-editor-content` CSS 类、`app_paths.rs` 中对基线的描述。
+
+### 2. F2 知识库 schema 申报（本轮未实施）
+
+`docs-fork/research/2026-10-09-f2-kb-schema-proposal.md`：四条 DDL（`kb_documents` / `kb_chunks` / `kb_embedding_spaces` / `kb_fts`）+ 向量快照目录 + 三增量切分（F2-1 chunks+fts / F2-2 hybrid / F2-3 命令层 17 频道）。**只申报，未写入 `db/schema.rs`。**
+
+### 3. 事实核实（本轮实测）
+
+- **F2 无需新增依赖**（见上表「依赖」行）。
+- **FTS5 可用**：`libsqlite3-sys` bundled 构建带 `-DSQLITE_ENABLE_FTS5`。
+- **基线无 SQLite kb 表**：知识库全在 LanceDB + `.vela/*.json`，故 Tauri 侧为**全新设计**（非列集对齐）。
+
+### 4. 验证与自检
+
+`cargo test --lib` **423/423**；`cargo check --all-targets` **0 告警**；`pnpm typecheck` / `lint` **exit 0 / exit 0**；`check:channels` 仍 **133 / 132 / 59**。
+**vitest 回归判定**：受影响的 9 个测试文件，失败数 HEAD 与改动后**完全一致（46 failed / 28 passed）** → **零回归**（详见 §5）。
+
+### 5. 遗留
+
+- 既有 vitest 失败根因：node 模式下 `@tauri-apps/api` 的 `invoke` 未被 mock（该批测试需浏览器 runner），**非本轮引入**。
+- `kb:import-reference-text` 待批次 G（import-run 域）；`chapter:*` 物理清理待批次 H + F2。
+
+---
+
+## 第二十八次（批次 E 第二部分完成 —— chapter-lifecycle 收口，同日）—— 正文
+
+> **本文件同日含三份内容**：第二十九次（L3 + F2 申报）+ 第二十八次（本正文）+ 第二十七次（批次 E 第一部分，见下方摘要）。
 > 实现细节见 `a554f76a` 的 commit message；状态机与基线逐字对齐，423 单测覆盖。
 > 承接第二十七次，两次更新同属 **2026-10-09** 一个工作日。
 
@@ -122,8 +168,8 @@ SQLite 事实删除**已真实提交**（`committed: true`）。
 
 ### 1. 当前工作区状态
 
-**`master` 上工作区干净**（`git status --porcelain` 无输出）；第二十七 / 二十八次改动**均已提交**，
-HEAD = `0c2dffc7`。第二十七次快照里「5 个已修改 + 4 个新增文件尚未提交」的描述**已过期**，勿再照它操作。
+**`master` 上工作区干净**（`git status --porcelain` 无输出）；第二十七 / 二十八 / 二十九次改动**均已提交**，
+HEAD = `ee40aaab`。第二十七次快照里「5 个已修改 + 4 个新增文件尚未提交」的描述**已过期**，勿再照它操作。
 
 > 历史备注：第二十七次的 5 个 commit message 里附带过「建议提交拆分（5 主题）」表；实际提交已按该表完成，**无需再拆**。
 
@@ -174,4 +220,5 @@ HEAD = `0c2dffc7`。第二十七次快照里「5 个已修改 + 4 个新增文�
 | `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 423 passed; 0 failed; 0 ignored` |
 | `cargo check --all-targets` | `tauri-app/src-tauri/` | `Finished dev profile ... in 4.21s`（0 告警） |
 | `git status --porcelain` | 仓库根 | 空（工作区干净） |
-| `git log -1` | 仓库根 | `0c2dffc7 docs(tauri): 补录 chapter-lifecycle Electron 基线行为对照结果（六项指标完全一致）` |
+| `git log -1` | 仓库根 | `ee40aaab feat(tauri): L3 项目目录改名 .vela → .lore（双栈项目目录分离）` |
+| 定向 `vitest` A/B | `tauri-app/` | 9 个受影响文件：HEAD **46 failed / 28 passed**，改动后 **46 failed / 28 passed**（零回归） |
