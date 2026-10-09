@@ -189,6 +189,10 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   // 因此 `projectSession` 由调用点显式作为第 2 个定位参数传入。
   'dialog:select-novel-files': ['request', 'projectSession'],
   'db:import-run-author-preview': ['inspectionId', 'expectedProjectPath'],
+  // 批次 G2a：导入运行读面（3 频道）
+  'db:import-run-get': ['runId', 'expectedProjectPath'],
+  'db:import-run-list-resumable': ['expectedProjectPath'],
+  'db:import-run-list-chapters': ['runId', 'afterChapterNumber', 'limit', 'expectedProjectPath'],
 
   // 批次 E 第二部分：章节生命周期（chapter-lifecycle，4 频道）
   'chapter:delete-finalized': ['request', 'expectedProjectPath'],

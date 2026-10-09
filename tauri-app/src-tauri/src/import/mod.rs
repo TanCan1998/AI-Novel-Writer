@@ -24,6 +24,7 @@
 //! | D6 | 对话框用 `tauri-plugin-dialog`（`pick_files` + 筛选器 + 多选） | 与 `dialog:select-knowledge-files` 同路径 |
 //! | D7 | （本批新增）来源文件按 **数字感知自然序** 排序，逼近但不等价于 `localeCompare(…, 'zh-CN', {numeric:true})` | 完整 zh-CN 拼音排序需 ICU 类新依赖（Ask first）；章号最终由正文/文件名解析决定，排序只影响来源处理顺序 |
 
+pub mod batch_checkpoint;
 pub mod inspection_store;
 pub mod limits;
 pub mod parsing;
@@ -47,6 +48,15 @@ impl ImportPurpose {
             Self::AuthorManuscript => "author-manuscript",
         }
     }
+
+    /// 从持久化 / 契约字符串还原（非法值返回与基线同义的错误）
+    pub fn parse_contract(value: &str) -> Result<Self, String> {
+        match value {
+            "reference" => Ok(Self::Reference),
+            "author-manuscript" => Ok(Self::AuthorManuscript),
+            _ => Err("导入用途无效".to_string()),
+        }
+    }
 }
 
 /// 导入文案语言 —— 对齐 `ImportRunLocale`。
@@ -64,6 +74,15 @@ impl ImportRunLocale {
         match self {
             Self::ZhCn => "zh-CN",
             Self::EnUs => "en-US",
+        }
+    }
+
+    /// 从持久化 / 契约字符串还原（非法值返回与基线同义的错误）
+    pub fn parse_contract(value: &str) -> Result<Self, String> {
+        match value {
+            "zh-CN" => Ok(Self::ZhCn),
+            "en-US" => Ok(Self::EnUs),
+            _ => Err("导入运行语言无效".to_string()),
         }
     }
 }

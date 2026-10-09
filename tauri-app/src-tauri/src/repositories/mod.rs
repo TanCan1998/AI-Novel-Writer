@@ -12,6 +12,8 @@ pub mod draft_repository;
 pub mod finalization_repository;
 pub mod finalized_continuity_repository;
 pub mod finalized_draft_import_repository;
+// 批次 G2a：导入运行台账（读面：快照投影 + get / list-resumable / list-chapters）
+pub mod import_run_repository;
 pub mod llm_repository;
 pub mod narrative_thread_repository;
 pub mod plot_tree_repository;

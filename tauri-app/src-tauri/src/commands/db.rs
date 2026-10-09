@@ -22,6 +22,7 @@ use crate::repositories::draft_repository as drafts;
 use crate::repositories::finalization_repository as finalization;
 use crate::repositories::finalized_continuity_repository as continuity;
 use crate::repositories::finalized_draft_import_repository as draft_import;
+use crate::repositories::import_run_repository as import_runs;
 use crate::repositories::llm_repository as llm;
 use crate::repositories::narrative_thread_repository as threads;
 use crate::repositories::plot_tree_repository as plot_tree;
@@ -2844,6 +2845,95 @@ pub fn db_import_run_author_preview(
     import_run_author_preview_inner(
         state.inner(),
         &inspection_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// 批次 G2a：`db:import-run-get` —— 运行快照（读频道：失败 reject）
+pub(crate) fn import_run_get_inner(
+    state: &AppState,
+    run_id: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Option<import_runs::ImportRunSnapshot>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| import_runs::get(conn, run_id))
+}
+
+/// `db:import-run-get`
+#[tauri::command]
+pub fn db_import_run_get(
+    state: State<'_, AppState>,
+    run_id: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Option<import_runs::ImportRunSnapshot>, String> {
+    import_run_get_inner(
+        state.inner(),
+        &run_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// 批次 G2a：`db:import-run-list-resumable`
+pub(crate) fn import_run_list_resumable_inner(
+    state: &AppState,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Vec<import_runs::ImportRunSnapshot>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| import_runs::list_resumable(conn))
+}
+
+/// `db:import-run-list-resumable`
+#[tauri::command]
+pub fn db_import_run_list_resumable(
+    state: State<'_, AppState>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<import_runs::ImportRunSnapshot>, String> {
+    import_run_list_resumable_inner(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// 批次 G2a：`db:import-run-list-chapters`（`limit` 向下取整后夹到 1..=100）
+pub(crate) fn import_run_list_chapters_inner(
+    state: &AppState,
+    run_id: &str,
+    after_chapter_number: f64,
+    limit: f64,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Vec<import_runs::ImportRunChapterSnapshot>, String> {
+    guard_read(state, expected_project_path, session)?;
+    if !after_chapter_number.is_finite() || !limit.is_finite() {
+        return Err("导入章节分页参数无效".to_string());
+    }
+    let after = after_chapter_number.floor() as i64;
+    let limit = limit.floor() as i64;
+    state.with_project_db(|conn| import_runs::list_chapter_batch(conn, run_id, after, limit))
+}
+
+/// `db:import-run-list-chapters`
+#[tauri::command]
+pub fn db_import_run_list_chapters(
+    state: State<'_, AppState>,
+    run_id: String,
+    after_chapter_number: f64,
+    limit: f64,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<import_runs::ImportRunChapterSnapshot>, String> {
+    import_run_list_chapters_inner(
+        state.inner(),
+        &run_id,
+        after_chapter_number,
+        limit,
         &expected_project_path,
         project_session.as_ref(),
     )

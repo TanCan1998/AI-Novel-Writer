@@ -266,6 +266,10 @@ pub fn run() {
             // 批次 G1：作者原稿导入（dialog:select-novel-files + db:import-run-author-preview）
             commands::dialog_select_novel_files,
             commands::db_import_run_author_preview,
+            // 批次 G2a：导入运行读面（3 频道）
+            commands::db_import_run_get,
+            commands::db_import_run_list_resumable,
+            commands::db_import_run_list_chapters,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

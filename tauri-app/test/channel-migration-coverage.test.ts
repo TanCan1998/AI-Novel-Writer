@@ -135,9 +135,13 @@ describe('channel migration coverage', () => {
     // 批次 G1：作者原稿导入已迁移
     expect(MIGRATED_CHANNELS.has('dialog:select-novel-files')).toBe(true)
     expect(MIGRATED_CHANNELS.has('db:import-run-author-preview')).toBe(true)
-    // 仍未迁移（G2/G3：导入运行状态机与批次推进）
+    // 批次 G2a：导入运行读面已迁移
+    expect(MIGRATED_CHANNELS.has('db:import-run-get')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('db:import-run-list-resumable')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('db:import-run-list-chapters')).toBe(true)
+    // 仍未迁移（G2b/G3：导入运行写面与批次推进）
     expect(MIGRATED_CHANNELS.has('db:import-run-prepare-inspection')).toBe(false)
-    expect(MIGRATED_CHANNELS.has('db:import-run-get')).toBe(false)
+    expect(MIGRATED_CHANNELS.has('db:import-run-finalize-parsing')).toBe(false)
     // 已迁频道不受影响
     expect(MIGRATED_CHANNELS.has('config:get')).toBe(true)
     expect(MIGRATED_CHANNELS.has('llm:list-models')).toBe(true)
