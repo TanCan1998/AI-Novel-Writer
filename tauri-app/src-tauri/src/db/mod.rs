@@ -3,6 +3,7 @@
 //! 一个进程同一时刻只持有一个项目库连接（与 Electron 基线一致），
 //! 库文件位于 `<projectRoot>/.lore/lorekeeper.db`，采用 WAL + 外键约束。
 
+pub mod kb;
 pub mod schema;
 pub mod vector;
 

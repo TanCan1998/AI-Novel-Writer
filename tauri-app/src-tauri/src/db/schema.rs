@@ -514,6 +514,71 @@ CREATE INDEX IF NOT EXISTS idx_chapter_deletion_status
   ON chapter_deletion_operations(status);
 "#;
 
+/// 批次 F2：知识库文档（聚合 `kb_chunks` 的文档元信息，对齐基线 `DocumentInfo`）。
+///
+/// 申报：`docs-fork/research/2026-10-09-f2-kb-schema-proposal.md`（Ask first 已批准 2026-10-09）。
+pub const CREATE_KB_DOCUMENTS: &str = r#"
+CREATE TABLE IF NOT EXISTS kb_documents (
+  id           TEXT PRIMARY KEY,
+  file_name    TEXT NOT NULL,
+  file_path    TEXT NOT NULL DEFAULT '',
+  corpus_kind  TEXT NOT NULL DEFAULT 'unknown',
+  imported_at  TEXT NOT NULL,
+  chunk_count  INTEGER NOT NULL DEFAULT 0,
+  content_hash TEXT NOT NULL DEFAULT ''
+);
+"#;
+
+/// 批次 F2：知识库文本块（列语义对齐基线 `ChunkRecord`）。
+///
+/// 向量**不入库**：由 `db::vector::LocalVectorIndex` 持有，`kb_chunks.id` 即其 `doc_id`。
+/// 索引于 L3 后位于 `<project>/.lore/kb/`。
+pub const CREATE_KB_CHUNKS: &str = r#"
+CREATE TABLE IF NOT EXISTS kb_chunks (
+  id             TEXT PRIMARY KEY,
+  doc_id         TEXT NOT NULL,
+  file_name      TEXT NOT NULL,
+  chapter_number INTEGER,
+  chapter_title  TEXT,
+  text           TEXT NOT NULL,
+  chunk_index    INTEGER NOT NULL,
+  total_chunks   INTEGER NOT NULL,
+  imported_at    TEXT NOT NULL,
+  corpus_kind    TEXT NOT NULL DEFAULT 'unknown',
+  FOREIGN KEY (doc_id) REFERENCES kb_documents(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_kb_chunks_doc ON kb_chunks(doc_id);
+CREATE INDEX IF NOT EXISTS idx_kb_chunks_scope ON kb_chunks(corpus_kind, chapter_number);
+"#;
+
+/// 批次 F2：嵌入空间注册表（对齐基线 embedding-spaces 的 active/building/inactive 代际模型）。
+pub const CREATE_KB_EMBEDDING_SPACES: &str = r#"
+CREATE TABLE IF NOT EXISTS kb_embedding_spaces (
+  generation        INTEGER PRIMARY KEY,
+  dimension         INTEGER NOT NULL,
+  model_fingerprint TEXT NOT NULL DEFAULT '',
+  distance_metric   TEXT NOT NULL DEFAULT 'cosine',
+  status            TEXT NOT NULL DEFAULT 'building'
+                    CHECK (status IN ('active','building','inactive')),
+  created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+"#;
+
+/// 批次 F2：FTS5 预分词虚拟表。
+///
+/// `unicode61`（非 `porter`）：token 已由 `jieba` 预切分并以空格连接，只需按空白切词；
+/// `porter` 是英文词干器，会改写 ASCII token 语义。方案 B 决策文档 §8.5 的草案笔误已在此修正。
+pub const CREATE_KB_FTS: &str = r#"
+CREATE VIRTUAL TABLE IF NOT EXISTS kb_fts USING fts5(
+  chunk_id    UNINDEXED,
+  doc_id      UNINDEXED,
+  file_name   UNINDEXED,
+  corpus_kind UNINDEXED,
+  tokens,
+  tokenize = 'unicode61'
+);
+"#;
+
 /// 建表入口（幂等）：所有分批 DDL 在此汇总执行后再跑迁移
 pub fn create_tables(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(CREATE_PROJECT_CORE)?;
@@ -536,6 +601,11 @@ pub fn create_tables(conn: &Connection) -> SqlResult<()> {
     // 批次 F1：叙事线索 + 一致性豁免（3 张表）
     conn.execute_batch(CREATE_NARRATIVE_THREADS)?;
     conn.execute_batch(CREATE_CONSISTENCY_EXEMPTIONS)?;
+    // 批次 F2：知识库（3 张普通表 + 1 张 FTS5 虚拟表，Schema 申报已批准 2026-10-09）
+    conn.execute_batch(CREATE_KB_DOCUMENTS)?;
+    conn.execute_batch(CREATE_KB_CHUNKS)?;
+    conn.execute_batch(CREATE_KB_EMBEDDING_SPACES)?;
+    conn.execute_batch(CREATE_KB_FTS)?;
     migrate_project_core_legacy_columns(conn)?;
     migrate_character_roster_schema(conn)?;
     Ok(())
