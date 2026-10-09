@@ -1,324 +1,177 @@
 # Tauri 迁移进度快照（2026-10-09）
 
 > **用途**：AI/开发者接续 Tauri 迁移工作的入口文档（日期化交接快照）。
-> **命名规则**：文件按日期命名 `YYYY-MM-DD-tauri-migration-status.md`，
-> **一个工作日一个新文件**；当日新增内容只写入当日文件，跨日不回填旧文件
-> （规则见 [`docs/agents/pi-development.md`](../agents/pi-development.md) §9）。
-> 上一份快照（2026-10-08 冻结）：[`2026-10-08-tauri-migration-status.md`](./2026-10-08-tauri-migration-status.md)；
-> channel 级盘点见 [`docs/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md）。
+> **规则**：按日期命名，一个工作日一个新文件；当日新增只写当日文件，跨日不回填旧文件；
+> 旧文件冻结后不允许修改（见 [`docs/agents/pi-development.md`](../agents/pi-development.md) §9）。
+> **模板**：[`_TEMPLATE-tauri-migration-status.md`](./_TEMPLATE-tauri-migration-status.md)。
+>
+> 全部历史快照见 `docs/handoffs/` 目录（按日期命名）。
+>
+> - channel 级盘点：[`docs/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md)。
 
-## 快照（最后更新：2026-10-09 · 第二十十七次）
+---
+
+## 快照（最后更新：2026-10-09 · 第二十八次）
+
+> 本表只填**最新一次自检的实测值**。改表前必须重跑对应命令，不得沿用旧数字、不得估算。
+> 本轮实测命令与输出见下方「[§5 自检记录](#5-自检记录2026-10-09-实测)」。
+
 | 项 | 值 |
 |---|---|
-| 仓库 | **`TanCan1998/Lorekeeper`**（原名 `AI-Novel-Writer`；仍为 `EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork） |
-| 分支 | `master` |
-| 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm 包 `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 当前阶段 | **批次 C 数据库层子域全部完成 ✅** + **D1 ✅** + **D2-a ✅** + **D2-b ✅** + **D2-c ✅（`llm:*` 收口）** + **批次 B 遗留补齐 ✅（`dialog:select-folder` 真实化，人工点验通过）** + **批次 F1 ✅（一致性豁免 / 叙事线索 / 剧情树 3 子域 12 频道，GUI 验证通过）** + **批次 E（第一部分）✅（Schema 层 + Recovery-Candidate / Continuity / Finalization-Link / Draft 权威序列 / 原稿导入幂等提交，共 24 个命令，418 个测试通过）**。**`llm:` 前缀下 14 个 invoke 频道已全部迁移**。**批次 F 已按用户决策拆分**：F1 = 12 个纯 SQLite 频道（本轮完成，**零新依赖**）；F2（`kb:*` 15 + dialog 2）走 **FTS5 + jieba + HNSW + RRF 自研混合检索** 方案（用户决策，**开工前先做专项评估**）。依赖：`reqwest 0.13`（`default-features = false` + `native-tls` + `socks`）+ **`tauri-plugin-dialog 2`（Cargo.lock 锁 2.8.1）**；**`futures-util` / `tokio` 未引入**；**F1 本轮未新增任何依赖**；F2 预计新增 `jieba-rs 0.7` + HNSW 相关 crate（**开工前必须 `cargo tree` 实测**） |
-| 已注册命令 | **129**（A 11 + B 22 + C 子域 56 + D1 7 + D2-a 2 + D2-b 3 + D2-c 2 + **F1 12** + **E 24** + **剩余骨架 1**）—— 骨架项为 `dialog:select-export-directory`（阻塞于批次 H 的 grant 域） |
-| GUI 冒烟 | ✅ **已做**（2026-10-07 起 **七轮**，末轮 2026-10-08 `pnpm tauri dev`）：窗口标题 `Lorekeeper`、vite@5190、cargo 390/390、`lorekeeper.exe` **内存 42.6 MB**（首轮）/ **30.1 MB**（D1 轮）/ D2-a 轮 vite `482 ms` / D2-b 轮 vite `468 ms` + cargo `24.99s` / D2-c 轮 `Running target\debug\lorekeeper.exe` + 内存 44.1 MB / **dialog 轮 vite `453 ms` + cargo `24.91s` + `Running target\debug\lorekeeper.exe`**；**F1 轮** `pnpm tauri dev` 编译 35.19s，功能正常；**E 轮** `cargo test --lib` 418/418，均无 panic、渲染层 `ipc-client` 已联通 |
-| F1 GUI 人工验证 | ✅ **通过**（2026-10-08）：叙事线索面板增删改查正常；事件确认（正常场景）正常；剧情树面板依赖未迁移前置功能属预期，不阻塞 F1。⚠️「证据不在正文中」反例因无正文数据暂无法验证 |
-| dialog 人工点验 | ✅ **通过**（2026-10-08）：系统原生对话框正常弹出、不被无边框主窗口遮挡、路径回填正确、取消静默 |
-| 自动化回归 | `cargo test --lib` **418/418**（310 → **+108**：F1 三子域仓储 / 剧情树校验 / 命令层跨层测试 / **E 四子域仓储 + 命令守卫测试**）；`pnpm run check:channels` 校验契约↔命令映射（**129 命令覆盖 128 频道**，未迁移 63：`chapter:confirm-legacy-knowledge-absent` / `update:quit-and-install`，`db=19 kb=15 mcp=9 update=6 chapter=4 skills=4 dialog=3 prompt=3`，orphan 空）；`vitest` 频道覆盖 / 剧情树 / 一致性预检 / 叙事线索用例 **70/72 通过**（2 个失败为**阶段 0 起就失效的既有测试**，见 `2026-10-08-tauri-migration-status.md` §6） |
-| 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；L3（`.vela` 改名）押后。D1 起 `~/.lorekeeper/{config.json,models.json,recent-projects.json}` 为**真实持久化**（此前 config 仅内存态）。F1 新增能力**均在 Rust 侧**，未触碰基线数据根。**⚠️ F2 新增隔离红线**：基线 LanceDB 落在共享的 `<project>/.vela/lancedb/`、`.vela/<registry>.json`、`.vela/vectors.json`；Tauri 侧向量存储路径**必须 Tauri 专属**，不得复用（见第二十六次 §2） |
-| Rust 工具链 | rustc/cargo 1.99.0 stable-msvc @ `D:\Environment\rust\`（脚本内显式设 `RUSTUP_HOME`/`CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
-| 验证状态 | ✅ `cargo check --all-targets` **0 告警** · ✅ `cargo test --lib` **418/418** · ✅ `pnpm typecheck` exit 0 · ✅ `pnpm run lint` exit 0（`--max-warnings 0`） · ✅ `check:channels` **129 命令 / 128 频道 / 63 未迁移 / orphan 空** · ✅ 启动路径冒烟（第八轮：无 `Command ... not found` / 无 panic） · ✅ **弹窗交互人工点验通过** · ✅ **F1 GUI 验证通过** · ✅ **E 第一部分完成，418 测试通过** · ✅ 提交消息卫生检查（`scripts/check-commit-msg.mjs` + 单测 15 例 + `commit-message-ci.yml`） · ⚠️ **E 未做 Electron ↔ Tauri 行为对照** · ⚠️ **E 第一部分「证据不在正文中」反例未验证**（无正文数据） |
-| F2 决策 | ✅ **已完成**（2026-10-08 评估）：采用 **方案 B：自研混合检索（FTS5 + jieba-rs + HNSW + RRF 融合）**。**否决** `lancedb` Rust crate（+1680 依赖、需 protoc/ninja/nasm、与减内存目标冲突）与 `cairn-search`（非通用库）。**FTS5 `unicode61` 中文召回率实测 0%**，必须预分词；`VecStore` 无 BM25 / 文本搜索 API，不满足降级需求。交付 15 份文档（145 KB）。**待用户批准实施** |
+| 仓库 / 分支 | **`TanCan1998/Lorekeeper`**（`EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork）· `master` |
+| 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
+| 已注册命令 | **133** |
+| 覆盖 invoke 频道 | **132**（契约总数 191，事件频道 4） |
+| 未迁移 invoke 频道 | **59**（`db=19 kb=15 mcp=9 update=6 skills=4 dialog=3 prompt=3`） |
+| orphan | **空** ✅ |
+| `cargo test --lib` | **423/423** ✅ |
+| `cargo check --all-targets` | **0 告警** ✅ |
+| `pnpm typecheck` / `lint` | exit 0 / exit 0 ✅ |
+| 定向 `vitest` | **70/72**（2 个失败为阶段 0 起就失效的既有测试，见 10-08 快照 §6） |
+| 已完成批次 | A ✅ / B ✅（含遗留补齐） / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅（两部分全部完成）** / **F1 ✅** |
+| 当前阶段 | **批次 E 全部完成**（28 频道）。下一里程碑为 **F2**（已评估定案，待批准实施） |
+| 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（Cargo.lock 锁 **2.8.1**）。**E / F1 均未新增依赖**；`futures-util` / `tokio` 未引入。F2 预计新增 `jieba-rs 0.7` + HNSW 相关 crate（**开工前必须 `cargo tree` 实测**） |
+| GUI 冒烟 | ✅ 自 2026-10-07 起 **七轮**（末轮 2026-10-08）。近三轮记录：F1 轮 `pnpm tauri dev` 编译 **35.19s** 功能正常；E 轮 `cargo test --lib` **418/418** 无 panic；dialog 轮 vite `453 ms` + cargo `24.91s`。渲染层 `ipc-client` 已联通。**⚠️ E 第二部分的 GUI 冒烟未做**（chapter-lifecycle 依赖含正文项目） |
+| 双栈隔离 | L0 安装标识 / L1 `~/.lorekeeper` / L2 `<root>/.vela/lorekeeper.db` 均独立；**L3（`.vela` 改名）押后** |
+| Rust 工具链 | rustc/cargo **1.99.0 stable-msvc** @ `D:\Environment\rust\`（脚本内须显式设 `RUSTUP_HOME` / `CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
+
+<sub>*命令与频道差额：**133 命令**中 1 个为骨架（`dialog:select-export-directory`），不产生独立频道覆盖；其余 **132** 与 invoke 频道一一对应。</sub>
 
 ---
 
 ## 本次更新（第二十八次：批次 E 第二部分完成 —— chapter-lifecycle 收口）
 
-### 0. 范围
-- 实现 `chapter-lifecycle-controller.ts` 的 4 个频道（真实名：`chapter:delete-finalized` / `chapter:retry-deletion` / `chapter:confirm-legacy-knowledge-absent` / `chapter:list-incomplete-deletions`，请求即执行 + 断点恢复状态机）。
-- `finalization:commit` / `finalization:retry` 契约补齐**未做**（G1，属定稿不可逆核心，Ask first 待批）。
+> **本文件同日含两份内容**：第二十八次（本正文）+ 第二十七次（批次 E 第一部分，见下方摘要）。
+> 实现细节见 `a554f76a` 的 commit message；状态机与基线逐字对齐，423 单测覆盖。
+> 承接第二十七次，两次更新同属 **2026-10-09** 一个工作日。
 
-### 1. 仓储：`chapter_deletion_repository.rs`
+### 1. 新增（本轮）
 
-平移基线 `electron/repositories/chapter-deletion-repository.ts`：
-
-- `begin`（幂等冻结：同 draft 返回已冻结收据；章号不匹配拒绝；无 legacy 授权时同事务 `delete_chapter_facts` = 失效水位推进 + 删 runs/drafts/contents）
-- `confirm_legacy_knowledge_absent`（一次性授权：`required → consumed`，确认前校验定稿收据身份 + 后处理 run 快照未漂移）
-- `get` / `get_by_draft_id` / `list_incomplete` / `start_attempt` / `mark_projection` + `refresh_aggregate_status`
-- 事务用 `conn.unchecked_transaction()`（state 连接为 `&Connection`，规避 rusqlite `&mut` 可重入限制）
-
-### 2. 命令：`commands/chapter_lifecycle.rs`（4 命令）
+`repositories/chapter_deletion_repository.rs`（平移基线 `electron/repositories/chapter-deletion-repository.ts`）+
+`commands/chapter_lifecycle.rs` —— **4 频道**（真实名以 inventory §4.13 / controller 为准）。
+Schema 复用第二十七次落地的 `chapter_deletion_operations` 表，**本轮无 Schema 变更**。
 
 | 命令 | 频道 | 说明 |
 |---|---|---|
 | `chapter_delete_finalized` | `chapter:delete-finalized` | 幂等 delete + resume |
-| `chapter_retry_deletion` | `chapter:retry-deletion` | 未找到/授权必需分支逐字对齐 |
-| `chapter_confirm_legacy_knowledge_absent` | `chapter:confirm-legacy-knowledge-absent` | 一次性确认后 resume |
+| `chapter_retry_deletion` | `chapter:retry-deletion` | 未找到 / 授权必需分支逐字对齐 |
+| `chapter_confirm_legacy_knowledge_absent` | `chapter:confirm-legacy-knowledge-absent` | 一次性授权 `required → consumed` 后 resume |
 | `chapter_list_incomplete_deletions` | `chapter:list-incomplete-deletions` | 读信封 |
 
-**诚实化占位**（仿 `dialog:select-export-directory` 先例）：`resume` 的两个物理清理投影
-（删实体稿文件 → 批次 H fs 授权域；删知识库文档 → 批次 F2 kb）当前一律显式 `failed`
-（附可读原因），状态机流转与基线逐字对齐；SQLite 事实删除已真实提交（`committed: true`）。
-批次 H / F2 落地后把 `manuscript_cleanup_unavailable` / `knowledge_cleanup_unavailable`
-替换为真实 cleaner 即恢复完整断点恢复。
+**⚠️ 诚实化占位（仿 `dialog:select-export-directory` 先例，非完成态）**：
+`resume` 的两个**物理清理投影**当前一律显式返回 `failed`（附可读原因），状态机流转与基线逐字对齐；
+SQLite 事实删除**已真实提交**（`committed: true`）。
 
-### 3. 前端登记补齐
+| 投影 | 阻塞于 | 占位错误码 |
+|---|---|---|
+| 删实体稿文件 | 批次 H（fs 授权域） | `manuscript_cleanup_unavailable` |
+| 删知识库文档 | 批次 F2（kb 能力） | `knowledge_cleanup_unavailable` |
 
-- `ipc-client.ts`：+4 条 chapter 频道 + **补登记 E 第一部分 13 条**（recovery / continuity / finalization-link / draft 导出与导入——上次快照称已登记但实际缺失，由 `channel-migration-coverage` 测试暴露）。
-- `migrated-channels.ts` 重新生成（132 频道）。
+批次 H / F2 落地后替换为真实 cleaner 即恢复完整断点恢复。**在此之前该 4 频道的 delete 操作不会真正清理磁盘稿件与 KB 文档。**
 
-### 4. 验证
+### 2. 前端登记补齐
 
-| 检查 | 结果 |
+`ipc-client.ts` +4 条 chapter 频道、并**补登记第二十七次的 13 条**（recovery / continuity / finalization-link / draft 导出与导入 —— 第二十七次快照曾称已登记但实际缺失，由 `channel-migration-coverage` 测试暴露）；`migrated-channels.ts` 重新生成（**生成物**，须随 `lib.rs` 同提交）；`channel-migration-coverage.test.ts` +E 频道断言。
+
+### 3. 行为对照（Electron ↔ Tauri，2026-10-09 补验）
+
+素材为用户真实项目「武林秘事」**副本**（73 定稿章节 + 73 outbox + 73 后处理 run + 1 continuity meta，已删），**原项目零改动**；两侧对副本执行同一操作（删除第 10 章定稿，`draft_id=10`，带 `knowledge_document_id`），Electron 走 `initProjectDatabase` + `ChapterDeletionRepository.begin`、Tauri 走 ignored 测试直连 `&Connection`（临时脚本均已清理）。
+结果 **六项指标完全一致**（`status` / `manuscript_status` / `knowledge_status` / `legacy_knowledge_authorization` / `drafts·contents·runs` = `73/74/72` / `continuity` = `10/1`），**仓储层行为与基线逐字节一致，无差异需修复**。
+边界：对照**只在仓储层**（命令层为薄壳，状态机已由 423 单测覆盖）；副本 `lorekeeper.db` 为旧 schema，测试前用 `db::schema::create_tables` 幂等补齐。
+
+### 4. 提交清单（第二十八次，均已提交）
+
+| Commit | 类型: 主题词 |
 |---|---|
-| `cargo check --all-targets` | ✅ 0 告警 |
-| `cargo test --lib` | ✅ **423/423**（420 → +5：仓储 3 + 命令 2） |
-| `pnpm typecheck` | ✅ exit 0 |
-| `pnpm run lint` | ✅ exit 0 |
-| `check:channels` | ✅ 133 命令 / 132 频道 / 未迁移 59（`chapter=0`）/ orphan 空 |
-| 定向 `vitest`（channel-migration-coverage） | ✅ 6/6 |
-| GUI 冒烟 / 行为对照 | ⚠️ 未做（chapter-lifecycle 依赖含正文项目） |
+| `a554f76a` | `feat`: 批次 E 章节生命周期子域 |
+| `23aaa700` | `fix`: 补登记批次 E 频道参数名 |
+| `17ab44ce` | `docs`: 第二十八次快照与指标勘误 |
+| `c3378723` | `docs`: 快照勘误与 inventory 更新 |
+| `0c2dffc7` | `docs`: 补录基线行为对照结果 |
 
-### 5. 交接（从这里接）
-
-1. **提交本轮改动**（见下）。
-2. **`finalization:commit` / `finalization:retry`（G1 补契约）**：属定稿不可逆核心（Ask first），需用户批准后平移 `electron/services/finalization-service.ts`。
-3. **批次 F2**（方案 B 已评估，待批准实施）：`kb:*` 15 频道 + dialog 2，FTS5 + jieba + HNSW + RRF；落地后把 `knowledge_cleanup_unavailable` 占位替换为真实 `removeDocument`。
-4. 历史指标修正：第二十七次快照的「共 129 命令」按本轮盘点修正为 **133 命令 / 132 invoke 频道 / 未迁移 59**。
+第二十七次的 5 个提交见下方 §2。
 
 ---
 
-### 6. 行为对照（Electron ↔ Tauri，2026-10-09 补验）
+## 第二十七次（批次 E 第一部分，同日）—— 摘要
 
-- 素材：用户真实项目「武林秘事」副本（73 定稿章节 + 73 outbox + 73 后处理 run + 1 continuity meta），复制两份到临时目录，原项目零改动（验证后已删除副本）。
-- 方法：两侧各自对副本库执行同一操作 —— Electron 用 `initProjectDatabase` + `ChapterDeletionRepository.begin`（临时 vitest 脚本，已清理）；Tauri 用 ignored 测试直连 `&Connection`（已清理）。操作：删除第 10 章定稿（draft_id=10，带 knowledge_document_id）。
+> 详细正文已精简；完整明细见提交 `abfa1698` / `f5fde636` / `00bba449` / `634182d3` / `e59e4fb0` 的 commit message。
+> 逐条测试覆盖、基线对照细节见各 commit message 与 [`docs/research/`](../research/) 及 [`docs/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md) §4.13。
 
-| 指标 | Electron | Tauri | 一致 |
+**范围**：批次 E 共 **28 个 invoke 频道**，本轮完成前 **24 个**（Schema 层 + 4 子域）。
+
+| 分组 | 频道数 | 基线位置 | 本轮 |
 |---|---|---|---|
-| status | pending | pending | ✅ |
-| manuscript_status / error | pending / "" | pending / "" | ✅ |
-| knowledge_status / error | pending / "" | pending / "" | ✅ |
-| legacy_knowledge_authorization | not_required | not_required | ✅ |
-| drafts / contents / runs 计数 | 73 / 74 / 72 | 73 / 74 / 72 | ✅ |
-| continuity（staleFrom / generation） | 10 / 1 | 10 / 1 | ✅ |
+| continuity | 4 | `finalization-controller.ts` | ✅ |
+| recovery-candidate | 4 | `finalization-controller.ts` | ✅ |
+| finalization-link | 1 | `finalization-controller.ts` | ✅ |
+| draft-import | 1 | `draft-controller.ts` | ✅ |
+| draft 权威序列 / 快照 | 3 | `finalization-controller.ts` | ✅ |
+| chapter-lifecycle | 4 | `chapter-lifecycle-controller.ts` | ⏭ 第二十八次 |
+| finalization（G1 补契约） | 2 | `finalization-controller.ts` | ❌ 未做 |
 
-- 结论：chapter-lifecycle 仓储层行为与基线逐字节一致，**无差异需修复**。
-- 备注：副本 lorekeeper.db 为旧 schema，测试前用 `db::schema::create_tables` 幂等补齐；对照只在仓储层（命令层为薄壳 + 状态机已在 423 单测覆盖）。
+**Schema 层（`abfa1698`）**：新增 3 表（`recovery_candidates` / `continuity_projection_meta` / `chapter_deletion_operations`）+ 3 索引（`idx_recovery_candidates_pending` / `idx_chapter_deletion_status` / `idx_llm_calls_time`），DDL 对齐 `electron/database.ts` 最终列集（含 migration 补列），幂等测试已过。
 
+**4 子域**（每个含仓储 + 命令 + 测试）：`recovery_candidate_repository.rs`（7 仓储 + 1 命令守卫测试）、`finalized_continuity_repository.rs`（5 测试，含 `invalidate_continuity_projection_from` 失效水位推进）、`finalization_repository.rs` + `finalized_draft_import_repository.rs`（导出权威序列，正文 / 哈希 / outbox 三重一致性校验）、`draft_units.rs`（字数口径用 `encode_utf16().count()` 对齐基线 JS）。
 
-## 本次更新（第二十七次：批次 E 第一部分完成）
-
-> 与第二十六次同属 2026-10-09（一个工作日内第一次更新，按 §9 规则写入同一份当日文件）。
-
-### 0. 范围与依赖
-
-批次 E 共 **28 个 invoke 频道**（`channel inventory` §4.13）：
-
-| 分组 | 频道数 | 基线位置 |
-|---|---|---|
-| **continuity** | 4 | `electron/controllers/finalization-controller.ts`（continuity-*） |
-| **recovery-candidate** | 4 | `electron/controllers/finalization-controller.ts`（recovery-candidate-*） |
-| **finalization-link** | 1 | `electron/controllers/finalization-controller.ts`（link_knowledge_document） |
-| **draft-import** | 1 | `electron/controllers/draft-controller.ts`（draft-import-finalized-batch） |
-| **chapter-lifecycle** | 4 | `electron/controllers/chapter-lifecycle-controller.ts`（chapter-delete-*） |
-| **finalization** | 2 | `electron/controllers/finalization-controller.ts`（finalization:commit/retry，G1 补契约） |
-
-**第一部分已完成**：Schema 层 + continuity + recovery-candidate + finalization-link + draft-import（共 24 个命令，418 个测试通过）。
-**第二部分待完成**：chapter-lifecycle（4 命令）+ finalization（2 命令，需补契约）。
-
-### 1. Schema 层（Commit `abfa1698`）
-
-新增 3 张表 + 2 索引 + 补漏索引：
-
-| 表 | DDL 来源 | 要点（以 `schema.rs` 真实最终列集为准，2026-10-09 勘误） |
-|---|---|---|
-| `recovery_candidates` | `electron/database.ts:179-204` + 迁移 602-608 补列 | `candidate_id`（业务键主键）、`run_id`、`step_id`、`project_id`、`chapter_number`（>0 CHECK）、`chapter_title`、`source_snapshot`、`source_hash`、`source_draft_id`/`source_draft_version`/`source_draft_identity_captured`（旧库 ALTER 补列），`visible_text`、`content_hash`、`failure_code`、`failure_reason`、`status`（`pending/continued/discarded` CHECK）、`replaces_candidate_id`（自引用候选替换链）、`created_at`、`resolved_at` |
-| `continuity_projection_meta` | `electron/database.ts:657-662` | 单行表（`id='main'` CHECK），`generation`（全局代际，>=0 CHECK）、`stale_from_chapter`（NULL 或 >0 CHECK）；建表后 `INSERT OR IGNORE (id) VALUES ('main')` 种子化；逐章连续性事实存于 `summary_snapshots.continuity_facts`（已有），本表只推进代际指针 |
-| `chapter_deletion_operations` | `electron/database.ts:233-255` + 迁移 995-1005 补列 | 幂等靠 `draft_id UNIQUE`；`operation_id`（TEXT PK）、`chapter_number`、`chapter_title`、`finalization_id`、`target_file_name`、`knowledge_document_id`、`post_process_run_ids`（默认 `'[]'`）、`manuscript_status`/`manuscript_error`/`knowledge_status`/`knowledge_error`（双通道独立清理状态，均默认 pending/空）、`legacy_knowledge_authorization`（默认 `not_required`）/`legacy_knowledge_authorized_at`（迁移补列）、`status`（默认 pending）、`attempt_count`、`created_at`/`updated_at`/`completed_at`；`finalization_id`/`knowledge_document_id` 为跨存储引用，不建 SQL 外键（对齐基线） |
-
-索引：
-- `idx_recovery_candidates_pending`：`(status, created_at)` 查询优化
-- `idx_chapter_deletion_status`：`status` 聚合查询优化
-- `idx_llm_calls_time`：补漏索引（基线未显式列出，但存在查询模式）
-
-**幂等测试**：`CREATE TABLE IF NOT EXISTS` 重复执行无报错。
-
-### 2. Recovery-Candidate 子域（Commit `f5fde636`）
-
-**仓储**：`recovery_candidate_repository.rs`（~500 行）
-
-**4 个命令**：
-| 命令 | 行为 | 错误处理 |
-|---|---|---|
-| `db:recovery-candidate-record` | 记录恢复候选（蓝图/草稿源） | 返回信封（`Error: ` 前缀） |
-| `db:recovery-candidate-list` | 列表（支持可见性过滤） | 直接 reject（基线无 try/catch） |
-| `db:recovery-candidate-update` | 更新状态（pending → resolved） | 返回信封（`Error: ` 前缀） |
-| `db:recovery-candidate-resolve` | 完全解决（删除候选 + 清理源） | 返回信封（`Error: ` 前缀） |
-
-**实现要点**：
-- **可见性过滤**：仅返回当前项目会话可见的候选（`draft_id` 匹配 `project_session.draft_id`）
-- **源当前追踪**：`current_source_type` / `current_source_id` 跟踪当前活跃源（蓝图或草稿）
-- **哈希校验**：`source_revision` = `SHA-256(JSON.stringify(来源事实集))`，乐观锁守卫
-- **UUID 生成**：使用 `project_access::random_uuid_v4()`，未引入 `uuid` crate
-
-**测试**：7 个仓储测试 + 1 个命令守卫测试（401/401 通过）。
-
-### 3. Continuity 子域（Commit `00bba449`）
-
-**仓储**：`finalized_continuity_repository.rs`（~800 行）
-
-**4 个命令**：
-| 命令 | 行为 | 错误处理 |
-|---|---|---|
-| `db:continuity-save-finalized` | 保存定稿连续性投影（蓝图绑定） | 返回信封（`Error: ` 前缀） |
-| `db:continuity-save-character-state-candidates` | 保存角色状态候选（用于失效水位推进） | 返回信封（`Error: ` 前缀） |
-| `db:continuity-list-before` | 列出失效水位之前的投影（用于回滚） | 直接 reject（基线无 try/catch） |
-| `db:continuity-read-source` | 读取源（蓝图或草稿） | 直接 reject（基线无 try/catch） |
-
-**实现要点**：
-- **失效水位推进**：`invalidate_continuity_projection_from` 函数推进全局 `generation` 并更新 `stale_from_chapter`，使旧投影可标记为 `stale`
-- **源绑定校验**：`blueprint_id` / `draft_id` 必须匹配当前项目会话
-- **角色名册归一化对比**：与角色名册表（`characters_roster`）对比，确保角色名一致性
-
-**测试**：5 个仓储测试（406/406 通过）。
-
-### 4. Finalization-Link + Draft 权威序列（Commit `634182d3`）
-
-**仓储**：
-- `finalization_repository.rs`（`link_knowledge_document`, `list_authoritative_for_export`, `matches_authoritative_export_receipt`）
-- `finalized_draft_import_repository.rs`（`authority_sequence`）
-
-**4 个命令**：
-| 命令 | 行为 | 错误处理 |
-|---|---|---|
-| `link_knowledge_document` | 将知识文档链接到定稿 | 返回信封（`Error: ` 前缀） |
-| `authority_sequence` | 导出权威序列（正文/哈希/outbox 三重一致性校验） | 返回信封（`Error: ` 前缀） |
-| `export_snapshot` | 导出权威序列快照（幂等） | 返回信封（`Error: ` 前缀） |
-| `export_authority_current` | 导出当前权威序列（用于导入） | 返回信封（`Error: ` 前缀） |
-
-**实现要点**：
-- **三重一致性校验**：正文内容、正文哈希、outbox 收据必须匹配
-- **幂等导出**：`export_snapshot` 重复执行返回相同快照（基于 `generation` 标识）
-- **authority_sequence**：返回按 `generation` 排序的权威序列（蓝图 → 草稿 → 定稿）
-
-**测试**：418 个测试通过（含仓储 + 命令 + 跨层测试）。
-
-### 5. 原稿导入幂等提交（Commit `e59e4fb0`）
-
-**新增模块**：`draft_units.rs`（~300 行）
-
-**6 个纯函数**：
-| 函数 | 行为 |
-|---|---|
-| `count_draft_units` | 计算当前草稿的字数（对齐基线 JS `String.prototype.length` → `encode_utf16().count()`） |
-| `count_legacy_draft_units_v1` | 计算旧版草稿的字数（兼容 v1 格式） |
-| `commit` | 提交草稿（幂等，同 operationId 重放） |
-| `preview` | 预览草稿（不写入数据库） |
-| `resolve_manuscript_target` | 解析原稿目标（确定蓝图/草稿/定稿） |
-| `manifest_fingerprint` | 计算原稿 manifest 的指纹（SHA-256） |
-| `request_payload_hash` | 计算请求载荷的哈希（用于幂等校验） |
-| `request_payload_hash_candidates` | 计算所有候选请求载荷的哈希 |
-
-**1 个命令**：
-| 命令 | 行为 |
-|---|---|
-| `db:draft-import-finalized-batch` | 幂等批量导入定稿原稿（operationId 去重、指纹校验） |
-
-**实现要点**：
-- **幂等收据**：同 `operationId` 重复执行返回相同收据（基于指纹匹配）
-- **预期指纹校验**：`manifest_fingerprint` 必须与传入的 `expected_fingerprint` 一致
-- **字数口径对齐**：使用 `encode_utf16().count()` 而非 `chars().count()`，以匹配基线 JS 的 UTF-16 码元数
-
-**测试**：418 个测试通过。
-
-### 6. 未完成部分（待下轮）
-
-| 分组 | 频道数 | 基线位置 |
-|---|---|---|
-| **chapter-lifecycle** | 4 | `electron/controllers/chapter-lifecycle-controller.ts` |
-| **finalization** | 2 | `electron/controllers/finalization-controller.ts`（G1 补契约） |
-
----
-
-## 验证与测试（**E 第一部分提交前基线**）
-
-| 检查 | 结果 |
-|---|---|
-| `cargo check --all-targets` | ✅ **0 告警** |
-| `cargo test --lib` | ✅ **418/418**（310 → **+108**） |
-| `pnpm typecheck` | ✅ exit 0 |
-| `pnpm run lint` | ✅ exit 0（`--max-warnings 0`） |
-| `pnpm run check:channels` | ✅ **129 命令 / 128 频道 / 63 未迁移**（orphan 空） |
-| 定向 `vitest`（8 文件） | ✅ **70/72**（2 个既有失败，见 `2026-10-08-tauri-migration-status.md` §6） |
-
-**⚠️ 本轮的验证边界（不得当作已验收）**：
-- ✅ **E 第一部分功能正常**（24 个命令，418 个测试通过）。
-- 未做 **Electron ↔ Tauri 行为对照**：同一剧本两侧跑同一操作的输出对比未做。
-- 「证据不在正文中」反例未验证（无正文数据）。
-| `cargo fmt --check` 未纳入验收（`src-tauri/` 全域存在既有 rustfmt 差异） |
+**UUID**：未引入 `uuid` crate，用 `project_access::random_uuid_v4()`。
 
 ---
 
 ## 交接给下次会话（**从这里接**）
 
-**当前工作区状态**：`master` 上有 **5 个已修改 + 4 个新增文件**，均属 E 第一部分，**自检全绿**，**尚未提交**（用户选择先验证再提交）。
+### 1. 当前工作区状态
 
-| 状态 | 文件 |
-|---|---|
-| M | `tauri-app/src-tauri/src/db/schema.rs`（+3 表 + 2 索引 + 补漏索引） |
-| M | `tauri-app/src-tauri/src/commands/db.rs`（+24 命令 + 跨层测试） |
-| M | `tauri-app/src-tauri/src/lib.rs`（+4 子域模块注册） |
-| M | `tauri-app/src-tauri/src/repositories/mod.rs`（+4 模块） |
-| M | `tauri-app/src/services/ipc-client.ts`（+24 条 `CHANNEL_ARG_NAMES`） |
-| M | `tauri-app/src/shared/migrated-channels.ts`（**生成物**，需随 `lib.rs` 同提交） |
-| M | `tauri-app/test/channel-migration-coverage.test.ts`（+E 频道断言） |
-| **A** | `tauri-app/src-tauri/src/repositories/recovery_candidate_repository.rs` |
-| **A** | `tauri-app/src-tauri/src/repositories/finalized_continuity_repository.rs` |
-| **A** | `tauri-app/src-tauri/src/repositories/finalization_repository.rs` |
-| **A** | `tauri-app/src-tauri/src/repositories/finalized_draft_import_repository.rs` |
-| **A** | `tauri-app/src-tauri/src/repositories/draft_units.rs` |
+**`master` 上工作区干净**（`git status --porcelain` 无输出）；第二十七 / 二十八次改动**均已提交**，
+HEAD = `0c2dffc7`。第二十七次快照里「5 个已修改 + 4 个新增文件尚未提交」的描述**已过期**，勿再照它操作。
 
-**建议的提交拆分（5 个主题，勿合一）**：
+> 历史备注：第二十七次的 5 个 commit message 里附带过「建议提交拆分（5 主题）」表；实际提交已按该表完成，**无需再拆**。
 
-1. `feat(tauri): 批次 E Schema 层 —— 3 张表 + 2 索引 + 补漏索引`：`abfa1698`（已提交）
-2. `feat(tauri): 批次 E Recovery-Candidate 子域 —— 4 命令 + 仓储 + 测试`：`f5fde636`（已提交）
-3. `feat(tauri): 批次 E Continuity 子域 —— 4 命令 + 失效水位推进 + 测试`：`00bba449`（已提交）
-4. `feat(tauri): 批次 E Finalization-Link + Draft 权威序列 —— 4 命令 + 三重一致性校验`：`634182d3`（已提交）
-5. `feat(tauri): 批次 E 原稿导入幂等提交 —— draft_units.rs + 1 命令 + 字数契约对齐`：`e59e4fb0`（已提交）
+### 2. 下一步（1-2-3）
 
-**接续步骤（建议顺序）**：
+1. **补 E 第二部分 GUI 冒烟**（唯一未做的验收项）：需要**含正文的真实项目**，跑 `pnpm tauri dev` 验证
+   `chapter:delete-finalized` → `chapter:list-incomplete-deletions` → `chapter:retry-deletion` 流程，
+   并确认两处 `*_cleanup_unavailable` 占位返回**可读失败**而非静默成功。
+2. **G1 补契约（`finalization:commit` / `finalization:retry`）** —— 属**定稿不可逆核心**，
+   **Ask first：需用户批准**后方可平移 `electron/services/finalization-service.ts`。这是批次 E 唯一剩余缺口。
+3. **批次 F2**（方案 B 已评估定案，**待用户批准实施**）：`kb:*` 15 频道 + dialog 2；
+   实施计划见 2026-10-08 快照 §8。**开工前必做两件事**：① `cargo tree` 实测新增依赖；
+   ② 解决下述 L2 向量存储隔离红线。落地后把 `knowledge_cleanup_unavailable` 占位替换为真实 `removeDocument`。
 
-1. **人工核验本轮 E 第一部分 diff**（用户已选择先核验再提交）；核验通过后按上表 5 个主题提交（提交消息用 `git commit -m` 或 Node `fs.writeFileSync`，**禁止** PowerShell 5.1 的 `Set-Content -Encoding UTF8`；自检 `node scripts/check-commit-msg.mjs --range <base>..HEAD`）。
-2. ✅ **E 第一部分 GUI 人工点验** —— 待完成（剧情树依赖未迁移前置功能属预期，不阻塞 E）。
-3. **E 第二部分（Chapter-Lifecycle + Finalization 补契约）**：
-   - 实现 `chapter-lifecycle-controller.ts` 的 4 个命令（依赖 continuity 失效水位、草稿操作、文件系统）
-   - 补充 `ipc-channels.ts` 中的 `finalization:commit` / `finalization:retry` 声明（G1）
-   - 运行 `pnpm run check:channels` 验证无 orphan
-   - 更新 `migrated-channels.ts`，登记所有 28 个批次 E 频道
-4. **批次 F2**（用户已决策方案 B，等待批准开工）：按 §8.6 实施计划执行（第 1 天基础设施 → 第 2 天向量索引 → 第 3 天命令层 + 集成测试 → 第 4 天 GUI 验收 + 文档）。
+### 3. 阻塞项与待授权项（不得删除，须逐条确认后更新）
 
-**红线提醒（每次接手都要过一遍）**：Tauri 侧禁止读 `AI_NOVEL_VELA_HOME`、禁止回退 `~/.vela`、禁止写 `.vela/vela.db`；项目库 = `<root>/.vela/lorekeeper.db`；全局数据根 = `AI_NOVEL_LOREKEEPER_HOME` 或 `~/.lorekeeper`；失败文案按基线 MUTATING 规则带 `
+| # | 项 | 状态 |
+|---|---|---|
+| B1 | `finalization:commit` / `finalization:retry`（G1） | ⛔ **阻塞于用户授权**（定稿不可逆核心） |
+| B2 | `chapter:*` 物理清理（删稿件 / 删 KB 文档） | ⛔ **阻塞于批次 H + F2**，当前为显式占位 |
+| B3 | `dialog:select-export-directory` | ⛔ 仍返回 `None`，阻塞于批次 H 的 grant 域 |
+| B4 | L3 双栈隔离（`.vela` 改名） | ⏸️ 主动押后 |
+| B5 | `cargo fmt --check` | ⚠️ 未纳入验收（`src-tauri/` 全域存在既有 rustfmt 差异） |
+| B6 | `tauri-app` 全量 `pnpm test` | ⚠️ 暂超时（见 10-08 快照遗留项） |
+| B7 | 「证据不在正文中」反例 | ⚠️ 未验证（无正文数据） |
+| B8 | 2 个既有 `vitest` 失败 | ⚠️ 阶段 0 起就失效，**非本轮引入**（10-08 快照 §6） |
+| B9 | `tauri-plugin-dialog 2.8.1` 要求 rustc ≥ 1.90 | ⚠️ CI 最低版本需相应抬高 |
 
-- **Schema 层**（Commit `abfa1698`）：新增 3 张表（`recovery_candidates`, `continuity_projection_meta`, `chapter_deletion_operations`），2 个索引（`idx_recovery_candidates_pending`, `idx_chapter_deletion_status`），补漏索引 `idx_llm_calls_time`。含建表幂等测试。
-- **Recovery-Candidate 子域**（Commit `f5fde636`）：实现 `recovery_candidate_repository.rs`（4 个命令：`db:recovery-candidate-record`, `db:recovery-candidate-list`, `db:recovery-candidate-update`, `db:recovery-candidate-resolve`）。可见性过滤、源当前追踪（蓝图 + 草稿）、哈希校验。7 个仓储测试 + 1 个命令守卫测试（401/401 通过）。
-- **Continuity 子域**（Commit `00bba449`）：实现 `finalized_continuity_repository.rs`（4 个命令：`db:continuity-save-finalized`, `db:continuity-save-character-state-candidates`, `db:continuity-list-before`, `db:continuity-read-source`）。基于生成的失效水位推进（`invalidate_continuity_projection_from`），源绑定校验，与角色名册归一化对比。5 个仓储测试（406/406 通过）。
-- **Finalization-Link + Draft 收尾**（Commit `634182d3`）：实现 `finalization_repository.rs`（`link_knowledge_document`, `list_authoritative_for_export`, `matches_authoritative_export_receipt`）+ `finalized_draft_import_repository.rs`（`authority_sequence`）。导出权威序列快照（正文/哈希/outbox 三重一致性校验）。4 个命令（link/authority-sequence/export-snapshot/export-authority-current）。418 个测试通过。
-- **原稿导入幂等提交**（Commit `e59e4fb0`）：新增 `draft_units.rs`（`count_draft_units` + `count_legacy_draft_units_v1`，对齐基线 JS 字数口径）。`commit`/`preview`/`resolve_manuscript_target`/`manifest_fingerprint`/`request_payload_hash`/`request_payload_hash_candidates`。命令 `db:draft-import-finalized-batch`（幂等收据、同 operationId 重放、预期指纹校验）。418 个测试通过。
+### 4. 红线提醒（每次接手都要过一遍）
 
-## 待完成
+- 🚫 Tauri 侧**禁止**读 `AI_NOVEL_VELA_HOME`、**禁止**回退 `~/.vela`、**禁止**写 `.vela/vela.db`。
+- 项目库 = `<root>/.vela/lorekeeper.db`；全局数据根 = `AI_NOVEL_LOREKEEPER_HOME` 或 `~/.lorekeeper`。
+- 失败文案按基线 MUTATING 规则带 `"Error: "` 前缀（`commands/db.rs::mutating_error`）。
+- ⚠️ **F2 新增隔离红线**：基线 LanceDB 落在共享的 `<project>/.vela/lancedb/`、`.vela/<registry>.json`、
+  `.vela/vectors.json`；**Tauri 侧向量存储路径必须 Tauri 专属，不得复用**（详见 2026-10-08 快照 §2）。
+- 定稿不可逆：`finalization:` 相关改动一律 **Ask first**。
+- 提交消息**无 BOM / 无 CRLF / 无行尾空白**（2026-10-08 出过 BOM 事故，见 `pi-development.md` §10.1）。
 
-- **Chapter-Lifecycle 子域**（4 命令）：**真实频道为 `chapter:` 前缀**（inventory §4.13，controller 事实源）：
-  - `chapter:delete-finalized(request)` → 请求即执行 + 断点恢复（resume）
-  - `chapter:retry-deletion(operationId)`
-  - `chapter:confirm-legacy-knowledge-absent(operationId)`（**注意是 `-absent`，非快照早期误记的 `-undo`；契约频道为 `chapter:confirm-legacy-knowledge-absent`**）
-  - `chapter:list-incomplete-deletions`
-  > ⚠️ **命名勘误**：早期记录把本章写为 `db:chapter-delete-{request,confirm,undo,finalize}`（四段式），与控制器 `chapter:delete-{finalized,retry-deletion,confirm-legacy-knowledge-absent,list-incomplete-deletions}`（请求即执行 + 状态机恢复）**不符**。inventory §4.13 一直用的是真实名；本次以 controller 为准勘误。
-  > **依赖评估（2026-10-09 增补）**：核心为 `chapter-deletion-service.ts`（~240 行）的「操作状态机 + 断点恢复」，依赖 `chapter-deletion-repository`、`finalization_repository`、`post_process_repository`。**物理清理两处依赖未迁移能力**：① `removePublishedManuscript`（删实体稿文件 → fs 授权域，批次 H）；② `knowledgeBaseLoader.removeDocument`（删知识库文档 → KB 能力，批次 F2 未迁移）。Rust 侧可先落「状态机 + 仓储 + 命令」，物理清理按基线 MUTATING 前缀规则走显式占位/降级（仿 `dialog:select-export-directory` 诚实化先例）。
-- **Migrated Channels 登记**：更新 `migrated-channels.ts`，运行 `check:channels` 验证无 orphan。
-- **Handoff 更新**：更新 `docs/handoffs/2026-10-09-*.md`，提交最终 Batch E 改动。
+---
 
-## 关键决策
+## 5. 自检记录（2026-10-09 实测）
 
-- **Schema 对齐**：DDL 完全对齐 `electron/database.ts` 最终列集（含 migration 补列）。
-- **UUID 生成**：未引入 `uuid` crate，使用 `project_access::random_uuid_v4()` 生成 `candidate_id`/`operation_id`。
-- **Continuity 失效水位**：`invalidate_continuity_projection_from` 推进全局 `generation` 并更新 `stale_from_chapter`，使旧投影可标记为 `stale`。
-- **命令守卫**：所有新命令使用 `guard_read` + `state.inner()` + `project_session.as_ref()` 进行会话校验。
+> 生成本表快照时在本机实跑，命令与输出如下。**下次更新快照表必须先重跑这些命令。**
 
-## 测试指标
-
-- 当前总计：418 个测试通过，0 失败。
-- 预计章节生命周期完成后：422（+4 命令测试）。
+| 命令 | 工作目录 | 实测输出 |
+|---|---|---|
+| `pnpm run check:channels` | `tauri-app/` | 契约 invoke 频道 **191**（事件频道 4）· 已注册命令 **133** → 覆盖 **132** · 未迁移 **59** `[db=19 kb=15 mcp=9 update=6 skills=4 dialog=3 prompt=3]` · 命令名与契约频道一一对应 ✅ |
+| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 423 passed; 0 failed; 0 ignored` |
+| `cargo check --all-targets` | `tauri-app/src-tauri/` | `Finished dev profile ... in 4.21s`（0 告警） |
+| `git status --porcelain` | 仓库根 | 空（工作区干净） |
+| `git log -1` | 仓库根 | `0c2dffc7 docs(tauri): 补录 chapter-lifecycle Electron 基线行为对照结果（六项指标完全一致）` |
