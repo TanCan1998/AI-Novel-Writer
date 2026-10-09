@@ -32,7 +32,7 @@
 | 已完成批次 | A ✅ / B ✅（含遗留补齐） / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **G1 ✅** / **H1 ✅（fs:grant-* + 导出目录）** / **H2 ✅（prompt:* + skills:*）** / **B12 ✅（tauri-plugin-opener）** |
 | 当前阶段 | **批次 H 进行中**：H1（`fs:grant-*` 3 + `dialog:select-export-directory`）与 H2（`prompt:*` 3 + `skills:*` 4）已真实化，B12（打开外部链接）已修复 → **B3/B5/B8/B10/B12 全部解除**。下一步：① **H3（update 6 频道 + `update:state` 事件）** 走零依赖 GitHub-Release 后端（评估见 `docs-fork/research/2026-10-09-h3-h4-dependency-evaluation.md`）；② **批次 G**（import-run 19 + `dialog:select-novel-files`，20 频道）；③ H4（mcp）暂缓（用户决定） |
 | 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、**`tauri-plugin-opener 2.7.0`**（第三十三次 B12 新增，连带 `open 5.4.4`；Ask first 已批准）。**F2 无新增依赖**：`hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio` 已在 `Cargo.toml`；**FTS5 由 `libsqlite3-sys` bundled 提供** |
-| GUI 冒烟 | ✅ 自 2026-10-07 起 **八轮**。近两轮：dialog 轮 vite `453 ms` + cargo `24.91s`；**第八轮（2026-10-09，G1）**：vite `533 ms` + cargo `1.33s`（增量）→ `lorekeeper.exe` 运行正常，**G1 定稿（两章 outbox `published` + `.txt` 落盘且标题剥离）+ B2 删除（两章实体稿真实删除、KB 文档真实清理）全部通过**；本轮共 3 次 cargo-watch 自动重建（19.59s / 19.92s / 增量），过程中发现并修复 1 个入参契约缺陷（见第三十二次 §2） |
+| GUI 冒烟 | ✅ 自 2026-10-07 起 **九轮**。**第九轮（2026-10-09，批次 H 前三项 + B12）**：vite `502 ms` + cargo `47.95s` → `lorekeeper.exe`（90 MB），**KB 界面导入→搜索→stats→删除全链路 ✅、导出成稿（合并 md + 分章 md）✅、官方主页/模型资源链接真实打开 ✅、提示词保存/删除与技能列表 ✅**（用户人工逐项验证，事后库/磁盘状态已复核）。近两轮：dialog 轮 vite `453 ms` + cargo `24.91s`；**第八轮（2026-10-09，G1）**：vite `533 ms` + cargo `1.33s`（增量）→ G1 定稿（两章 outbox `published` + `.txt` 落盘且标题剥离）+ B2 删除（两章实体稿真实删除、KB 文档真实清理）全部通过，过程中发现并修复 1 个入参契约缺陷（见第三十二次 §2） |
 | 双栈隔离 | **L0/L1/L2/L3 全部独立**：安装标识 / `~/.lorekeeper` / `<root>/.lore/`（库 `.lore/lorekeeper.db`、KB 向量 `.lore/kb/`）。基线为 `~/.vela` / `<root>/.vela/`。**两栈项目目录刻意不互通**（`ee40aaab`） |
 | Rust 工具链 | rustc/cargo **1.99.0 stable-msvc** @ `D:\Environment\rust\`（脚本内须显式设 `RUSTUP_HOME` / `CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
 
@@ -105,11 +105,26 @@
 `pnpm typecheck` / `lint` **exit 0**；`check:channels` **193 契约 / 159 命令 / 158 覆盖 / 35 未迁移**，orphan 空；
 定向 vitest **8 文件 / 33 测试全过**。
 
-### 6. 本轮未做 / 下一步
+### 6. GUI 冒烟（第九轮，2026-10-09）—— ✅ 通过
+
+测试项目 `F:\Temp\loretest\lore-smoke`（清单 + 播种的**已定稿**章「雾港的灯语」+ 真实 `.txt`）；
+参考文本 `F:\Temp\loretest\reference\雾港设定.txt`。用户逐项人工验证：
+
+| 项 | 结果 |
+|---|---|
+| **A. KB 界面导入全链路（B10 核心）** | ✅ `dialog:select-knowledge-files` → **`fs:grant-read-file`**（此前卡此处）→ 材料列表 → 导入 → 搜索「灯语/回声兽/林晚」召回 → `kb:stats`/vectorless 计数 > 0 → 删除文档 |
+| **B. 导出成稿（H1 的 `fs:grant-write-file` / `mkdir`）** | ✅ 「选择导出目录」弹出**真实系统目录选择框**（此前恒为取消）；合并 Markdown 与分章 Markdown（新建 `<项目名>-<uuid>/` 目录 + 逐章写入）均成功 |
+| **C. 打开外部链接（B12）** | ✅ 官方主页真实打开 `https://github.com/TanCan1998/Lorekeeper`；设置里 SiliconFlow 资源链接可用（此前为假成功） |
+| **D. 应用数据域（H2）** | ✅ 全局提示词列表加载 + 保存/删除；技能列表（`skills:list-user`）正常 |
+
+事后库/磁盘复核：定稿章与 outbox `published` 完整；`kb_documents` / `kb_chunks` 归零（对应步骤 6 的删除）；
+`.lore/prompts` 已被应用创建；`~/.lorekeeper/{prompts,skills}` 与预期一致（已删除/为空）。
+
+### 7. 本轮未做 / 下一步
 
 - **H3（update 6 频道 + `update:state` 事件）** —— 下一步（零依赖 GitHub-Release 后端）。
 - **批次 G（import-run 19 + `dialog:select-novel-files`，20 频道）** —— 收口 `kb:import-reference-text`。
-- **GUI 冒烟未做**：H1 解开的三条前端路径（KB 导入 / 导出 / 角色卡导入）、B12 的两处链接、H2 的技能安装。
+- **GUI 冒烟已做（第九轮 ✅）**：H1 解开的 KB 导入 / 导出成稿 / 链接打开与 H2 的应用数据域均已实测通过。
 
 ---
 
