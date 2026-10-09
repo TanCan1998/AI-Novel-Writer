@@ -5,8 +5,6 @@
 > **后续快照一律不得参照本篇结构**；请以 `_TEMPLATE-tauri-migration-status.md` 与
 > `docs-fork/agents/pi-development.md` §9 为准。
 
-> **📌 最新进展看 [`2026-10-08-tauri-migration-status.md`](./2026-10-08-tauri-migration-status.md)（第二十三次：批次 D2-b 完成，102 命令、279/279）**。
->
 > **用途**：AI/开发者接续 Tauri 迁移工作的入口文档。**每次迁移工作完成后必须更新本文件的快照区块**。channel 级细节见 [`docs-fork/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md)。
 > 本文件为日期化交接快照（上游 `docs/README.md` 治理规则）；后续大节点可另立日期文件，勿回写历史快照。
 >
