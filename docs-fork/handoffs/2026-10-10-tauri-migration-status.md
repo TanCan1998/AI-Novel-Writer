@@ -24,7 +24,7 @@
 | 覆盖 invoke 频道 | **169**（契约总数 193，事件频道 4） |
 | 未迁移 invoke 频道 | **24**（`db=15 mcp=9`） |
 | orphan | **空** ✅ |
-| `cargo test --lib` | **586/586** ✅（本轮修复窗口命令 +1） |
+| `cargo test --lib` | **601/601** ✅ |
 | `cargo fmt --check` | **干净（0 差异）** ✅ |
 | `cargo check --all-targets` | **0 告警** ✅ |
 | `pnpm typecheck` / `lint` | exit 0 / exit 0 ✅ |
@@ -40,7 +40,7 @@
 
 ---
 
-## 本次更新（第三十九次：B25 收口 + G2b 解析写入面）
+## 本次更新（第三十九次：B25 收口 + G2b 写入面与四态分类）
 
 ### 1. B25 ✅ `ClearProjectDataDialog` 纳入统一动画
 
@@ -56,6 +56,7 @@ SettingsModal / ClearProjectDataDialog）。GUI 已验：淡入 + 淡出 ✅。
 |---|---|---|
 | G2b-1 | `src/import/identity.rs`：无密钥版 `resolveEncodedSources`（D1′ / D3′），含 5 条测试 | `215b4520` |
 | G2b-2 | `import_run_repository.rs` 解析写入面：`canonical_manifest` / `hash_manifest`（键序对齐 `JSON.stringify`）、`normalize_display/source_ids/source_fingerprints/chapters`、`parsed_source_status`、`begin_parsing`（三分支）、`commit_parsed_source`、`fail_parsed_source`，含 6 条测试 | 本次 |
+| G2b-3 | `finalize_parsing` **四态分类**（`new` / `resumable` / `conflict` / `exact-duplicate`）+ 辅助函数族（`create_preparation_inspection` / `assign_stable_chapter_numbers` / `completed_chapter_manifest` / `matching_resumable_run` / `latest_completed_run` / `overlapping_resumable_source_run` / `discard_provisional_parsing_run`）+ 契约类型 `ImportRunPreparationResult` / `ImportRunPreparationInspection`；含 4 条测试（四态各一 + 未完成来源拒绝） | 本次 |
 
 **顺带**：`lib.rs` 的 `mod repositories;` → `pub mod repositories;`（与 `pub mod db` 一致）——
 否则尚未被命令层消费的新仓储 API 会持续触发 `dead_code` 告警（之前靠逐项 `#[allow]` 缓解）。
@@ -68,7 +69,7 @@ SettingsModal / ClearProjectDataDialog）。GUI 已验：淡入 + 淡出 ✅。
 
 ### 3. 自检（本轮）
 
-`cargo test --lib` **597/597**（+6）· `cargo check --all-targets` **0 告警** ·
+`cargo test --lib` **601/601**（+10）· `cargo check --all-targets` **0 告警** ·
 `cargo fmt --check` 干净 · `pnpm typecheck` / `lint` exit 0（B25 改动时实测）·
 `check:channels` 193/170/169/24（无频道变化）。
 
@@ -165,7 +166,7 @@ SettingsModal / ClearProjectDataDialog）。GUI 已验：淡入 + 淡出 ✅。
 | 命令 | 工作目录 | 实测输出 |
 |---|---|---|
 | `node scripts/verify-channel-coverage.mjs --quiet` | `tauri-app/` | 契约 invoke 频道 **193**（事件频道 4）· 已注册命令 **170** → 覆盖 **169** · 未迁移 **24** `[db=15 mcp=9]` · 命令名与契约频道一一对应 ✅ |
-| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 586 passed; 0 failed; 0 ignored; 0 measured` |
+| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 601 passed; 0 failed; 0 ignored; 0 measured` |
 | `cargo check --all-targets` | `tauri-app/src-tauri/` | `Finished dev profile ... `（**0 告警**） |
 | `cargo fmt --check` | `tauri-app/src-tauri/` | 输出 **0 行**（干净） |
 | `pnpm typecheck` / `pnpm run lint` | `tauri-app/` | exit 0 / exit 0 |
