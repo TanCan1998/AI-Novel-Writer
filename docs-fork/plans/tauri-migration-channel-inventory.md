@@ -115,7 +115,15 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 ### 4.11 KnowledgeBaseChannels（15 + dialog 2）— controller: `kb-controller.ts` — 批次 F2
 `kb:import-{document,folder}`（grantId 入口）、`kb:import-{text,planning-text,reference-text}`、`kb:search`、`kb:search-writing-context`、`kb:search-with-scope`、`kb:list-documents`、`kb:remove-document`、`kb:clear-all`、`kb:stats`、`kb:get-vectorless-count`、`kb:get-vector-rebuild-status`（纯本地状态读，不发 embedding 请求）、`kb:backfill-vectors`；`dialog:select-knowledge-{files,folder}`。
 返回多为 `AppResult<T>`★。**向量存储路线（用户决策，方案 B）**：`rusqlite`（bundled）+ **SQLite FTS5 + jieba-rs 预分词 + HNSW 向量索引 + RRF 倒数排名融合**（自研混合检索）。**否决** `lancedb` Rust crate（+1680 传递依赖、需 protoc/ninja/nasm、与「减内存」目标相背）与 `cairn-search`（非通用库，紧耦合 cairn-core）。最终决策见 [`2026-10-08-final-decision-plan-b.md`](../research/2026-10-08-final-decision-plan-b.md)；实测 `FTS5 unicode61` 中文召回率 **0%**，必须写入前预分词。基线封装为 `electron/vector-store.ts`（2010 行，含 embedding space 注册表 / 重建计划 / FTS 索引 / 混合检索），专项评估已完成（见上决策文档），实施时仍须逐项对齐差异。
-**⚠️ 隔离前提（红线）**：基线向量数据在 `{project}/.vela/lancedb/` 与 `.vela/<registry>.json` / `.vela/vectors.json`（**共享目录**），Tauri 侧向量存储路径**必须 Tauri 专属（不得复用 `.vela/lancedb`）**，否则与 Electron 基线互覆数据。
+**✅ 隔离红线已解决（2026-10-09）**：基线向量数据在 `{project}/.vela/lancedb/` 与 `.vela/*.json`（**共享目录**）。**L3 后 Tauri 项目目录已改为 `.lore/`**（两栈项目目录刻意不互通），向量快照定为 `{project}/.lore/kb/` —— 互覆风险消除。
+
+**实施进度（2026-10-09）**：
+
+- **F2-1 ✅**（`99efceaf`）：四表 DDL（`kb_documents` / `kb_chunks` / `kb_embedding_spaces` / `kb_fts`）+ `db/kb/chunks.rs`（`chunkText` 逐字移植）+ `db/kb/fts.rs`（jieba 预分词 + FTS5 CRUD/检索）。
+- **F2-2 ✅**（`d0538819`）：`db/kb/hybrid.rs`（基线语义默认 + RRF 可选开关 + 嵌入空间注册表 + 回填计划），并为 `db/vector.rs` 补 `live_doc_ids` / `contains`。
+- **F2-3 ⏳**：`commands/kb.rs`（15 频道）+ `dialog:select-knowledge-*`（2 频道）+ 前端登记。
+- **⚠️ 基线并无融合（本轮读源码确认）**：`searchWithScope` 实为「向量可用且召回非空 → 短路返回；否则 → 降级 `LIKE` 子串扫描」，且**降级分支 `score` 恒为 0.5**（`relevance` 只参与排序）。经用户 2026-10-09 决定：**默认对齐基线语义**，**RRF 仅作可选开关（默认关）**，降级分支**改返回真实相关性分**（差异已记录于 `hybrid.rs` 模块文档；方案 B 文档 §8.5/§8.7 自相矛盾之处以此为准）。
+- **`kb:import-reference-text` 依赖批次 G**（import-run 域未迁移）→ 实施时先注册但**显式占位失败**（沿用批次 E 诚实化占位先例）。
 
 ### 4.12 ImportChannels（1）— controller: `import-controller.ts` — 批次 G
 `dialog:select-novel-files(request?, projectSession?)`（选择 + 检查 + 准备一体；不注入自动 session★，显式收 `projectSession`）。
@@ -152,7 +160,7 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 | **C** | db 子域逐步：project-core → blueprints → characters/roster → drafts → revisions → reviews → post-process → summary/llm-stats | B | 一域一仓；行为与 Electron 对照 |
 | **D** | llm 全部 + 3 个流事件（G5 性能实测） | C | generation-parameter-policy 复刻；finishReason 显式终态。拆 D1（模型管理）/ D2（生成·流式·租约·发现·连通性） |
 | **E** | finalization(G1 补契约)、chapter-lifecycle、continuity、recovery-candidate、draft-import-finalized-batch | C, D | 定稿不可逆 + 删除生命周期（ADR 0003/0011）等量测试。物理清理依赖：删实体稿文件（fs 授权域→H）、删 KB 文档（→F2） |
-| **F** | kb 全部、plot-tree、narrative-thread、consistency-exemption | C | AppResult 错误码对齐。拆 **F1**（plot-tree 3 / narrative-thread 6 / consistency-exemption 3 = 12 频道，零新依赖，纯 SQLite 平移；剧情树 `sourceRevision` 有**黄金哈希测试**锁定与 `JSON.stringify` 逐字节一致）/ **F2**（`kb:*` 15 + `dialog:select-knowledge-*` 2）。**F2 向量路线见 §4.11**；**⚠️ 必须先解决隔离红线**（Tauri 专属向量路径，不得复用 `.vela/lancedb`） |
+| **F** | kb 全部、plot-tree、narrative-thread、consistency-exemption | C | AppResult 错误码对齐。拆 **F1**（plot-tree 3 / narrative-thread 6 / consistency-exemption 3 = 12 频道，零新依赖，纯 SQLite 平移；剧情树 `sourceRevision` 有**黄金哈希测试**锁定与 `JSON.stringify` 逐字节一致）/ **F2**（`kb:*` 15 + `dialog:select-knowledge-*` 2）。**F2 向量路线见 §4.11**；隔离红线**已解决**（L3 后项目目录 `.lore/`，向量快照 `.lore/kb/`）。进度：**F2-1 ✅ / F2-2 ✅ / F2-3 ⏳** |
 | **G** | import-run 全套（18 频道状态机）、dialog:select-novel-files、import-global-facts | C | 执行租约 `ImportRunExecutionLease`；断点恢复语义 |
 | **H** | update（updater 插件，G3）、mcp、prompt/skills、**fs:grant-\* 三命令 + `dialog:select-export-directory`** | 任意 | macOS 更新 = 仅打开 Release 页；`tauri-plugin-fs 2.6.0` **已随 dialog 插件连带引入**，勿重复添加；grant 签发只回传 `grantId`（ADR 0002） |
 
