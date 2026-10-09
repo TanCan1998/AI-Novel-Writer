@@ -12,8 +12,8 @@ use rusqlite::OpenFlags;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// 项目清单相对路径（`.vela/project.json`）
-pub const PROJECT_MANIFEST_DIR: &str = ".vela";
+/// 项目清单相对路径（`.lore/project.json`）
+pub const PROJECT_MANIFEST_DIR: &str = ".lore";
 /// 项目清单文件名
 pub const PROJECT_MANIFEST_FILE: &str = "project.json";
 /// 「所选目录不是项目根」错误码（渲染层据此提示选择有效项目目录）
@@ -22,7 +22,7 @@ pub const PROJECT_ROOT_REQUIRED_CODE: &str = "PROJECT_ROOT_REQUIRED";
 pub const PROJECT_ROOT_REQUIRED_MESSAGE: &str =
     "所选目录不是项目根目录：目录缺少有效项目清单或可信旧版指纹";
 /// 项目提示词目录相对路径（对齐 `src/shared/project-paths.ts` 的 `DIR_PROMPTS`）
-pub const DIR_PROMPTS_RELATIVE: &str = ".vela/prompts";
+pub const DIR_PROMPTS_RELATIVE: &str = ".lore/prompts";
 
 /// 旧版项目可信指纹所需表（基线 `LEGACY_REQUIRED_TABLES`）
 const LEGACY_REQUIRED_TABLES: [&str; 5] = [
@@ -335,7 +335,7 @@ pub fn manifest_path(root_path: &str) -> PathBuf {
 fn write_manifest(root_path: &str) -> Result<TrustedProject, String> {
     let manifest_file = manifest_path(root_path);
     if let Some(parent) = manifest_file.parent() {
-        std::fs::create_dir_all(parent).map_err(|error| format!("创建 .vela 目录失败：{error}"))?;
+        std::fs::create_dir_all(parent).map_err(|error| format!("创建 .lore 目录失败：{error}"))?;
     }
     let manifest = serde_json::json!({
         "schemaVersion": 1,
@@ -604,7 +604,7 @@ mod tests {
         let parent = temp_root("create");
         let project = create_project(&parent.to_string_lossy(), "我的/小说:01", None).unwrap();
 
-        assert!(manifest_path(&project.root_path).is_file(), "清单应写入 .vela/project.json");
+        assert!(manifest_path(&project.root_path).is_file(), "清单应写入 .lore/project.json");
         assert!(is_uuid_v4(&project.project_id));
 
         let probed = probe_existing_project(&project.root_path, None).unwrap();
@@ -640,7 +640,7 @@ mod tests {
     fn legacy_fingerprint_is_detected_and_adopted_test() {
         let parent = temp_root("legacy");
         let root = parent.join("旧项目");
-        std::fs::create_dir_all(root.join(".vela")).unwrap();
+        std::fs::create_dir_all(root.join(".lore")).unwrap();
         {
             // 构造旧版指纹：5 张必需表 + project_core 必需列，且无清单
             let conn =

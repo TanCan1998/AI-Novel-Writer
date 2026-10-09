@@ -3,7 +3,7 @@
 //! 平移自 `electron/repositories/project-clear-repository.ts`：
 //! - 三个可选范围：`generatedText`（正文档/审稿/后处理/快照）、`blueprints`、
 //!   `creativeFields`（角色卡与创作四大件）；
-//! - 物理文件（根目录 `第N章*.txt`）在事务**之前**移入 `.vela/trash/clear-<ts>/`，
+//! - 物理文件（根目录 `第N章*.txt`）在事务**之前**移入 `.lore/trash/clear-<ts>/`，
 //!   事务失败则回滚移动；成功后才删除回收目录；
 //! - `cleared` 的追加顺序与基线一致：generatedText → blueprints → creativeFields。
 
@@ -151,7 +151,7 @@ fn move_generated_files_to_trash(project_path: &Path) -> Result<Vec<MovedFile>, 
     )
     .replace([':', '.'], "-");
     let trash_dir = project_path
-        .join(".vela")
+        .join(".lore")
         .join("trash")
         .join(format!("clear-{stamp}"));
     std::fs::create_dir_all(&trash_dir)
@@ -341,8 +341,8 @@ mod tests {
         assert_eq!(result.physical_files_deleted, 1);
         assert!(!chapter.exists(), "成稿实体稿应被移出根目录");
         assert!(other.exists(), "非成稿文件不得被移动");
-        // 回收子目录在成功后删除（`.vela/trash` 父目录保留，与基线一致）
-        let trash_root = dir.join(".vela").join("trash");
+        // 回收子目录在成功后删除（`.lore/trash` 父目录保留，与基线一致）
+        let trash_root = dir.join(".lore").join("trash");
         let leftover = if trash_root.exists() {
             std::fs::read_dir(&trash_root).unwrap().count()
         } else {

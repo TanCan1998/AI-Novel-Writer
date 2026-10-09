@@ -130,7 +130,7 @@ export default function WorldBuildingEditor({ projectKey }: { projectKey: string
       const partialResult = await ipc.invokeWithProjectSession(
         projectSession,
         'fs:read-json',
-        `${projectPath}/.vela/partial_arch.json`,
+        `${projectPath}/.lore/partial_arch.json`,
         projectPath,
       )
       const partial = partialResult?.success === true

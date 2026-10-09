@@ -181,7 +181,7 @@ export interface GlobalConfig {
   editorFontSize: number
   editorFontFamily: string
   autoSaveInterval: number
-  /** 更新检查和提醒延后的本机偏好，持久化到 ~/.vela/config.json。 */
+  /** 更新检查和提醒延后的本机偏好，持久化到 ~/.lorekeeper/config.json。 */
   updatePreferences?: UpdatePreferences
   proxy?: {
     enabled: boolean

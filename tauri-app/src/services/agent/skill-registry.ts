@@ -4,8 +4,8 @@
  * 管理所有可用的 Skill（基于 SKILL.md 的模块化知识包）。
  * 支持：
  * - 内置 Skill（随 Vela 发布的预设 Skill）
- * - 用户 Skill（用户放在 ~/.vela/skills/ 下的自定义 Skill）
- * - 项目 Skill（放在项目的 .vela/skills/ 下的项目级 Skill）
+ * - 用户 Skill（用户放在 ~/.lorekeeper/skills/ 下的自定义 Skill）
+ * - 项目 Skill（放在项目的 .lore/skills/ 下的项目级 Skill）
  *
  * Skill 格式兼容 Cursor 的 SKILL.md 生态。
  */
@@ -250,7 +250,7 @@ class SkillRegistryImpl {
       console.log(`[Skills] 加载了 ${userCount} 个用户 Skill`)
     }
 
-    // 加载项目 Skill（项目/.vela/skills/）
+    // 加载项目 Skill（项目/.lore/skills/）
     if (
       ipc.isElectron
       && projectSession
@@ -259,7 +259,7 @@ class SkillRegistryImpl {
         projectSessionContextFromProject(useProjectStore.getState().currentProject),
       )
     ) {
-      const projectSkillsDir = `${projectSession.projectPath}/.vela/skills`
+      const projectSkillsDir = `${projectSession.projectPath}/.lore/skills`
       const projectCount = await this.loadProjectSkills(
         projectSkillsDir,
         projectSession.projectPath,

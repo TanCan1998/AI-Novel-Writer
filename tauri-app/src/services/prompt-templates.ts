@@ -1513,12 +1513,12 @@ export function clearProjectCustomPrompts(): void {
   promptCatalog.clearProject()
 }
 
-/** 加载全局自定义 Prompt 覆盖（从 ~/.vela/prompts/ 目录） */
+/** 加载全局自定义 Prompt 覆盖（从 ~/.lorekeeper/prompts/ 目录） */
 export async function loadCustomPrompts(writingLanguage: WritingLanguage = 'zh-CN'): Promise<void> {
   await promptCatalog.list(undefined, writingLanguage)
 }
 
-/** 加载项目级自定义 Prompt 覆盖（从 {projectPath}/.vela/prompts/ 目录） */
+/** 加载项目级自定义 Prompt 覆盖（从 {projectPath}/.lore/prompts/ 目录） */
 export async function loadProjectCustomPrompts(
   projectSession: ProjectSessionContext,
   writingLanguage: WritingLanguage = 'zh-CN',
@@ -1570,12 +1570,12 @@ export function getAllPromptTemplates(
   ))
 }
 
-/** 保存全局自定义 Prompt 到 ~/.vela/prompts/ */
+/** 保存全局自定义 Prompt 到 ~/.lorekeeper/prompts/ */
 export async function saveCustomPrompt(template: PromptTemplate): Promise<boolean> {
   return promptCatalog.commit({ action: 'save', scope: 'global', template })
 }
 
-/** 保存项目级自定义 Prompt 到 {projectPath}/.vela/prompts/ */
+/** 保存项目级自定义 Prompt 到 {projectPath}/.lore/prompts/ */
 export async function saveProjectCustomPrompt(
   projectSession: ProjectSessionContext,
   template: PromptTemplate,

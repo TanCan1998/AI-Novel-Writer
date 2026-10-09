@@ -1,4 +1,4 @@
-//! 磁盘级端到端回归 —— 真实项目目录 + 真实 `.vela/lorekeeper.db`。
+//! 磁盘级端到端回归 —— 真实项目目录 + 真实 `.lore/lorekeeper.db`。
 //!
 //! 与各仓储的单元测试（内存库）不同，本模块覆盖「真机等价」路径：
 //! 文件库 + WAL + `foreign_keys=ON` + 真实目录上的物理文件 + **跨连接重开后的持久化**。
@@ -67,7 +67,7 @@ fn real_project_creation_lifecycle_persists_across_reopen_test() {
         let db = ProjectDatabase::open(&root).expect("打开真实项目库失败");
         assert!(
             project_database_path(&root).exists(),
-            "应在 <root>/.vela/lorekeeper.db 建库"
+            "应在 <root>/.lore/lorekeeper.db 建库"
         );
         let conn = db.connection();
 

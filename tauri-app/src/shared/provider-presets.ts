@@ -1,6 +1,6 @@
 /**
  * 服务商预设配置 — 共享类型定义
- * 渲染进程与主进程共同使用，持久化在 ~/.vela/provider-presets.json
+ * 渲染进程与主进程共同使用，持久化在 ~/.lorekeeper/provider-presets.json
  */
 
 import type { VerifiedReasoningMapping } from './reasoning-types'

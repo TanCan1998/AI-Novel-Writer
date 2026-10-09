@@ -28,7 +28,7 @@ export type FrozenWritingSkillSnapshot = Readonly<Partial<Record<WritingSkillSta
 const EMPTY_BINDINGS: WritingSkillBindingFile = { version: 1, bindings: {} }
 
 function bindingPath(projectPath: string): string {
-  return `${projectPath.replace(/[\\/]$/, '')}/.vela/writing-skills.json`
+  return `${projectPath.replace(/[\\/]$/, '')}/.lore/writing-skills.json`
 }
 
 function parseBindings(value: unknown): WritingSkillBindingFile {

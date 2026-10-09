@@ -25,7 +25,7 @@ it('checks project prompt diagnostics for the language selected in settings', as
     if (channel === 'fs:check-exists') return true
     if (channel === 'fs:list-dir') return [{
       name: 'premise.zh-CN.json',
-      path: 'C:/novels/english/.vela/prompts/premise.zh-CN.json',
+      path: 'C:/novels/english/.lore/prompts/premise.zh-CN.json',
       isDir: false,
     }]
     if (channel === 'fs:read-file') return { success: true, content: '{invalid json' }
@@ -67,7 +67,7 @@ it('keeps the project error visible when a later global retry succeeds', async (
       if (globalAttempt === 1) throw new Error('global denied')
       return { templates: [], diagnostics: [] }
     }
-    if (channel === 'fs:check-exists' && String(args[0]).endsWith('/.vela/prompts')) {
+    if (channel === 'fs:check-exists' && String(args[0]).endsWith('/.lore/prompts')) {
       throw new Error('project denied')
     }
     throw new Error(`Unexpected IPC channel: ${channel}`)

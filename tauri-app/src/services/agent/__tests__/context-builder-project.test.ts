@@ -177,7 +177,7 @@ describe('agent context project isolation', () => {
           if (channel === 'fs:check-exists') return true
           if (channel === 'fs:list-dir') return [{
             name: 'assistant_writing_identity.en-US.json',
-            path: 'C:\\novels\\cold-start\\.vela\\prompts\\assistant_writing_identity.en-US.json',
+            path: 'C:\\novels\\cold-start\\.lore\\prompts\\assistant_writing_identity.en-US.json',
             isDir: false,
           }]
           if (channel === 'fs:read-file') return {

@@ -34,7 +34,7 @@ beforeEach(() => {
 describe('renderer MCP trust boundary', () => {
   it('initializes and connects using safe server ids only', async () => {
     mocks.invoke.mockImplementation(async (channel: string) => {
-      if (channel === 'mcp:get-config-path') return 'C:/isolated/.vela/mcp_config.json'
+      if (channel === 'mcp:get-config-path') return 'C:/isolated/.lore/mcp_config.json'
       if (channel === 'mcp:load-config') {
         return {
           success: true,
@@ -58,7 +58,7 @@ describe('renderer MCP trust boundary', () => {
 
   it('shows corrupt configuration errors but treats missing configuration as empty', async () => {
     mocks.invoke.mockImplementation(async (channel: string) => {
-      if (channel === 'mcp:get-config-path') return 'C:/isolated/.vela/mcp_config.json'
+      if (channel === 'mcp:get-config-path') return 'C:/isolated/.lore/mcp_config.json'
       if (channel === 'mcp:load-config') {
         return { success: false, status: 'error', servers: [], error: 'MCP 配置损坏' }
       }
@@ -70,7 +70,7 @@ describe('renderer MCP trust boundary', () => {
 
     useMCPStore.setState({ error: null })
     mocks.invoke.mockImplementation(async (channel: string) => {
-      if (channel === 'mcp:get-config-path') return 'C:/isolated/.vela/mcp_config.json'
+      if (channel === 'mcp:get-config-path') return 'C:/isolated/.lore/mcp_config.json'
       if (channel === 'mcp:load-config') {
         return { success: true, status: 'missing', servers: [] }
       }

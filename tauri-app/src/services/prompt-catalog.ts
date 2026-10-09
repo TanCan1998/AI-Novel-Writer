@@ -348,7 +348,7 @@ export const ipcPromptPersistence: PromptPersistence = {
   },
 
   async loadProject(projectSession) {
-    const dirPath = `${projectSession.projectPath}/.vela/prompts`
+    const dirPath = `${projectSession.projectPath}/.lore/prompts`
     const exists = await ipc.invokeWithProjectSession(
       projectSession,
       'fs:check-exists',
@@ -405,7 +405,7 @@ export const ipcPromptPersistence: PromptPersistence = {
   },
 
   async saveProject(projectSession, template) {
-    const dirPath = `${projectSession.projectPath}/.vela/prompts`
+    const dirPath = `${projectSession.projectPath}/.lore/prompts`
     const exists = await ipc.invokeWithProjectSession(
       projectSession,
       'fs:check-exists',
@@ -416,7 +416,7 @@ export const ipcPromptPersistence: PromptPersistence = {
       requireIpcSuccess(await ipc.invokeWithProjectSession(
         projectSession,
         'fs:mkdir',
-        `${projectSession.projectPath}/.vela`,
+        `${projectSession.projectPath}/.lore`,
         projectSession.projectPath,
       ), '创建项目配置目录')
       requireIpcSuccess(await ipc.invokeWithProjectSession(
@@ -463,8 +463,8 @@ export const ipcPromptPersistence: PromptPersistence = {
 
   async deleteProject(projectSession, key, writingLanguage = 'zh-CN') {
     const language = resolveWritingLanguage(writingLanguage)
-    const filePaths = [`${projectSession.projectPath}/.vela/prompts/${key}.${language}.json`]
-    if (language === 'zh-CN') filePaths.push(`${projectSession.projectPath}/.vela/prompts/${key}.json`)
+    const filePaths = [`${projectSession.projectPath}/.lore/prompts/${key}.${language}.json`]
+    if (language === 'zh-CN') filePaths.push(`${projectSession.projectPath}/.lore/prompts/${key}.json`)
     for (const filePath of filePaths) {
       const exists = await ipc.invokeWithProjectSession(
         projectSession,

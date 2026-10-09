@@ -1,7 +1,7 @@
 //! 项目数据库连接层 —— 等价于 `electron/database.ts` 的 init/close/get
 //!
 //! 一个进程同一时刻只持有一个项目库连接（与 Electron 基线一致），
-//! 库文件位于 `<projectRoot>/.vela/lorekeeper.db`，采用 WAL + 外键约束。
+//! 库文件位于 `<projectRoot>/.lore/lorekeeper.db`，采用 WAL + 外键约束。
 
 pub mod schema;
 pub mod vector;
@@ -10,7 +10,9 @@ use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 
 /// 项目库目录名（相对项目根）
-pub const PROJECT_DIR_NAME: &str = ".vela";
+///
+/// L3 双栈隔离：Tauri 侧用 `.lore`，基线用 `.vela`（两栈项目目录刻意不互通）。
+pub const PROJECT_DIR_NAME: &str = ".lore";
 /// 项目库文件名
 ///
 /// **刻意与 Electron 基线不同**（基线为 `vela.db`）：两个应用可同时在同一台
@@ -90,7 +92,7 @@ mod tests {
         let db = ProjectDatabase::open(&root).expect("打开项目库失败");
 
         let db_path = project_database_path(&root);
-        assert!(db_path.exists(), "应在 .vela/lorekeeper.db 建库");
+        assert!(db_path.exists(), "应在 .lore/lorekeeper.db 建库");
 
         // project_core 表已建好
         let count: i64 = db

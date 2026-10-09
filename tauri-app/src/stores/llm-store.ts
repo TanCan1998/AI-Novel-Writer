@@ -42,9 +42,9 @@ interface LLMState {
   saveModel: (model: ModelProfile) => Promise<boolean>
   /** 删除模型 */
   deleteModel: (modelId: string) => Promise<boolean>
-  /** 设置默认生成模型（持久化到 ~/.vela/config.json） */
+  /** 设置默认生成模型（持久化到 ~/.lorekeeper/config.json） */
   setDefaultModel: (modelId: string) => Promise<boolean>
-  /** 设置默认向量模型（持久化到 ~/.vela/config.json） */
+  /** 设置默认向量模型（持久化到 ~/.lorekeeper/config.json） */
   setDefaultEmbeddingModel: (modelId: string) => Promise<boolean>
   /** 非流式生成 */
   generate: (

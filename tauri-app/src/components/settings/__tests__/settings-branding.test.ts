@@ -28,7 +28,7 @@ const visibleSettingsSource = readSources(visibleSettingsSources)
 const forbiddenVisibleLegacy = [
   '"name": "vela"',
   '"productName": "Vela"',
-  '"appId": "com.vela.ide"',
+  '"appId": "com.lore.ide"',
   'Vela IDE',
   'heider',
   'heider-x',
