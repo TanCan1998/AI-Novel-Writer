@@ -121,7 +121,10 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 
 - **F2-1 ✅**（`99efceaf`）：四表 DDL（`kb_documents` / `kb_chunks` / `kb_embedding_spaces` / `kb_fts`）+ `db/kb/chunks.rs`（`chunkText` 逐字移植）+ `db/kb/fts.rs`（jieba 预分词 + FTS5 CRUD/检索）。
 - **F2-2 ✅**（`d0538819`）：`db/kb/hybrid.rs`（基线语义默认 + RRF 可选开关 + 嵌入空间注册表 + 回填计划），并为 `db/vector.rs` 补 `live_doc_ids` / `contains`。
-- **F2-3 ⏳**：`commands/kb.rs`（15 频道）+ `dialog:select-knowledge-*`（2 频道）+ 前端登记。
+- **F2-3 ✅**（`419076db` 基础设施 + `20d26f42` 命令层 + `0e74971e` 前端）：`external_grant.rs`（内存态外部文件授权注册表）+ `db/kb/vectors.rs`（按项目/代际懒加载 HNSW）+ `db/kb/store.rs`（SQLite 存储与文本检索编排）+ `commands/kb.rs`（15 频道 + 2 dialog）+ 前端登记。**F2 全部完成**。
+  - 默认语义：**向量可用且召回非空 → 短路**；否则文本支路（FTS5 + jieba）。嵌入空间按「指纹 + 维度」匹配，换模型触发 `reindex_required`。
+  - **已知缺口**：`kb:import-reference-text` 仍为显式占位失败（依赖批次 G）；存储预检仅最小移植（Windows MAX_PATH）；基线 `vectors.json` 迁移 barrier 在双栈隔离后无适用路径。
+  - **章节清理收口**：`chapter:*` 的知识库物理清理已由占位改为真实 `removeDocument`（实体稿清理仍待批次 H）。
 - **⚠️ 基线并无融合（本轮读源码确认）**：`searchWithScope` 实为「向量可用且召回非空 → 短路返回；否则 → 降级 `LIKE` 子串扫描」，且**降级分支 `score` 恒为 0.5**（`relevance` 只参与排序）。经用户 2026-10-09 决定：**默认对齐基线语义**，**RRF 仅作可选开关（默认关）**，降级分支**改返回真实相关性分**（差异已记录于 `hybrid.rs` 模块文档；方案 B 文档 §8.5/§8.7 自相矛盾之处以此为准）。
 - **`kb:import-reference-text` 依赖批次 G**（import-run 域未迁移）→ 实施时先注册但**显式占位失败**（沿用批次 E 诚实化占位先例）。
 
@@ -131,7 +134,7 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 ### 4.13 ChapterLifecycleChannels（4）— controller: `chapter-lifecycle-controller.ts` — 批次 E
 `chapter:delete-finalized(request)`、`chapter:retry-deletion(operationId)`、`chapter:confirm-legacy-knowledge-absent(operationId)`、`chapter:list-incomplete-deletions`。
 **定稿删除专属生命周期（ADR 0011）：可恢复删除、操作幂等、知识库遗留确认** —— Rust 等量单元测试硬性要求。**请求即执行 + 状态机恢复**（非早期误记的四段式）。
-**物理清理依赖**：删实体稿文件 → fs 授权域（批次 H）；删知识库文档 → 批次 F2。
+**物理清理依赖**：删实体稿文件 → fs 授权域（批次 H）；删知识库文档 → ✅ **已随 F2-3 真实化**（复用 kb store + HNSW 向量清除）。
 
 ### 4.14 MCPChannels（9）— controller: 无独立 controller（`electron/mcp/`）— 批次 H
 `mcp:load-config`、`mcp:connect`、`mcp:disconnect`、`mcp:disconnect-all`、`mcp:list-tools`、`mcp:list-resources`、`mcp:call-tool`、`mcp:get-servers-status`、`mcp:get-config-path`。全局域★G6（stdio/sse 子进程，Tauri 侧评估 `tauri-plugin-shell` 或 Rust MCP SDK）。
@@ -159,9 +162,9 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 | **B** | project、fs 基础、external-file-grant、dialog | 0 | 会话租约签发/校验（ADR 0001）、fs 授权（ADR 0002）。**排查提醒**：频道登记齐全但 UI「点了没反应」时，须核对**命令实现是否为骨架**（`check:channels` 只查映射，不查实现完整度） |
 | **C** | db 子域逐步：project-core → blueprints → characters/roster → drafts → revisions → reviews → post-process → summary/llm-stats | B | 一域一仓；行为与 Electron 对照 |
 | **D** | llm 全部 + 3 个流事件（G5 性能实测） | C | generation-parameter-policy 复刻；finishReason 显式终态。拆 D1（模型管理）/ D2（生成·流式·租约·发现·连通性） |
-| **E** | finalization(G1 补契约)、chapter-lifecycle、continuity、recovery-candidate、draft-import-finalized-batch | C, D | 定稿不可逆 + 删除生命周期（ADR 0003/0011）等量测试。物理清理依赖：删实体稿文件（fs 授权域→H）、删 KB 文档（→F2） |
-| **F** | kb 全部、plot-tree、narrative-thread、consistency-exemption | C | AppResult 错误码对齐。拆 **F1**（plot-tree 3 / narrative-thread 6 / consistency-exemption 3 = 12 频道，零新依赖，纯 SQLite 平移；剧情树 `sourceRevision` 有**黄金哈希测试**锁定与 `JSON.stringify` 逐字节一致）/ **F2**（`kb:*` 15 + `dialog:select-knowledge-*` 2）。**F2 向量路线见 §4.11**；隔离红线**已解决**（L3 后项目目录 `.lore/`，向量快照 `.lore/kb/`）。进度：**F2-1 ✅ / F2-2 ✅ / F2-3 ⏳** |
-| **G** | import-run 全套（18 频道状态机）、dialog:select-novel-files、import-global-facts | C | 执行租约 `ImportRunExecutionLease`；断点恢复语义 |
-| **H** | update（updater 插件，G3）、mcp、prompt/skills、**fs:grant-\* 三命令 + `dialog:select-export-directory`** | 任意 | macOS 更新 = 仅打开 Release 页；`tauri-plugin-fs 2.6.0` **已随 dialog 插件连带引入**，勿重复添加；grant 签发只回传 `grantId`（ADR 0002） |
+| **E** | finalization(G1 补契约)、chapter-lifecycle、continuity、recovery-candidate、draft-import-finalized-batch | C, D | 定稿不可逆 + 删除生命周期（ADR 0003/0011）等量测试。物理清理依赖：删实体稿文件（fs 授权域→H）、删 KB 文档（✅ 已随 F2-3 真实化） |
+| **F** | kb 全部、plot-tree、narrative-thread、consistency-exemption | C | AppResult 错误码对齐。拆 **F1**（plot-tree 3 / narrative-thread 6 / consistency-exemption 3 = 12 频道，零新依赖，纯 SQLite 平移；剧情树 `sourceRevision` 有**黄金哈希测试**锁定与 `JSON.stringify` 逐字节一致）/ **F2**（`kb:*` 15 + `dialog:select-knowledge-*` 2）。**F2 向量路线见 §4.11**；隔离红线**已解决**（L3 后项目目录 `.lore/`，向量快照 `.lore/kb/`）。进度：**F2-1 ✅ / F2-2 ✅ / F2-3 ✅（F2 全部完成）** |
+| **G** | import-run 全套（18 频道状态机）、dialog:select-novel-files、import-global-facts | C | 执行租约 `ImportRunExecutionLease`；断点恢复语义。**已知依赖**：`kb:import-reference-text` 待本批收口（当前为显式占位失败） |
+| **H** | update（updater 插件，G3）、mcp、prompt/skills、**fs:grant-\* 三命令 + `dialog:select-export-directory`** | 任意 | macOS 更新 = 仅打开 Release 页；`tauri-plugin-fs 2.6.0` **已随 dialog 插件连带引入**，勿重复添加；grant 签发只回传 `grantId`（ADR 0002）。**注**：外部 grant 注册表（`external_grant.rs`）已随 F2-3 落地，本批 `fs:grant-*` 只需接入同一注册表 |
 
 每批次验收：Rust 单元测试 + `cargo test` + 前端 `pnpm typecheck`/相关 `pnpm test` + 与 Electron 版行为对照。**验收数字见 [`docs/handoffs/`](../handoffs/) 最新快照。**

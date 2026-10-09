@@ -20,22 +20,55 @@
 |---|---|
 | 仓库 / 分支 | **`TanCan1998/Lorekeeper`**（`EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork）· `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 已注册命令 | **133** |
-| 覆盖 invoke 频道 | **132**（契约总数 191，事件频道 4） |
-| 未迁移 invoke 频道 | **59**（`db=19 kb=15 mcp=9 update=6 skills=4 dialog=3 prompt=3`） |
+| 已注册命令 | **150** |
+| 覆盖 invoke 频道 | **149**（契约总数 191，事件频道 4） |
+| 未迁移 invoke 频道 | **42**（`db=19 mcp=9 update=6 skills=4 prompt=3 dialog=1`） |
 | orphan | **空** ✅ |
-| `cargo test --lib` | **458/458** ✅ |
+| `cargo test --lib` | **478/478** ✅ |
 | `cargo check --all-targets` | **0 告警** ✅ |
 | `pnpm typecheck` / `lint` | exit 0 / exit 0 ✅ |
 | 定向 `vitest` | **70/72**（2 个失败为阶段 0 起就失效的既有测试，见 10-08 快照 §6） |
-| 已完成批次 | A ✅ / B ✅（含遗留补齐） / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅（两部分全部完成）** / **F1 ✅** / **L3 ✅** / **F2-1 ✅ / F2-2 ✅** |
-| 当前阶段 | **批次 F2 进行中（F2-1 ✅ / F2-2 ✅）**：schema 四表 + 分块 + FTS5 预分词 + 混合编排均已落地；下一步 **F2-3**（`commands/kb.rs` 15 频道 + `dialog:select-knowledge-*` 2 频道 + 前端登记） |
+| 已完成批次 | A ✅ / B ✅（含遗留补齐） / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅（两部分全部完成）** / **F1 ✅** / **L3 ✅** / **F2 ✅（F2-1/F2-2/F2-3 全部完成）** |
+| 当前阶段 | **批次 F2 ✅ 完成**：`kb:*` 15 频道 + `dialog:select-knowledge-*` 2 频道已注册，含外部文件授权注册表、SQLite 存储层、HNSW 向量管理器与前端登记。下一步：① 批次 G（`kb:import-reference-text` 收口）；② 批次 H（fs:grant-* + update/mcp/prompt/skills，可复用已落地的 grant 注册表） |
 | 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（Cargo.lock 锁 **2.8.1**）。**F2 无新增依赖**：`hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio` 已在 `Cargo.toml`（`4aff3f65`）；**FTS5 由 `libsqlite3-sys` bundled 提供**（`-DSQLITE_ENABLE_FTS5` 实测） |
 | GUI 冒烟 | ✅ 自 2026-10-07 起 **七轮**（末轮 2026-10-08）。近三轮记录：F1 轮 `pnpm tauri dev` 编译 **35.19s** 功能正常；E 轮 `cargo test --lib` **418/418** 无 panic；dialog 轮 vite `453 ms` + cargo `24.91s`。渲染层 `ipc-client` 已联通。**⚠️ E 第二部分的 GUI 冒烟未做**（chapter-lifecycle 依赖含正文项目） |
 | 双栈隔离 | **L0/L1/L2/L3 全部独立**：安装标识 / `~/.lorekeeper` / `<root>/.lore/`（库 `.lore/lorekeeper.db`、KB 向量 `.lore/kb/`）。基线为 `~/.vela` / `<root>/.vela/`。**两栈项目目录刻意不互通**（`ee40aaab`） |
 | Rust 工具链 | rustc/cargo **1.99.0 stable-msvc** @ `D:\Environment\rust\`（脚本内须显式设 `RUSTUP_HOME` / `CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
 
 <sub>*命令与频道差额：**133 命令**中 1 个为骨架（`dialog:select-export-directory`），不产生独立频道覆盖；其余 **132** 与 invoke 频道一一对应。</sub>
+
+---
+
+## 本次更新（第三十一次：F2-3 收口 —— kb 命令层 + 外部授权注册表）
+
+> 承接第三十次，同属 **2026-10-09**。实现细节见 `419076db` / `20d26f42` / `0e74971e` 的 commit message。
+> 本批**无新依赖**（HNSW / jieba / reqwest / tauri-plugin-dialog 均已在列）。
+
+### 1. 交付（3 个提交）
+
+| Commit | 内容 |
+|---|---|
+| `419076db` | 基础设施：`external_grant.rs`（内存态外部文件授权注册表）+ `db/kb/vectors.rs`（`KbVectorManager`，按项目/代际懒加载 HNSW）+ `db/kb/store.rs`（SQLite 存储与文本检索编排）+ `AppState` 新字段 |
+| `20d26f42` | 命令层：`commands/kb.rs`（15 频道 + 2 dialog）+ `lib.rs` 注册 17 命令 + `chapter_lifecycle` 知识库清理真实化 |
+| `0e74971e` | 前端登记：`ipc-client` 参数名 15 条、`migrated-channels` 重生（149）、coverage 断言更新 |
+
+### 2. 语义要点
+
+- **默认对齐基线**：`kb:search*` 向量可用且召回非空 → 短路；否则文本支路。嵌入空间按「指纹 + 维度」匹配；换模型触发 `reindex_required`（旧代际不破坏）。
+- **用户 2026-10-09 决定**：文本支路 score 返回**真实词命中度**（基线恒 0.5）；RRF 仍为可选开关（本批命令层未暴露开关，默认关）。
+- **距离度量差异**：`LocalVectorIndex` 用 cosine，基线 LanceDB 侧为 `l2`（已在 `commands/kb.rs` 模块文档记录）。
+- **外部授权注册表**：`dialog:select-knowledge-*` 签发一次性 grant，`kb:import-{document,folder}` 解析消费；**批次 H 的 `fs:grant-*` 复用同一注册表**（模块头已注明）。
+- **章节清理收口**：`chapter:*` 的知识库物理清理由占位改为真实 `removeDocument`（SQLite 事实 + HNSW 向量）；实体稿清理仍占位（批次 H）。相关命令改为 async（Tauri async 命令含引用入参须返回 `Result`）。
+
+### 3. 已知缺口（待后续批次）
+
+- `kb:import-reference-text`：依赖**批次 G**（import-run 权威），先注册但**显式占位失败**。
+- 存储预检：仅最小移植（Windows MAX_PATH），基线 `vectors.json` 迁移 barrier 在双栈隔离后无适用路径。
+- 向量持久化：HNSW 快照落 `<project>/.lore/kb/index-<generation>.hnsw.*`（需真实项目 GUI 验证）。
+
+### 4. 验证（本轮实测）
+
+`cargo test --lib` **478/478**（F2-3 +20）；`cargo check --all-targets` **0 告警**；`pnpm typecheck` / `lint` **exit 0**；`check:channels` **150 命令 / 149 覆盖 / 42 未迁移**，orphan 空；coverage 测试 6/6 通过。
 
 ---
 
@@ -214,30 +247,32 @@ SQLite 事实删除**已真实提交**（`committed: true`）。
 
 ### 1. 当前工作区状态
 
-**`master` 上工作区干净**（`git status --porcelain` 无输出）；第二十七 ～ 第三十次改动**均已提交**，
-HEAD = `d0538819`。第二十七次快照里「5 个已修改 + 4 个新增文件尚未提交」的描述**已过期**，勿再照它操作。
+**`master` 上工作区干净**（`git status --porcelain` 无输出）；第二十七 ～ 第三十一次改动**均已提交**，
+HEAD = `0e74971e`（F2-3 前端登记）。第二十七次快照里「5 个已修改 + 4 个新增文件尚未提交」的描述**已过期**，勿再照它操作。
 
 > 历史备注：第二十七次的 5 个 commit message 里附带过「建议提交拆分（5 主题）」表；实际提交已按该表完成，**无需再拆**。
 
 ### 2. 下一步（1-2-3）
 
-1. **补 E 第二部分 GUI 冒烟**（唯一未做的验收项）：需要**含正文的真实项目**（⚠️ **L3 后 Tauri 只认 `.lore/` 项目**，基线创建的 `.vela/` 项目须先改名或由 Tauri 新建），跑 `pnpm tauri dev` 验证
-   `chapter:delete-finalized` → `chapter:list-incomplete-deletions` → `chapter:retry-deletion` 流程，
-   并确认两处 `*_cleanup_unavailable` 占位返回**可读失败**而非静默成功。
+1. **GUI 冒烟（含正文的真实项目，`.lore/` 项目）**：
+   - 批次 E 第二部分：`chapter:delete-finalized` → `chapter:list-incomplete-deletions` → `chapter:retry-deletion`，
+     确认实体稿占位返回**可读失败**（知识库清理已真实化）；
+   - 批次 F2：导入（`dialog:select-knowledge-*` → `kb:import-*`）→ `kb:search` → `kb:stats` →
+     `kb:remove-document` / `kb:clear-all` 全链路。
 2. **G1 补契约（`finalization:commit` / `finalization:retry`）** —— 属**定稿不可逆核心**，
    **Ask first：需用户批准**后方可平移 `electron/services/finalization-service.ts`。这是批次 E 唯一剩余缺口。
-3. **批次 F2**（向量层 `4aff3f65`、**F2-1 `99efceaf`、F2-2 `d0538819` 已落地**）：剩余 **F2-3**
-   （`commands/kb.rs` 15 频道 + `dialog:select-knowledge-*` 2 频道 + 前端登记）。
-   前置已完成：① 依赖实测（**无新增**）；② 隔离红线已解决（L3 → `.lore/kb/`）。
-   已知缺口：`kb:import-reference-text` → 批次 G（**占位失败**）；`kb:import-{document,folder}` 需安全文件系统读取面；存储预检待最小移植。
-   落地后把 `knowledge_cleanup_unavailable` 占位替换为真实 `removeDocument`。
+3. **批次 F2 ✅ 已完成**（向量层 `4aff3f65`、F2-1 `99efceaf`、F2-2 `d0538819`、
+   F2-3 `419076db` / `20d26f42` / `0e74971e`）。下一批可选：
+   - **批次 G**（import-run 18 频道 + `dialog:select-novel-files`），落地后收口 `kb:import-reference-text`；
+   - **批次 H**（update / mcp / prompt / skills + `fs:grant-*` + `dialog:select-export-directory`），
+     可直接复用 F2-3 已落地的 `external_grant.rs` 注册表。
 
 ### 3. 阻塞项与待授权项（不得删除，须逐条确认后更新）
 
 | # | 项 | 状态 |
 |---|---|---|
 | B1 | `finalization:commit` / `finalization:retry`（G1） | ⛔ **阻塞于用户授权**（定稿不可逆核心）。**落地时必须同时把 `src/services/finalization-client.ts` 的 `getVelaApi()`（真实读取 `window.velaAPI`）切换为 `ipc.invoke`**，否则 Tauri 下必抛 `不在 Electron 环境中` |
-| B2 | `chapter:*` 物理清理（删稿件 / 删 KB 文档） | ⛔ **阻塞于批次 H + F2**，当前为显式占位 |
+| B2 | `chapter:*` 物理清理（删稿件 / 删 KB 文档） | 🟡 **部分解除**：删 KB 文档 ✅ **已随 F2-3 真实化**；删实体稿文件仍 ⛔ 阻塞于批次 H |
 | B3 | `dialog:select-export-directory` | ⛔ 仍返回 `None`，阻塞于批次 H 的 grant 域 |
 | B4 | L3 双栈隔离（`.vela` 改名） | ✅ **已执行**（`ee40aaab`：项目目录 `.vela` → `.lore`，36 文件 + `AGENTS.md` 契约） |
 | B5 | `cargo fmt --check` | ⚠️ 未纳入验收（`src-tauri/` 全域存在既有 rustfmt 差异） |
@@ -265,9 +300,9 @@ HEAD = `d0538819`。第二十七次快照里「5 个已修改 + 4 个新增文�
 
 | 命令 | 工作目录 | 实测输出 |
 |---|---|---|
-| `pnpm run check:channels` | `tauri-app/` | 契约 invoke 频道 **191**（事件频道 4）· 已注册命令 **133** → 覆盖 **132** · 未迁移 **59** `[db=19 kb=15 mcp=9 update=6 skills=4 dialog=3 prompt=3]` · 命令名与契约频道一一对应 ✅ |
-| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 458 passed; 0 failed; 0 ignored` |
-| `cargo check --all-targets` | `tauri-app/src-tauri/` | `Finished dev profile ... in 4.21s`（0 告警） |
-| `git status --porcelain` | 仓库根 | 空（工作区干净） |
-| `git log -1` | 仓库根 | `d0538819 feat(tauri): F2-2 混合检索编排层（基线语义默认 + RRF 可选开关）` |
-| 定向 `vitest` A/B | `tauri-app/` | 9 个受影响文件：HEAD **46 failed / 28 passed**，改动后 **46 failed / 28 passed**（零回归） |
+| `pnpm run check:channels` | `tauri-app/` | 契约 invoke 频道 **191**（事件频道 4）· 已注册命令 **150** → 覆盖 **149** · 未迁移 **42** `[db=19 mcp=9 update=6 skills=4 prompt=3 dialog=1]` · 命令名与契约频道一一对应 ✅ |
+| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 478 passed; 0 failed; 0 ignored` |
+| `cargo check --all-targets` | `tauri-app/src-tauri/` | `Finished dev profile ... in 4.10s`（0 告警） |
+| `pnpm typecheck` / `lint` | `tauri-app/` | exit 0 / exit 0 |
+| `npx vitest run test/channel-migration-coverage.test.ts` | `tauri-app/` | `Test Files 1 passed`，`Tests 6 passed` |
+| `git log -1` | 仓库根 | 见下方「交接」（F2-3 前端登记提交） |
