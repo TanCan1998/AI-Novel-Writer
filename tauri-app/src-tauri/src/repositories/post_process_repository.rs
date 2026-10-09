@@ -82,7 +82,12 @@ pub fn create_run(conn: &Connection, params: &PostProcessCreateParams) -> Result
         tx.execute(
             "INSERT INTO post_process_steps (run_id, step_key, label, critical)
              VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![run_id, step.key, step.label, if step.critical { 1 } else { 0 }],
+            rusqlite::params![
+                run_id,
+                step.key,
+                step.label,
+                if step.critical { 1 } else { 0 }
+            ],
         )
         .map_err(|error| format!("写入后处理步骤失败：{error}"))?;
     }
@@ -391,7 +396,9 @@ mod tests {
         // 汇总初始为 0，须由 mark_step_* 触发重算
         assert!(!is_all_critical_passed(&conn, "arch_extract", "draft-1").unwrap());
         mark_step_ok(&conn, &run_id, "任何步骤").unwrap_err();
-        let run = get_latest_run(&conn, "arch_extract", "draft-1").unwrap().unwrap();
+        let run = get_latest_run(&conn, "arch_extract", "draft-1")
+            .unwrap()
+            .unwrap();
         assert_eq!(run.source_label, "");
         assert!(!run.all_critical_passed);
         // 无跑批时同样为 false

@@ -117,8 +117,10 @@ pub fn sanitize_project_name(name: &str) -> String {
         .trim()
         .chars()
         .map(|character| {
-            if matches!(character, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')
-                || (character as u32) < 32
+            if matches!(
+                character,
+                '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
+            ) || (character as u32) < 32
             {
                 '_'
             } else {
@@ -145,8 +147,10 @@ pub fn sanitize_project_directory_name(name: &str) -> String {
     let replaced: String = base_name
         .chars()
         .map(|character| {
-            if matches!(character, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*')
-                || (character as u32) < 32
+            if matches!(
+                character,
+                '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*'
+            ) || (character as u32) < 32
             {
                 '_'
             } else {
@@ -269,9 +273,9 @@ fn is_iso8601_timestamp(value: &str) -> bool {
         && matches!(bytes[10], b'T' | b't' | b' ')
         && bytes[13] == b':'
         && bytes[16] == b':'
-        && bytes[19..]
-            .iter()
-            .all(|byte| byte.is_ascii_digit() || matches!(byte, b'.' | b'Z' | b'z' | b'+' | b'-' | b':'))
+        && bytes[19..].iter().all(|byte| {
+            byte.is_ascii_digit() || matches!(byte, b'.' | b'Z' | b'z' | b'+' | b'-' | b':')
+        })
 }
 
 /// 解析为 canonical 目录（存在性 + 目录性 + 符号链接展开）
@@ -286,8 +290,8 @@ pub fn canonical_existing_directory(candidate: &str) -> Result<String, String> {
     if !resolved.is_dir() {
         return Err("项目根必须是目录".to_string());
     }
-    let canonical = std::fs::canonicalize(&resolved)
-        .map_err(|error| format!("项目目录无法解析：{error}"))?;
+    let canonical =
+        std::fs::canonicalize(&resolved).map_err(|error| format!("项目目录无法解析：{error}"))?;
     Ok(normalize_canonical(canonical))
 }
 
@@ -343,7 +347,10 @@ fn write_manifest(root_path: &str) -> Result<TrustedProject, String> {
         "projectId": random_uuid_v4(),
         "createdAt": crate::commands::iso8601_utc_from_millis(crate::commands::epoch_millis_now()),
     });
-    let body = format!("{}\n", serde_json::to_string_pretty(&manifest).unwrap_or_default());
+    let body = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&manifest).unwrap_or_default()
+    );
 
     match std::fs::OpenOptions::new()
         .write(true)
@@ -429,7 +436,10 @@ fn has_trusted_legacy_sqlite_fingerprint(root_path: &str) -> bool {
 }
 
 /// 探测目录是否为项目根（清单优先，其次旧版指纹）
-pub fn probe_existing_project(candidate_path: &str, home: Option<&str>) -> Result<ProjectProbe, String> {
+pub fn probe_existing_project(
+    candidate_path: &str,
+    home: Option<&str>,
+) -> Result<ProjectProbe, String> {
     let root_path = canonical_project_root(candidate_path, home)?;
     let manifest_file = manifest_path(&root_path);
 
@@ -465,7 +475,10 @@ pub fn probe_existing_project(candidate_path: &str, home: Option<&str>) -> Resul
 }
 
 /// 收养旧版项目（写清单）；已是清单项目则原样返回
-pub fn adopt_legacy_project(project: ProjectProbe, home: Option<&str>) -> Result<TrustedProject, String> {
+pub fn adopt_legacy_project(
+    project: ProjectProbe,
+    home: Option<&str>,
+) -> Result<TrustedProject, String> {
     match project {
         ProjectProbe::Manifest(trusted) => Ok(trusted),
         ProjectProbe::Legacy { root_path } => {
@@ -510,7 +523,8 @@ pub fn create_project(
         return Err("项目目录已存在，已拒绝覆盖".to_string());
     }
 
-    std::fs::create_dir_all(&requested_root).map_err(|error| format!("创建项目目录失败：{error}"))?;
+    std::fs::create_dir_all(&requested_root)
+        .map_err(|error| format!("创建项目目录失败：{error}"))?;
     let root_path = canonical_project_root(&normalize_canonical(requested_root), home)?;
     write_manifest(&root_path)
 }
@@ -553,7 +567,10 @@ mod tests {
         assert!(is_uuid_v4(&second));
         assert_ne!(first, second, "连续生成不应重复");
         assert!(!is_uuid_v4("not-a-uuid"));
-        assert!(!is_uuid_v4("00000000-0000-3000-8000-000000000000"), "version 必须为 4");
+        assert!(
+            !is_uuid_v4("00000000-0000-3000-8000-000000000000"),
+            "version 必须为 4"
+        );
     }
 
     #[test]
@@ -570,10 +587,16 @@ mod tests {
     fn is_contained_path_rejects_sibling_and_accepts_child_test() {
         let root = "C:\\projects\\novel";
         assert!(is_contained_path(root, "C:\\projects\\novel"));
-        assert!(is_contained_path(root, "C:\\projects\\novel\\drafts\\a.txt"));
+        assert!(is_contained_path(
+            root,
+            "C:\\projects\\novel\\drafts\\a.txt"
+        ));
         assert!(!is_contained_path(root, "C:\\projects\\novel-2\\a.txt"));
         assert!(!is_contained_path(root, "C:\\projects"));
-        assert!(is_contained_path(root, "c:/PROJECTS/NOVEL/子目录"), "大小写与分隔符不敏感");
+        assert!(
+            is_contained_path(root, "c:/PROJECTS/NOVEL/子目录"),
+            "大小写与分隔符不敏感"
+        );
     }
 
     #[test]
@@ -604,7 +627,10 @@ mod tests {
         let parent = temp_root("create");
         let project = create_project(&parent.to_string_lossy(), "我的/小说:01", None).unwrap();
 
-        assert!(manifest_path(&project.root_path).is_file(), "清单应写入 .lore/project.json");
+        assert!(
+            manifest_path(&project.root_path).is_file(),
+            "清单应写入 .lore/project.json"
+        );
         assert!(is_uuid_v4(&project.project_id));
 
         let probed = probe_existing_project(&project.root_path, None).unwrap();
@@ -633,7 +659,10 @@ mod tests {
         // Windows 下以驱动器根为候选
         let system_drive = std::env::var("SystemDrive").unwrap_or_else(|_| "C:".to_string());
         let error = probe_existing_project(&format!("{system_drive}\\"), None).unwrap_err();
-        assert!(error.contains("磁盘根目录") || error.contains("不是项目根目录"), "错误文案不符：{error}");
+        assert!(
+            error.contains("磁盘根目录") || error.contains("不是项目根目录"),
+            "错误文案不符：{error}"
+        );
     }
 
     #[test]
@@ -643,8 +672,7 @@ mod tests {
         std::fs::create_dir_all(root.join(".lore")).unwrap();
         {
             // 构造旧版指纹：5 张必需表 + project_core 必需列，且无清单
-            let conn =
-                rusqlite::Connection::open(crate::db::project_database_path(&root)).unwrap();
+            let conn = rusqlite::Connection::open(crate::db::project_database_path(&root)).unwrap();
             conn.execute_batch(
                 "CREATE TABLE project_core (id TEXT, project_name TEXT, genre TEXT, total_chapters INTEGER, character_states TEXT);
                  CREATE TABLE blueprints (chapter_number INTEGER);
@@ -657,7 +685,10 @@ mod tests {
 
         let root_text = normalize_canonical(root.clone());
         let probe = probe_existing_project(&root_text, None).unwrap();
-        assert!(matches!(probe, ProjectProbe::Legacy { .. }), "应识别为旧版项目");
+        assert!(
+            matches!(probe, ProjectProbe::Legacy { .. }),
+            "应识别为旧版项目"
+        );
 
         let adopted = adopt_legacy_project(probe, None).unwrap();
         assert!(is_uuid_v4(&adopted.project_id), "收养后应生成清单身份");
@@ -675,7 +706,10 @@ mod tests {
             root_path: project.root_path.clone(),
             lease_id: random_uuid_v4(),
         };
-        assert_eq!(authorize_deletion(&lease, &project.root_path, None).unwrap(), project.root_path);
+        assert_eq!(
+            authorize_deletion(&lease, &project.root_path, None).unwrap(),
+            project.root_path
+        );
 
         let stranger = ProjectSessionLease {
             project_id: random_uuid_v4(),

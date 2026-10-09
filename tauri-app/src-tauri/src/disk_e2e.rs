@@ -167,7 +167,9 @@ fn real_project_creation_lifecycle_persists_across_reopen_test() {
         )
         .expect("审稿创建失败");
         assert_eq!(review.review_index, 1);
-        let latest_review = reviews::get_latest_by_draft(conn, draft_id).unwrap().unwrap();
+        let latest_review = reviews::get_latest_by_draft(conn, draft_id)
+            .unwrap()
+            .unwrap();
         assert_eq!(latest_review.content, "审稿报告正文");
 
         // 7) 后处理跑批：两个关键步骤 → 汇总切换
@@ -228,7 +230,14 @@ fn real_project_creation_lifecycle_persists_across_reopen_test() {
         )
         .unwrap();
         let stats = llm::get_stats(conn).unwrap();
-        assert_eq!((stats.total_calls, stats.successful_calls, stats.failed_calls), (2, 1, 1));
+        assert_eq!(
+            (
+                stats.total_calls,
+                stats.successful_calls,
+                stats.failed_calls
+            ),
+            (2, 1, 1)
+        );
         assert_eq!(stats.total_tokens, Some(300));
         assert_eq!(llm::get_history(conn, 10).unwrap().len(), 2);
     } // 连接在此释放（模拟关闭应用）
@@ -241,7 +250,11 @@ fn real_project_creation_lifecycle_persists_across_reopen_test() {
         let core = project_core::get(conn).unwrap().expect("主台账应仍在");
         assert_eq!(core.project_name, "磁盘回归项目");
 
-        assert_eq!(blueprints::get_all(conn).unwrap().len(), 3, "蓝图应跨重开保留");
+        assert_eq!(
+            blueprints::get_all(conn).unwrap().len(),
+            3,
+            "蓝图应跨重开保留"
+        );
         assert!(
             blueprints::list_pending_character_sync_operations(conn)
                 .unwrap()
@@ -255,21 +268,30 @@ fn real_project_creation_lifecycle_persists_across_reopen_test() {
         let persisted = drafts::get_full(conn, all_drafts[0].id).unwrap().unwrap();
         assert_eq!(persisted.content, "第一章合并后正文");
 
-        assert_eq!(revisions::list_by_draft(conn, all_drafts[0].id).unwrap().len(), 1);
+        assert_eq!(
+            revisions::list_by_draft(conn, all_drafts[0].id)
+                .unwrap()
+                .len(),
+            1
+        );
         assert_eq!(
             revisions::get_full(conn, 1).unwrap().unwrap().meta.status,
             "merged"
         );
-        assert_eq!(reviews::list_by_draft(conn, all_drafts[0].id).unwrap().len(), 1);
+        assert_eq!(
+            reviews::list_by_draft(conn, all_drafts[0].id)
+                .unwrap()
+                .len(),
+            1
+        );
 
-        let steps = post_process::get_steps(conn, &post_process::get_latest_run(
+        let steps = post_process::get_steps(
             conn,
-            "chapter_finalize",
-            "1",
+            &post_process::get_latest_run(conn, "chapter_finalize", "1")
+                .unwrap()
+                .unwrap()
+                .id,
         )
-        .unwrap()
-        .unwrap()
-        .id)
         .unwrap();
         assert_eq!(steps.len(), 2);
         assert_eq!(steps[0].error_msg, "重跑超时", "步骤失败原因应保留");
@@ -302,9 +324,15 @@ fn real_project_sqlite_pragmas_are_effective_on_disk_test() {
 
     // 外键 RESTRICT 真实生效：仍被草稿引用的正文不可删除
     let draft_id = drafts::create(conn, &draft_params(1, "正文")).unwrap();
-    let content_id = drafts::get_meta(conn, draft_id).unwrap().unwrap().content_id;
+    let content_id = drafts::get_meta(conn, draft_id)
+        .unwrap()
+        .unwrap()
+        .content_id;
     let delete_result = conn.execute("DELETE FROM contents WHERE id = ?1", [content_id]);
-    assert!(delete_result.is_err(), "ON DELETE RESTRICT 应阻止删除被引用的正文");
+    assert!(
+        delete_result.is_err(),
+        "ON DELETE RESTRICT 应阻止删除被引用的正文"
+    );
 
     // 级联真实生效：删除草稿会带走其修稿/审稿
     let source = ExpectedDraftSource {
@@ -340,7 +368,8 @@ fn real_project_sqlite_pragmas_are_effective_on_disk_test() {
     assert_eq!(revisions::list_by_draft(conn, draft_id).unwrap().len(), 1);
     assert_eq!(reviews::list_by_draft(conn, draft_id).unwrap().len(), 1);
 
-    conn.execute("DELETE FROM drafts WHERE id = ?1", [draft_id]).unwrap();
+    conn.execute("DELETE FROM drafts WHERE id = ?1", [draft_id])
+        .unwrap();
     assert!(
         revisions::list_by_draft(conn, draft_id).unwrap().is_empty(),
         "删除草稿应级联删除修稿"
@@ -454,9 +483,12 @@ fn real_project_finalize_publish_then_delete_removes_manuscript_test() {
     assert_eq!(record.publication_status, "pending");
     assert_eq!(record.content_snapshot, body, "outbox 必须冻结不可变正文");
     assert_eq!(
-        conn.query_row("SELECT body FROM contents WHERE id = ?1", [content_id], |row| row
-            .get::<_, String>(0))
-            .unwrap(),
+        conn.query_row(
+            "SELECT body FROM contents WHERE id = ?1",
+            [content_id],
+            |row| row.get::<_, String>(0)
+        )
+        .unwrap(),
         body,
         "定稿后 contents.body 应等于冻结正文"
     );
@@ -492,15 +524,17 @@ fn real_project_finalize_publish_then_delete_removes_manuscript_test() {
         draft_id,
         chapter_number: 1,
     };
-    let operation = chapter_deletion::begin(conn, "op-disk-1", &request, false)
-        .expect("冻结删除收据失败");
+    let operation =
+        chapter_deletion::begin(conn, "op-disk-1", &request, false).expect("冻结删除收据失败");
     assert_eq!(operation.manuscript_status, "pending");
     assert_eq!(operation.knowledge_status, "not_required");
     assert_eq!(operation.target_file_name, "第1章 起点.txt");
     let remaining: i64 = conn
-        .query_row("SELECT COUNT(*) FROM drafts WHERE id = ?1", [draft_id], |row| {
-            row.get(0)
-        })
+        .query_row(
+            "SELECT COUNT(*) FROM drafts WHERE id = ?1",
+            [draft_id],
+            |row| row.get(0),
+        )
         .unwrap();
     assert_eq!(remaining, 0, "定稿事实应随删除事务移除");
 
@@ -513,7 +547,10 @@ fn real_project_finalize_publish_then_delete_removes_manuscript_test() {
     assert!(decoy.exists(), "非冻结目标的陪跑文件不得被删除");
     let finished = chapter_deletion::get(conn, "op-disk-1").unwrap().unwrap();
     assert_eq!(finished.manuscript_status, "completed");
-    assert_eq!(finished.status, "completed", "双通道完成后聚合状态应为 completed");
+    assert_eq!(
+        finished.status, "completed",
+        "双通道完成后聚合状态应为 completed"
+    );
 
     // 6) 幂等：同一目标再次清理不报错
     remove_published_manuscript(&root_text, &operation.target_file_name).unwrap();

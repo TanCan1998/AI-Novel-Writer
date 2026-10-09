@@ -36,7 +36,10 @@ mod tests {
 
     #[test]
     fn official_homepage_url_is_constant() {
-        assert_eq!(OFFICIAL_HOMEPAGE_URL, "https://github.com/TanCan1998/Lorekeeper");
+        assert_eq!(
+            OFFICIAL_HOMEPAGE_URL,
+            "https://github.com/TanCan1998/Lorekeeper"
+        );
     }
 
     #[test]

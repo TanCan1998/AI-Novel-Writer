@@ -162,7 +162,8 @@ pub fn chunk_text(text: &str, max_chars: usize, overlap: usize) -> Vec<String> {
                     && utf16_len(&sentence_chunk) + utf16_len(sentence) > max_chars
                 {
                     push_within_limit(&mut chunks, &sentence_chunk, max_chars, overlap);
-                    sentence_chunk = format!("{}{}", tail_utf16(&sentence_chunk, overlap), sentence);
+                    sentence_chunk =
+                        format!("{}{}", tail_utf16(&sentence_chunk, overlap), sentence);
                 } else {
                     sentence_chunk.push_str(sentence);
                 }
@@ -202,7 +203,10 @@ mod tests {
 
     #[test]
     fn short_text_is_one_chunk_test() {
-        assert_eq!(chunk_text("春来江水绿如蓝。", 500, 50), vec!["春来江水绿如蓝。"]);
+        assert_eq!(
+            chunk_text("春来江水绿如蓝。", 500, 50),
+            vec!["春来江水绿如蓝。"]
+        );
     }
 
     #[test]

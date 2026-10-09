@@ -44,8 +44,8 @@ pub struct PlotTreeSourceBundle {
 
 /// 来源事实集的 `sourceRevision`：`JSON.stringify(facts)` 的 SHA-256 小写 hex
 pub fn source_revision(facts: &PlotTreeSourceFacts) -> Result<String, String> {
-    let json = serde_json::to_string(facts)
-        .map_err(|error| format!("序列化剧情树来源失败：{error}"))?;
+    let json =
+        serde_json::to_string(facts).map_err(|error| format!("序列化剧情树来源失败：{error}"))?;
     Ok(hash_text(&json))
 }
 
@@ -58,9 +58,12 @@ fn read_source_facts(conn: &Connection) -> Result<PlotTreeSourceFacts, String> {
             [],
             |row| {
                 Ok((
-                    row.get::<_, Option<String>>("writing_language")?.unwrap_or_default(),
-                    row.get::<_, Option<String>>("synopsis")?.unwrap_or_default(),
-                    row.get::<_, Option<String>>("plot_tree_snapshot")?.unwrap_or_default(),
+                    row.get::<_, Option<String>>("writing_language")?
+                        .unwrap_or_default(),
+                    row.get::<_, Option<String>>("synopsis")?
+                        .unwrap_or_default(),
+                    row.get::<_, Option<String>>("plot_tree_snapshot")?
+                        .unwrap_or_default(),
                 ))
             },
         )
@@ -523,9 +526,11 @@ mod tests {
         assert!(stored.is_empty());
         // 来源事实（梗概）不受影响
         let synopsis: String = conn
-            .query_row("SELECT synopsis FROM project_core WHERE id = 'main'", [], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT synopsis FROM project_core WHERE id = 'main'",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(synopsis, "梗概");
     }
@@ -545,13 +550,11 @@ mod tests {
         // 而 `#[serde(flatten)]` 的真实输出顺序只有 `to_string` 才能校验。
         let json = serde_json::to_string(&bundle).unwrap();
         assert!(
-            json.starts_with(
-                concat!(
-                    r#"{"writingLanguage":"zh-CN","synopsis":{"content":"梗概"},"#,
-                    r#""blueprints":[],"finalizedChapters":[],"narrativeThreads":[],"#,
-                    r#""sourceRevision":"#
-                )
-            ),
+            json.starts_with(concat!(
+                r#"{"writingLanguage":"zh-CN","synopsis":{"content":"梗概"},"#,
+                r#""blueprints":[],"finalizedChapters":[],"narrativeThreads":[],"#,
+                r#""sourceRevision":"#
+            )),
             "键顺序须与基线对象展开一致：{json}"
         );
         assert!(

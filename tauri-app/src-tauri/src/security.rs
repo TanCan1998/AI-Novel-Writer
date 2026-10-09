@@ -163,7 +163,8 @@ pub fn assert_current_project_context(
     if active.project_id != context.project_id || active.lease_id != context.lease_id {
         return Err(GuardKind::LeaseInvalid);
     }
-    if normalized_project_path(&active.root_path) != normalized_project_path(&context.project_path) {
+    if normalized_project_path(&active.root_path) != normalized_project_path(&context.project_path)
+    {
         return Err(GuardKind::CrossProject);
     }
     Ok(())
@@ -179,7 +180,9 @@ pub fn assert_expected_project_path(
         _ => return Ok(()),
     };
     match current {
-        Some(current) if normalized_project_path(current) == normalized_project_path(expected) => Ok(()),
+        Some(current) if normalized_project_path(current) == normalized_project_path(expected) => {
+            Ok(())
+        }
         _ => Err(GuardKind::CrossProject),
     }
 }
@@ -210,9 +213,15 @@ mod tests {
     #[test]
     fn lexically_contained_rejects_escape() {
         let root = PathBuf::from("F:/proj");
-        assert!(lexically_contained(&root, &PathBuf::from("F:/proj/chapter/1.md")));
+        assert!(lexically_contained(
+            &root,
+            &PathBuf::from("F:/proj/chapter/1.md")
+        ));
         assert!(lexically_contained(&root, &root));
-        assert!(!lexically_contained(&root, &lexically_normalize("F:/proj/../outside")));
+        assert!(!lexically_contained(
+            &root,
+            &lexically_normalize("F:/proj/../outside")
+        ));
         assert!(!lexically_contained(&root, &PathBuf::from("F:/other/x.md")));
         // target 是 root 祖先 → 拒绝
         assert!(!lexically_contained(
@@ -237,7 +246,10 @@ mod tests {
 
     #[test]
     fn project_file_path_rejects_escape() {
-        assert!(assert_project_file_path("F:/proj/out/a.md", "F:/proj", PathCheckMode::Existing).is_err());
+        assert!(
+            assert_project_file_path("F:/proj/out/a.md", "F:/proj", PathCheckMode::Existing)
+                .is_err()
+        );
     }
 
     #[test]

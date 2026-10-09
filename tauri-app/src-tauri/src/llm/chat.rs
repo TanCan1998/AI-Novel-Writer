@@ -199,7 +199,11 @@ impl ProxySpec {
 /// socks5，其余一律 http。配置读取本身失败时基线静默忽略 —— 此处同样返回 `None`。
 pub fn proxy_from_config(config: &Value) -> Option<ProxySpec> {
     let proxy = config.get("proxy")?;
-    if !proxy.get("enabled").and_then(Value::as_bool).unwrap_or(false) {
+    if !proxy
+        .get("enabled")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
         return None;
     }
     let host = proxy.get("host").and_then(Value::as_str)?.trim();
@@ -279,7 +283,10 @@ mod tests {
         // 规则 2 吃掉首个 `</think>` 及其前缀，规则 3 只消掉下一个残留标签，
         // 因此第三个 `</think>` 会被保留。
         assert_eq!(strip_thinking("a</think>b</think>c"), "bc");
-        assert_eq!(strip_thinking("a</think>b</think>c</think>d"), "bc</think>d");
+        assert_eq!(
+            strip_thinking("a</think>b</think>c</think>d"),
+            "bc</think>d"
+        );
         // 规则 1 是全局替换：每个 `<think>` 都会吞到 `</think>` 或输入末尾
         assert_eq!(strip_thinking("x<think>y<think>z"), "x");
     }
@@ -300,7 +307,9 @@ mod tests {
             None
         );
         assert_eq!(
-            proxy_from_config(&json!({"proxy": {"enabled": true, "host": "127.0.0.1", "port": 7890}})),
+            proxy_from_config(
+                &json!({"proxy": {"enabled": true, "host": "127.0.0.1", "port": 7890}})
+            ),
             Some(ProxySpec {
                 scheme: "http".to_string(),
                 host: "127.0.0.1".to_string(),

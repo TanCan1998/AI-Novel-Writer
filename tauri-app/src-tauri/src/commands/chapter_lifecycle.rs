@@ -272,9 +272,7 @@ async fn delete_finalized_inner(
 
     match flow {
         Flow::Receipt(result) => Ok(result),
-        Flow::Resume(operation_id) => {
-            resume(state, expected_project_path, &operation_id).await
-        }
+        Flow::Resume(operation_id) => resume(state, expected_project_path, &operation_id).await,
     }
 }
 
@@ -309,7 +307,11 @@ pub async fn chapter_retry_deletion(
     expected_project_path: String,
     project_session: Option<ProjectSessionContext>,
 ) -> Result<ChapterDeletionResult, String> {
-    if let Err(error) = guard_read(state.inner(), &expected_project_path, project_session.as_ref()) {
+    if let Err(error) = guard_read(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    ) {
         return Ok(failing_receipt(mutating_error(error)));
     }
     let operation = match state.with_project_db(|conn| repo::get(conn, &operation_id)) {
@@ -336,12 +338,16 @@ pub async fn chapter_confirm_legacy_knowledge_absent(
     expected_project_path: String,
     project_session: Option<ProjectSessionContext>,
 ) -> Result<ChapterDeletionResult, String> {
-    if let Err(error) = guard_read(state.inner(), &expected_project_path, project_session.as_ref()) {
+    if let Err(error) = guard_read(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    ) {
         return Ok(failing_receipt(mutating_error(error)));
     }
-    if let Err(error) = state.with_project_db(|conn| {
-        repo::confirm_legacy_knowledge_absent(conn, &operation_id)
-    }) {
+    if let Err(error) =
+        state.with_project_db(|conn| repo::confirm_legacy_knowledge_absent(conn, &operation_id))
+    {
         return Ok(failing_receipt(mutating_error(error)));
     }
     match resume(state.inner(), &expected_project_path, &operation_id).await {
@@ -357,8 +363,12 @@ pub fn chapter_list_incomplete_deletions(
     expected_project_path: String,
     project_session: Option<ProjectSessionContext>,
 ) -> ChapterDeletionListResult {
-    match guard_read(state.inner(), &expected_project_path, project_session.as_ref())
-        .and_then(|()| state.with_project_db(repo::list_incomplete))
+    match guard_read(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .and_then(|()| state.with_project_db(repo::list_incomplete))
     {
         Ok(operations) => ChapterDeletionListResult {
             success: true,
@@ -421,7 +431,9 @@ mod tests {
         assert!(operation_error(&operation).is_none());
         operation.manuscript_status = "failed".into();
         operation.manuscript_error = "实体稿目标无效".into();
-        assert!(operation_error(&operation).unwrap().starts_with("实体稿清理失败："));
+        assert!(operation_error(&operation)
+            .unwrap()
+            .starts_with("实体稿清理失败："));
         operation.knowledge_status = "failed".into();
         operation.knowledge_error = "知识库文档清理失败".into();
         let merged = operation_error(&operation).unwrap();

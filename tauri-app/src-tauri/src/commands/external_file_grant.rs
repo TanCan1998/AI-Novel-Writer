@@ -30,7 +30,9 @@ use tauri::{Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::commands::project::file_path_to_string;
-use crate::external_grant::{ExternalGrantRegistry, GrantOperation, EXPORT_GRANT_MAX_USES, EXPORT_GRANT_TTL};
+use crate::external_grant::{
+    ExternalGrantRegistry, GrantOperation, EXPORT_GRANT_MAX_USES, EXPORT_GRANT_TTL,
+};
 use crate::state::AppState;
 
 const MAIN_WINDOW_LABEL: &str = "main";
@@ -71,11 +73,19 @@ pub struct GrantWriteResult {
 
 impl GrantWriteResult {
     fn ok() -> Self {
-        Self { success: true, commit_state: None, error: None }
+        Self {
+            success: true,
+            commit_state: None,
+            error: None,
+        }
     }
 
     fn failed(commit_state: GrantFailureCommitState, error: String) -> Self {
-        Self { success: false, commit_state: Some(commit_state), error: Some(error) }
+        Self {
+            success: false,
+            commit_state: Some(commit_state),
+            error: Some(error),
+        }
     }
 }
 
@@ -150,7 +160,10 @@ struct AtomicWriteFailure {
 
 impl AtomicWriteFailure {
     fn not_committed(error: String) -> Self {
-        Self { error, commit_state: GrantFailureCommitState::NotCommitted }
+        Self {
+            error,
+            commit_state: GrantFailureCommitState::NotCommitted,
+        }
     }
 }
 
@@ -168,17 +181,24 @@ fn write_text_atomically(
         .parent()
         .ok_or_else(|| AtomicWriteFailure::not_committed(PATH_INVALID_TEXT.to_string()))?;
     if !parent.is_dir() {
-        return Err(AtomicWriteFailure::not_committed(PATH_INVALID_TEXT.to_string()));
+        return Err(AtomicWriteFailure::not_committed(
+            PATH_INVALID_TEXT.to_string(),
+        ));
     }
     if must_already_exist && !target.exists() {
-        return Err(AtomicWriteFailure::not_committed(PATH_INVALID_TEXT.to_string()));
+        return Err(AtomicWriteFailure::not_committed(
+            PATH_INVALID_TEXT.to_string(),
+        ));
     }
 
     let file_name = target
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
         .ok_or_else(|| AtomicWriteFailure::not_committed(PATH_INVALID_TEXT.to_string()))?;
-    let temporary = parent.join(format!(".{file_name}.{}.tmp", crate::project_access::random_uuid_v4()));
+    let temporary = parent.join(format!(
+        ".{file_name}.{}.tmp",
+        crate::project_access::random_uuid_v4()
+    ));
 
     let write_result = (|| -> std::io::Result<()> {
         use std::io::Write;
@@ -229,15 +249,28 @@ pub fn read_granted_file(
     grant_id: &str,
     relative_path: Option<&str>,
 ) -> GrantReadResult {
-    let target = match registry.resolve_target(grant_id, GrantOperation::Read, relative_path, true) {
+    let target = match registry.resolve_target(grant_id, GrantOperation::Read, relative_path, true)
+    {
         Ok(target) => target,
         Err(error) => {
-            return GrantReadResult { success: false, content: String::new(), error: Some(grant_error_text(&error)) }
+            return GrantReadResult {
+                success: false,
+                content: String::new(),
+                error: Some(grant_error_text(&error)),
+            }
         }
     };
     match read_text_with_limit(&target.path, MAX_TEXT_BYTES) {
-        Ok(content) => GrantReadResult { success: true, content, error: None },
-        Err(error) => GrantReadResult { success: false, content: String::new(), error: Some(error) },
+        Ok(content) => GrantReadResult {
+            success: true,
+            content,
+            error: None,
+        },
+        Err(error) => GrantReadResult {
+            success: false,
+            content: String::new(),
+            error: Some(error),
+        },
     }
 }
 
@@ -248,26 +281,24 @@ pub fn write_granted_file(
     relative_path: &str,
     content: &str,
 ) -> GrantWriteResult {
-    let target = match registry.resolve_target(
-        grant_id,
-        GrantOperation::Write,
-        Some(relative_path),
-        true,
-    ) {
-        Ok(target) => target,
-        Err(error) => {
-            return GrantWriteResult::failed(
-                GrantFailureCommitState::NotCommitted,
-                grant_error_text(&error),
-            )
-        }
-    };
+    let target =
+        match registry.resolve_target(grant_id, GrantOperation::Write, Some(relative_path), true) {
+            Ok(target) => target,
+            Err(error) => {
+                return GrantWriteResult::failed(
+                    GrantFailureCommitState::NotCommitted,
+                    grant_error_text(&error),
+                )
+            }
+        };
 
     let target_exists = target.path.exists();
     let create_probe = registry.revalidate(grant_id, GrantOperation::Create);
     let can_create = create_probe.is_ok();
     if !target_exists && !can_create {
-        let error = create_probe.err().unwrap_or_else(|| PERMISSION_TEXT.to_string());
+        let error = create_probe
+            .err()
+            .unwrap_or_else(|| PERMISSION_TEXT.to_string());
         return GrantWriteResult::failed(
             GrantFailureCommitState::NotCommitted,
             grant_error_text(&error),
@@ -301,12 +332,21 @@ pub fn mkdir_granted(
     ) {
         Ok(target) => target,
         Err(error) => {
-            return GrantSimpleResult { success: false, error: Some(grant_error_text(&error)) }
+            return GrantSimpleResult {
+                success: false,
+                error: Some(grant_error_text(&error)),
+            }
         }
     };
     match std::fs::create_dir_all(&target.path) {
-        Ok(()) => GrantSimpleResult { success: true, error: None },
-        Err(error) => GrantSimpleResult { success: false, error: Some(io_error_text(&error)) },
+        Ok(()) => GrantSimpleResult {
+            success: true,
+            error: None,
+        },
+        Err(error) => GrantSimpleResult {
+            success: false,
+            error: Some(io_error_text(&error)),
+        },
     }
 }
 
@@ -330,7 +370,11 @@ pub fn fs_grant_read_file(
 ) -> GrantReadResult {
     match registry_lock(state.inner()) {
         Ok(mut registry) => read_granted_file(&mut registry, &grant_id, relative_path.as_deref()),
-        Err(error) => GrantReadResult { success: false, content: String::new(), error: Some(error) },
+        Err(error) => GrantReadResult {
+            success: false,
+            content: String::new(),
+            error: Some(error),
+        },
     }
 }
 
@@ -357,7 +401,10 @@ pub fn fs_grant_mkdir(
 ) -> GrantSimpleResult {
     match registry_lock(state.inner()) {
         Ok(mut registry) => mkdir_granted(&mut registry, &grant_id, &relative_path),
-        Err(error) => GrantSimpleResult { success: false, error: Some(error) },
+        Err(error) => GrantSimpleResult {
+            success: false,
+            error: Some(error),
+        },
     }
 }
 
@@ -402,7 +449,10 @@ pub async fn dialog_select_export_directory(
         EXPORT_GRANT_TTL,
         Some(EXPORT_GRANT_MAX_USES),
     )?;
-    Ok(Some(ExternalDirectoryGrant { grant_id, display_name }))
+    Ok(Some(ExternalDirectoryGrant {
+        grant_id,
+        display_name,
+    }))
 }
 
 #[cfg(test)]
@@ -451,18 +501,27 @@ mod tests {
         // 已消费 → 授权失效
         let exhausted = read_granted_file(&mut registry, &grant_id, None);
         assert!(!exhausted.success);
-        assert_eq!(exhausted.error.as_deref(), Some("外部文件授权已失效，请重新选择。"));
+        assert_eq!(
+            exhausted.error.as_deref(),
+            Some("外部文件授权已失效，请重新选择。")
+        );
 
         // 未知 grant → 同一文案（不泄露内部错误）
         let unknown = read_granted_file(&mut registry, "not-a-grant", None);
-        assert_eq!(unknown.error.as_deref(), Some("外部文件授权已失效，请重新选择。"));
+        assert_eq!(
+            unknown.error.as_deref(),
+            Some("外部文件授权已失效，请重新选择。")
+        );
 
         // 文件授权不接受子路径 → 路径无效桶
         let grant_id = registry
             .issue_file(&file, KNOWLEDGE_BASE_GRANT_TTL, None)
             .unwrap();
         let sub = read_granted_file(&mut registry, &grant_id, Some("sub/a.txt"));
-        assert_eq!(sub.error.as_deref(), Some("外部文件授权路径无效，已拒绝操作。"));
+        assert_eq!(
+            sub.error.as_deref(),
+            Some("外部文件授权路径无效，已拒绝操作。")
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -491,13 +550,19 @@ mod tests {
         // 新建（依赖 create 权限）
         let created = write_granted_file(&mut registry, &grant_id, "合并.md", "# 正文");
         assert!(created.success, "{:?}", created.error);
-        assert_eq!(std::fs::read_to_string(dir.join("合并.md")).unwrap(), "# 正文");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("合并.md")).unwrap(),
+            "# 正文"
+        );
         assert!(created.commit_state.is_none(), "成功侧不序列化 commitState");
 
         // 覆盖既有文件（仅需 write 权限）
         let replaced = write_granted_file(&mut registry, &grant_id, "合并.md", "# 覆盖");
         assert!(replaced.success, "{:?}", replaced.error);
-        assert_eq!(std::fs::read_to_string(dir.join("合并.md")).unwrap(), "# 覆盖");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("合并.md")).unwrap(),
+            "# 覆盖"
+        );
 
         // 无临时文件残留
         let leftovers: Vec<String> = std::fs::read_dir(&dir)
@@ -527,15 +592,24 @@ mod tests {
 
         let missing = write_granted_file(&mut registry, &grant_id, "新文件.md", "内容");
         assert!(!missing.success);
-        assert_eq!(missing.commit_state, Some(GrantFailureCommitState::NotCommitted));
-        assert_eq!(missing.error.as_deref(), Some("当前窗口无权使用该外部文件授权。"));
+        assert_eq!(
+            missing.commit_state,
+            Some(GrantFailureCommitState::NotCommitted)
+        );
+        assert_eq!(
+            missing.error.as_deref(),
+            Some("当前窗口无权使用该外部文件授权。")
+        );
         assert!(!dir.join("新文件.md").exists(), "未授权创建时不得落盘");
 
         // 既有文件仍可写
         std::fs::write(dir.join("已存在.md"), "旧").unwrap();
         let existing = write_granted_file(&mut registry, &grant_id, "已存在.md", "新");
         assert!(existing.success, "{:?}", existing.error);
-        assert_eq!(std::fs::read_to_string(dir.join("已存在.md")).unwrap(), "新");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("已存在.md")).unwrap(),
+            "新"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -546,8 +620,14 @@ mod tests {
         let (mut registry, grant_id) = export_registry(&dir);
 
         let escape = write_granted_file(&mut registry, &grant_id, "../外面.md", "x");
-        assert_eq!(escape.error.as_deref(), Some("外部文件授权路径无效，已拒绝操作。"));
-        assert_eq!(escape.commit_state, Some(GrantFailureCommitState::NotCommitted));
+        assert_eq!(
+            escape.error.as_deref(),
+            Some("外部文件授权路径无效，已拒绝操作。")
+        );
+        assert_eq!(
+            escape.commit_state,
+            Some(GrantFailureCommitState::NotCommitted)
+        );
 
         // 单次授权用尽后失效
         let mut registry = ExternalGrantRegistry::default();
@@ -561,7 +641,10 @@ mod tests {
             .unwrap();
         assert!(write_granted_file(&mut registry, &single, "a.md", "1").success);
         let second = write_granted_file(&mut registry, &single, "b.md", "2");
-        assert_eq!(second.error.as_deref(), Some("外部文件授权已失效，请重新选择。"));
+        assert_eq!(
+            second.error.as_deref(),
+            Some("外部文件授权已失效，请重新选择。")
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -582,7 +665,10 @@ mod tests {
 
         // 越界拒绝
         let escape = mkdir_granted(&mut registry, &grant_id, "../逃逸");
-        assert_eq!(escape.error.as_deref(), Some("外部文件授权路径无效，已拒绝操作。"));
+        assert_eq!(
+            escape.error.as_deref(),
+            Some("外部文件授权路径无效，已拒绝操作。")
+        );
 
         // 只读目录授权（默认 list+read）没有 create 权限
         let mut registry = ExternalGrantRegistry::default();
@@ -590,7 +676,10 @@ mod tests {
             .issue_directory(&dir, KNOWLEDGE_BASE_GRANT_TTL, Some(1))
             .unwrap();
         let denied = mkdir_granted(&mut registry, &read_only, "不允许");
-        assert_eq!(denied.error.as_deref(), Some("当前窗口无权使用该外部文件授权。"));
+        assert_eq!(
+            denied.error.as_deref(),
+            Some("当前窗口无权使用该外部文件授权。")
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

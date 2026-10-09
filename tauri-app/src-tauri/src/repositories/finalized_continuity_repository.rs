@@ -60,7 +60,9 @@ pub struct FinalizedSourceSnapshot {
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", rename_all = "camelCase")]
 pub enum FinalizedSourceReadResult {
-    Valid { snapshot: FinalizedSourceSnapshot },
+    Valid {
+        snapshot: FinalizedSourceSnapshot,
+    },
     Legacy {
         draft_id: i64,
         chapter_number: i64,
@@ -151,7 +153,9 @@ fn normalized_facts(
             if !FACT_CATEGORIES.contains(&category)
                 || source_chapter != Some(chapter_number)
                 || entities.len() > 8
-                || entities.iter().any(|e| e.is_empty() || e.chars().count() > 80)
+                || entities
+                    .iter()
+                    .any(|e| e.is_empty() || e.chars().count() > 80)
                 || statement.is_empty()
                 || statement.chars().count() > 280
                 || evidence.is_empty()
@@ -268,7 +272,14 @@ fn normalize_character_state_candidates(
             value: value_text.trim().to_string(),
         };
         normalized.insert(
-            format!("{}\u{0}{}", roster::identity_key(&candidate.character_name), serde_json::to_value(candidate.field).unwrap().as_str().unwrap_or("")),
+            format!(
+                "{}\u{0}{}",
+                roster::identity_key(&candidate.character_name),
+                serde_json::to_value(candidate.field)
+                    .unwrap()
+                    .as_str()
+                    .unwrap_or("")
+            ),
             candidate,
         );
     }
@@ -309,7 +320,16 @@ pub(crate) fn read_finalized_source_from_db(
         )
         .optional()
         .map_err(|e| e.to_string())?;
-    let Some((chapter_number, status, content, finalization_id, chapter_title, content_hash, content_snapshot, generation)) = row
+    let Some((
+        chapter_number,
+        status,
+        content,
+        finalization_id,
+        chapter_title,
+        content_hash,
+        content_snapshot,
+        generation,
+    )) = row
     else {
         return Ok(None);
     };
@@ -348,7 +368,10 @@ pub fn save_finalized_continuity(
 ) -> Result<(), String> {
     let chapter_notes = request.chapter_notes.trim().to_string();
     let empty: Vec<serde_json::Value> = Vec::new();
-    let normalized = normalized_facts(request.facts.as_ref().unwrap_or(&empty), request.chapter_number)?;
+    let normalized = normalized_facts(
+        request.facts.as_ref().unwrap_or(&empty),
+        request.chapter_number,
+    )?;
     let facts = serde_json::to_string(&normalized).map_err(|e| e.to_string())?;
     if request.draft_id < 1
         || request.chapter_number < 1
@@ -357,9 +380,7 @@ pub fn save_finalized_continuity(
     {
         return Err("连续性投影参数无效".to_string());
     }
-    let tx = conn
-        .unchecked_transaction()
-        .map_err(|e| e.to_string())?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     let snapshot = read_finalized_source_from_db(conn, request.draft_id)?;
     let Some(snapshot) = snapshot else {
         return Err("连续性投影来源已失效，已拒绝过期结果".to_string());
@@ -433,9 +454,7 @@ pub fn save_finalized_character_state_candidates(
         return Err("角色状态候选参数无效".to_string());
     }
     let empty: Vec<serde_json::Value> = Vec::new();
-    let tx = conn
-        .unchecked_transaction()
-        .map_err(|e| e.to_string())?;
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     let snapshot = read_finalized_source_from_db(conn, request.draft_id)?;
     let Some(snapshot) = snapshot else {
         return Err("角色状态候选来源已失效，已拒绝过期结果".to_string());
@@ -574,18 +593,35 @@ pub fn list_finalized_continuity_before(
     Ok(rows
         .into_iter()
         .map(
-            |(draft_id, chapter_number, chapter_title, chapter_notes, facts_json, candidates_json,
-              source_finalization_id, source_content_hash, projection_generation,
-              current_finalization_id, current_content_hash, content_snapshot, current_content,
-              current_generation, stale_from_chapter)| {
-                let has_bound_source =
-                    source_finalization_id.as_deref().is_some_and(|s| !s.is_empty())
-                        && source_content_hash.as_deref().is_some_and(|s| !s.is_empty());
+            |(
+                draft_id,
+                chapter_number,
+                chapter_title,
+                chapter_notes,
+                facts_json,
+                candidates_json,
+                source_finalization_id,
+                source_content_hash,
+                projection_generation,
+                current_finalization_id,
+                current_content_hash,
+                content_snapshot,
+                current_content,
+                current_generation,
+                stale_from_chapter,
+            )| {
+                let has_bound_source = source_finalization_id
+                    .as_deref()
+                    .is_some_and(|s| !s.is_empty())
+                    && source_content_hash
+                        .as_deref()
+                        .is_some_and(|s| !s.is_empty());
                 let source_current = has_bound_source
                     && current_finalization_id.as_deref() == source_finalization_id.as_deref()
                     && current_content_hash.as_deref() == source_content_hash.as_deref()
                     && content_snapshot.as_deref() == Some(current_content.as_str())
-                    && sha256_hex(&current_content) == current_content_hash.as_deref().unwrap_or("");
+                    && sha256_hex(&current_content)
+                        == current_content_hash.as_deref().unwrap_or("");
                 let invalidated = stale_from_chapter.is_some_and(|stale| {
                     chapter_number >= stale && projection_generation < current_generation
                 });
@@ -654,9 +690,7 @@ pub fn read_finalized_source(
         )
         .optional()
         .map_err(|e| e.to_string())?;
-    let Some((chapter_number, status, content, chapter_title, receipt_draft_id, _)) =
-        row
-    else {
+    let Some((chapter_number, status, content, chapter_title, receipt_draft_id, _)) = row else {
         return Ok(FinalizedSourceReadResult::Invalid);
     };
     if status != "finalized" {
@@ -773,7 +807,11 @@ mod tests {
         let conn = memory_db();
         let draft_id = finalize_draft(&conn, 10, "第十章");
         let generation: i64 = conn
-            .query_row("SELECT generation FROM continuity_projection_meta WHERE id='main'", [], |r| r.get(0))
+            .query_row(
+                "SELECT generation FROM continuity_projection_meta WHERE id='main'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
 
         save_finalized_continuity(&conn, &save_request(draft_id, generation, "城门")).unwrap();
@@ -798,7 +836,11 @@ mod tests {
         let conn = memory_db();
         let draft_id = finalize_draft(&conn, 10, "第十章");
         let generation: i64 = conn
-            .query_row("SELECT generation FROM continuity_projection_meta WHERE id='main'", [], |r| r.get(0))
+            .query_row(
+                "SELECT generation FROM continuity_projection_meta WHERE id='main'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
 
         // 水位推进后旧代结果拒绝
@@ -824,7 +866,8 @@ mod tests {
     fn read_source_discriminates_valid_legacy_invalid_test() {
         let conn = memory_db();
         // 未定稿草稿 → invalid
-        conn.execute("INSERT INTO contents (body) VALUES ('草稿')", []).unwrap();
+        conn.execute("INSERT INTO contents (body) VALUES ('草稿')", [])
+            .unwrap();
         let cid = conn.last_insert_rowid();
         conn.execute(
             "INSERT INTO drafts (chapter_number, version, status, content_id) VALUES (1, 1, 'draft', ?1)",
@@ -869,7 +912,11 @@ mod tests {
         .unwrap();
         let draft_id = finalize_draft(&conn, 10, "第十章");
         let generation: i64 = conn
-            .query_row("SELECT generation FROM continuity_projection_meta WHERE id='main'", [], |r| r.get(0))
+            .query_row(
+                "SELECT generation FROM continuity_projection_meta WHERE id='main'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
 
         // 先落连续性投影（候选必须绑定同代投影）

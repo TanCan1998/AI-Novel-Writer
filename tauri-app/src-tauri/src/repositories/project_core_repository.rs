@@ -169,7 +169,9 @@ fn json_to_sql_value(value: &Value) -> Result<rusqlite::types::Value, String> {
             }
         }
         Value::String(text) => Ok(SqlValue::Text(text.clone())),
-        other => Err(format!("项目配置字段只接受字符串、数字或空值，收到：{other}")),
+        other => Err(format!(
+            "项目配置字段只接受字符串、数字或空值，收到：{other}"
+        )),
     }
 }
 
@@ -186,9 +188,7 @@ fn row_to_data(row: &Row<'_>) -> rusqlite::Result<ProjectCoreData> {
         genre: text("genre")?,
         sub_genre: text("sub_genre")?,
         target_audience: text("target_audience")?,
-        total_chapters: row
-            .get::<_, Option<i64>>("total_chapters")?
-            .unwrap_or(100),
+        total_chapters: row.get::<_, Option<i64>>("total_chapters")?.unwrap_or(100),
         words_per_chapter: row
             .get::<_, Option<i64>>("words_per_chapter")?
             .unwrap_or(3000),
@@ -242,11 +242,7 @@ pub fn get(conn: &Connection) -> Result<Option<ProjectCoreData>, String> {
 }
 
 /// 初始化项目配置（创建项目时调用，幂等）
-pub fn init(
-    conn: &Connection,
-    project_name: &str,
-    writing_language: &str,
-) -> Result<(), String> {
+pub fn init(conn: &Connection, project_name: &str, writing_language: &str) -> Result<(), String> {
     conn.execute(
         "INSERT OR IGNORE INTO project_core (id, project_name, writing_language) VALUES ('main', ?1, ?2)",
         rusqlite::params![project_name, resolve_writing_language(writing_language)],
@@ -469,7 +465,10 @@ mod tests {
             &update_from_pairs(&[("genre", Value::from(vec![1, 2]))]),
         )
         .unwrap_err();
-        assert!(error.contains("只接受字符串、数字或空值"), "错误文案不符：{error}");
+        assert!(
+            error.contains("只接受字符串、数字或空值"),
+            "错误文案不符：{error}"
+        );
     }
 
     #[test]
@@ -492,9 +491,18 @@ mod tests {
             3
         );
         assert_eq!(resolve_narrative_thread_dormant_threshold(&Value::Null), 3);
-        assert_eq!(resolve_narrative_thread_dormant_threshold(&Value::from(0)), 1);
-        assert_eq!(resolve_narrative_thread_dormant_threshold(&Value::from(-7)), 1);
-        assert_eq!(resolve_narrative_thread_dormant_threshold(&Value::from(51)), 50);
+        assert_eq!(
+            resolve_narrative_thread_dormant_threshold(&Value::from(0)),
+            1
+        );
+        assert_eq!(
+            resolve_narrative_thread_dormant_threshold(&Value::from(-7)),
+            1
+        );
+        assert_eq!(
+            resolve_narrative_thread_dormant_threshold(&Value::from(51)),
+            50
+        );
         assert_eq!(
             resolve_narrative_thread_dormant_threshold(&Value::from(7.9)),
             7
@@ -525,7 +533,10 @@ mod tests {
         let conn = seeded_db();
         init(&conn, "项目", "zh-CN").unwrap();
         let request = synopsis_request("新大纲");
-        assert!(commit_synopsis(&conn, &request).unwrap(), "快照一致时应写入");
+        assert!(
+            commit_synopsis(&conn, &request).unwrap(),
+            "快照一致时应写入"
+        );
         assert_eq!(get(&conn).unwrap().unwrap().synopsis, "新大纲");
     }
 

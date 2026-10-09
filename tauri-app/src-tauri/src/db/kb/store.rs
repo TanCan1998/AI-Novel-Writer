@@ -120,7 +120,14 @@ pub fn insert_document(
             "INSERT INTO kb_documents
                (id, file_name, file_path, corpus_kind, imported_at, chunk_count)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![doc_id, file_name, meta.file_path, corpus_kind, now, chunks.len() as i64],
+            params![
+                doc_id,
+                file_name,
+                meta.file_path,
+                corpus_kind,
+                now,
+                chunks.len() as i64
+            ],
         )
         .map_err(|error| error.to_string())?;
 
@@ -165,7 +172,8 @@ pub fn insert_document(
 
     match result {
         Ok(ids) => {
-            conn.execute_batch("COMMIT").map_err(|error| error.to_string())?;
+            conn.execute_batch("COMMIT")
+                .map_err(|error| error.to_string())?;
             Ok(ids)
         }
         Err(error) => {
@@ -207,7 +215,9 @@ pub fn find_document_id_by_file_name(
     file_name: &str,
 ) -> Result<Option<String>, String> {
     let mut statement = conn
-        .prepare("SELECT id FROM kb_documents WHERE file_name = ?1 ORDER BY imported_at DESC LIMIT 1")
+        .prepare(
+            "SELECT id FROM kb_documents WHERE file_name = ?1 ORDER BY imported_at DESC LIMIT 1",
+        )
         .map_err(|error| error.to_string())?;
     let mut rows = statement
         .query_map([file_name], |row| row.get::<_, String>(0))
@@ -233,7 +243,8 @@ pub fn remove_document(conn: &Connection, doc_id: &str) -> Result<bool, String> 
     })();
     match result {
         Ok(hit) => {
-            conn.execute_batch("COMMIT").map_err(|error| error.to_string())?;
+            conn.execute_batch("COMMIT")
+                .map_err(|error| error.to_string())?;
             Ok(hit)
         }
         Err(error) => {
@@ -258,7 +269,9 @@ pub fn clear_all(conn: &Connection) -> Result<(), String> {
         Ok(())
     })();
     match result {
-        Ok(()) => conn.execute_batch("COMMIT").map_err(|error| error.to_string()),
+        Ok(()) => conn
+            .execute_batch("COMMIT")
+            .map_err(|error| error.to_string()),
         Err(error) => {
             let _ = conn.execute_batch("ROLLBACK");
             Err(error)
@@ -402,7 +415,12 @@ pub fn search_text(
             .0
             .partial_cmp(&left.0)
             .unwrap_or(std::cmp::Ordering::Equal)
-            .then_with(|| right.1.partial_cmp(&left.1).unwrap_or(std::cmp::Ordering::Equal))
+            .then_with(|| {
+                right
+                    .1
+                    .partial_cmp(&left.1)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .then_with(|| left.2.id.cmp(&right.2.id))
     });
 
@@ -482,7 +500,14 @@ mod tests {
     #[test]
     fn remove_document_cascades_chunks_and_fts_test() {
         let conn = conn();
-        insert_document(&conn, "d1", "甲.txt", &["明月松间照".to_string()], &sample_meta()).unwrap();
+        insert_document(
+            &conn,
+            "d1",
+            "甲.txt",
+            &["明月松间照".to_string()],
+            &sample_meta(),
+        )
+        .unwrap();
         assert!(remove_document(&conn, "d1").unwrap());
         assert!(!remove_document(&conn, "d1").unwrap(), "重复删除为未命中");
         assert!(stats(&conn).unwrap().total_chunks == 0);
@@ -518,7 +543,11 @@ mod tests {
             "d1",
             "第一章.md",
             &["明月".to_string()],
-            &DocumentMeta { chapter_number: Some(1), corpus_kind: "reference", ..sample_meta() },
+            &DocumentMeta {
+                chapter_number: Some(1),
+                corpus_kind: "reference",
+                ..sample_meta()
+            },
         )
         .unwrap();
         insert_document(
@@ -526,11 +555,18 @@ mod tests {
             "d2",
             "第九章.md",
             &["明月".to_string()],
-            &DocumentMeta { chapter_number: Some(9), corpus_kind: "reference", ..sample_meta() },
+            &DocumentMeta {
+                chapter_number: Some(9),
+                corpus_kind: "reference",
+                ..sample_meta()
+            },
         )
         .unwrap();
 
-        let filter = SearchFilter { chapter_scope: Some((1, 3)), excluded_corpus_kinds: &[] };
+        let filter = SearchFilter {
+            chapter_scope: Some((1, 3)),
+            excluded_corpus_kinds: &[],
+        };
         let results = search_text(&conn, "明月", 5, &filter).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].file_name, "第一章.md");
@@ -544,7 +580,10 @@ mod tests {
             "d1",
             "项目素材.md",
             &["明月".to_string()],
-            &DocumentMeta { corpus_kind: "project-knowledge", ..sample_meta() },
+            &DocumentMeta {
+                corpus_kind: "project-knowledge",
+                ..sample_meta()
+            },
         )
         .unwrap();
         insert_document(
@@ -552,12 +591,18 @@ mod tests {
             "d2",
             "参照.md",
             &["明月".to_string()],
-            &DocumentMeta { corpus_kind: "reference", ..sample_meta() },
+            &DocumentMeta {
+                corpus_kind: "reference",
+                ..sample_meta()
+            },
         )
         .unwrap();
 
         let excluded = vec!["project-knowledge".to_string()];
-        let filter = SearchFilter { chapter_scope: None, excluded_corpus_kinds: &excluded };
+        let filter = SearchFilter {
+            chapter_scope: None,
+            excluded_corpus_kinds: &excluded,
+        };
         let results = search_text(&conn, "明月", 5, &filter).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].file_name, "参照.md");
@@ -569,10 +614,14 @@ mod tests {
         insert_document(&conn, "d1", "同名.txt", &["旧".to_string()], &sample_meta()).unwrap();
         insert_document(&conn, "d2", "同名.txt", &["新".to_string()], &sample_meta()).unwrap();
         assert_eq!(
-            find_document_id_by_file_name(&conn, "同名.txt").unwrap().as_deref(),
+            find_document_id_by_file_name(&conn, "同名.txt")
+                .unwrap()
+                .as_deref(),
             Some("d2")
         );
-        assert!(find_document_id_by_file_name(&conn, "不存在.txt").unwrap().is_none());
+        assert!(find_document_id_by_file_name(&conn, "不存在.txt")
+            .unwrap()
+            .is_none());
     }
 
     #[test]

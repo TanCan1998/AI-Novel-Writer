@@ -153,7 +153,11 @@ pub fn delete_model_at(
 
     let mut next_config = original_config.clone();
     let mut config_changed = false;
-    if next_config.get("defaultModelId").and_then(|value| value.as_str()) == Some(model_id) {
+    if next_config
+        .get("defaultModelId")
+        .and_then(|value| value.as_str())
+        == Some(model_id)
+    {
         next_config["defaultModelId"] = serde_json::Value::Null;
         config_changed = true;
     }
@@ -252,7 +256,9 @@ pub fn llm_set_default_model(model_id: Option<String>) -> ConfigSetResponse {
     config::set_config_key_at(
         &app_paths::global_config_path(),
         "defaultModelId",
-        model_id.map(serde_json::Value::String).unwrap_or(serde_json::Value::Null),
+        model_id
+            .map(serde_json::Value::String)
+            .unwrap_or(serde_json::Value::Null),
     )
 }
 
@@ -266,7 +272,9 @@ pub fn llm_set_default_embedding_model(model_id: Option<String>) -> ConfigSetRes
     config::set_config_key_at(
         &app_paths::global_config_path(),
         "defaultEmbeddingModelId",
-        model_id.map(serde_json::Value::String).unwrap_or(serde_json::Value::Null),
+        model_id
+            .map(serde_json::Value::String)
+            .unwrap_or(serde_json::Value::Null),
     )
 }
 
@@ -320,7 +328,10 @@ mod tests {
         assert!(read_models_at(&models_path).is_empty(), "损坏 → 回落空列表");
 
         std::fs::write(&models_path, br#"{"id":"not-an-array"}"#).unwrap();
-        assert!(read_models_at(&models_path).is_empty(), "形状不符 → 回落空列表");
+        assert!(
+            read_models_at(&models_path).is_empty(),
+            "形状不符 → 回落空列表"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -337,8 +348,14 @@ mod tests {
         std::fs::write(&models_path, serde_json::to_string(&stored).unwrap()).unwrap();
 
         let listed = read_models_at(&models_path);
-        assert_eq!(listed[0]["capabilities"]["contextWindowTokens"], serde_json::json!(128000));
-        assert_eq!(listed[0]["embeddingOptions"]["dimensions"], serde_json::json!(1024));
+        assert_eq!(
+            listed[0]["capabilities"]["contextWindowTokens"],
+            serde_json::json!(128000)
+        );
+        assert_eq!(
+            listed[0]["embeddingOptions"]["dimensions"],
+            serde_json::json!(1024)
+        );
         assert_eq!(listed[0]["futureField"], serde_json::json!("kept"));
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -403,14 +420,24 @@ mod tests {
         assert!(result.success);
         assert!(result.error.is_none());
         assert_eq!(result.default_model_id, Some(serde_json::Value::Null));
-        assert_eq!(result.default_embedding_model_id, Some(serde_json::Value::Null));
+        assert_eq!(
+            result.default_embedding_model_id,
+            Some(serde_json::Value::Null)
+        );
         let stored = read(&models_path);
         assert_eq!(stored.as_array().unwrap().len(), 1);
         assert_eq!(stored[0]["id"], serde_json::json!("m-2"));
         let stored_config = read(&config_path);
         assert_eq!(stored_config["defaultModelId"], serde_json::Value::Null);
-        assert_eq!(stored_config["defaultEmbeddingModelId"], serde_json::Value::Null);
-        assert_eq!(stored_config["theme"], serde_json::json!("dark"), "其它键保留");
+        assert_eq!(
+            stored_config["defaultEmbeddingModelId"],
+            serde_json::Value::Null
+        );
+        assert_eq!(
+            stored_config["theme"],
+            serde_json::json!("dark"),
+            "其它键保留"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -434,7 +461,10 @@ mod tests {
             Some(serde_json::json!("m-1")),
             "非目标默认模型必须保留"
         );
-        assert_eq!(result.default_embedding_model_id, Some(serde_json::Value::Null));
+        assert_eq!(
+            result.default_embedding_model_id,
+            Some(serde_json::Value::Null)
+        );
         let stored_config = read(&config_path);
         assert_eq!(stored_config["defaultModelId"], serde_json::json!("m-1"));
         let _ = std::fs::remove_dir_all(&dir);
@@ -451,10 +481,20 @@ mod tests {
         let serialized = serde_json::to_value(&result).unwrap();
 
         assert!(!result.success);
-        assert_eq!(serialized["error"], serde_json::json!("Error: 模型配置损坏，已拒绝覆盖"));
-        assert!(serialized.get("defaultModelId").is_none(), "失败时不得出现该键");
+        assert_eq!(
+            serialized["error"],
+            serde_json::json!("Error: 模型配置损坏，已拒绝覆盖")
+        );
+        assert!(
+            serialized.get("defaultModelId").is_none(),
+            "失败时不得出现该键"
+        );
         assert!(serialized.get("defaultEmbeddingModelId").is_none());
-        assert_eq!(read(&config_path)["defaultModelId"], serde_json::json!("m-1"), "配置不得被改动");
+        assert_eq!(
+            read(&config_path)["defaultModelId"],
+            serde_json::json!("m-1"),
+            "配置不得被改动"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -468,7 +508,11 @@ mod tests {
             "theme": "light",
             "defaultModelId": "m-1",
         });
-        std::fs::write(&config_path, serde_json::to_string(&original_config).unwrap()).unwrap();
+        std::fs::write(
+            &config_path,
+            serde_json::to_string(&original_config).unwrap(),
+        )
+        .unwrap();
 
         let result = delete_model_at(&models_path, &config_path, "m-1");
 
@@ -505,29 +549,27 @@ mod tests {
         let (_, config_path) = paths(&dir);
 
         assert_eq!(get_default_model_at(&config_path), None, "缺文件 → null");
-        assert!(config::set_config_key_at(
-            &config_path,
-            "defaultModelId",
-            serde_json::json!("m-1")
-        )
-        .success);
+        assert!(
+            config::set_config_key_at(&config_path, "defaultModelId", serde_json::json!("m-1"))
+                .success
+        );
         assert_eq!(get_default_model_at(&config_path).as_deref(), Some("m-1"));
 
-        assert!(config::set_config_key_at(
-            &config_path,
-            "defaultModelId",
-            serde_json::Value::Null
-        )
-        .success);
+        assert!(
+            config::set_config_key_at(&config_path, "defaultModelId", serde_json::Value::Null)
+                .success
+        );
         assert_eq!(get_default_model_at(&config_path), None, "显式 null → null");
 
         assert_eq!(get_default_embedding_model_at(&config_path), None);
-        assert!(config::set_config_key_at(
-            &config_path,
-            "defaultEmbeddingModelId",
-            serde_json::json!("e-1")
-        )
-        .success);
+        assert!(
+            config::set_config_key_at(
+                &config_path,
+                "defaultEmbeddingModelId",
+                serde_json::json!("e-1")
+            )
+            .success
+        );
         assert_eq!(
             get_default_embedding_model_at(&config_path).as_deref(),
             Some("e-1")
@@ -541,11 +583,8 @@ mod tests {
         let (_, config_path) = paths(&dir);
         std::fs::write(&config_path, b"{ broken").unwrap();
 
-        let result = config::set_config_key_at(
-            &config_path,
-            "defaultModelId",
-            serde_json::json!("m-1"),
-        );
+        let result =
+            config::set_config_key_at(&config_path, "defaultModelId", serde_json::json!("m-1"));
         assert!(!result.success);
         assert_eq!(
             result.error.as_deref(),

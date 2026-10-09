@@ -10,8 +10,8 @@
 //! 其余 `db:*` 子域（blueprint / draft / revision / import-run / llm 等）按批次 C 后续
 //! 子域逐个迁移。
 
-use tauri::State;
 use std::path::Path;
+use tauri::State;
 
 use crate::commands::SimpleResult;
 use crate::repositories::blueprint_repository as blueprints;
@@ -19,16 +19,16 @@ use crate::repositories::character_repository as characters;
 use crate::repositories::character_roster_repository as roster;
 use crate::repositories::consistency_exemption_repository as consistency;
 use crate::repositories::draft_repository as drafts;
+use crate::repositories::finalization_repository as finalization;
 use crate::repositories::finalized_continuity_repository as continuity;
 use crate::repositories::finalized_draft_import_repository as draft_import;
-use crate::repositories::finalization_repository as finalization;
 use crate::repositories::llm_repository as llm;
 use crate::repositories::narrative_thread_repository as threads;
 use crate::repositories::plot_tree_repository as plot_tree;
 use crate::repositories::post_process_repository as post_process;
-use crate::repositories::recovery_candidate_repository as recovery;
 use crate::repositories::project_clear_repository as project_clear;
 use crate::repositories::project_core_repository as project_core;
+use crate::repositories::recovery_candidate_repository as recovery;
 use crate::repositories::review_repository as reviews;
 use crate::repositories::revision_repository as revisions;
 use crate::security::{
@@ -38,10 +38,7 @@ use crate::security::{
 use crate::state::AppState;
 
 /// 项目会话门禁：会话必须与活跃项目租约完全一致
-fn assert_session(
-    state: &AppState,
-    session: Option<&ProjectSessionContext>,
-) -> Result<(), String> {
+fn assert_session(state: &AppState, session: Option<&ProjectSessionContext>) -> Result<(), String> {
     let Some(context) = session else {
         return Err("缺少项目会话上下文，已拒绝操作".to_string());
     };
@@ -657,7 +654,9 @@ pub(crate) fn blueprint_character_sync_complete_inner(
     session: Option<&ProjectSessionContext>,
 ) -> BlueprintCharacterSyncCompleteResult {
     let outcome = guard_read(state, expected_project_path, session).and_then(|()| {
-        state.with_project_db(|conn| blueprints::complete_character_sync_operation(conn, operation_id))
+        state.with_project_db(|conn| {
+            blueprints::complete_character_sync_operation(conn, operation_id)
+        })
     });
     match outcome {
         Ok(operation) => BlueprintCharacterSyncCompleteResult {
@@ -851,8 +850,9 @@ pub(crate) fn draft_update_status_inner(
     expected_project_path: &str,
     session: Option<&ProjectSessionContext>,
 ) -> SimpleResult {
-    let outcome = guard_read(state, expected_project_path, session)
-        .and_then(|()| state.with_project_db(|conn| drafts::update_status(conn, id, status, word_count)));
+    let outcome = guard_read(state, expected_project_path, session).and_then(|()| {
+        state.with_project_db(|conn| drafts::update_status(conn, id, status, word_count))
+    });
     match outcome {
         Ok(()) => SimpleResult {
             success: true,
@@ -1150,7 +1150,9 @@ pub struct RevisionMergeResult {
 }
 
 /// 创建/替换修稿的公共实现：源稿守卫失败额外回填 `errorCode`
-fn revision_create_result(outcome: Result<revisions::RevisionCreated, String>) -> RevisionCreateResult {
+fn revision_create_result(
+    outcome: Result<revisions::RevisionCreated, String>,
+) -> RevisionCreateResult {
     match outcome {
         Ok(created) => RevisionCreateResult {
             success: true,
@@ -1677,8 +1679,9 @@ pub(crate) fn post_process_mark_step_ok_inner(
     expected_project_path: &str,
     session: Option<&ProjectSessionContext>,
 ) -> SimpleResult {
-    let outcome = guard_read(state, expected_project_path, session)
-        .and_then(|()| state.with_project_db(|conn| post_process::mark_step_ok(conn, run_id, step_key)));
+    let outcome = guard_read(state, expected_project_path, session).and_then(|()| {
+        state.with_project_db(|conn| post_process::mark_step_ok(conn, run_id, step_key))
+    });
     simple_mutating_result(outcome)
 }
 
@@ -1861,7 +1864,9 @@ pub(crate) fn save_summary_snapshot_inner(
     session: Option<&ProjectSessionContext>,
 ) -> SimpleResult {
     let outcome = guard_read(state, expected_project_path, session).and_then(|()| {
-        state.with_project_db(|conn| llm::save_summary_snapshot(conn, chapter_number, character_states))
+        state.with_project_db(|conn| {
+            llm::save_summary_snapshot(conn, chapter_number, character_states)
+        })
     });
     simple_mutating_result(outcome)
 }
@@ -2368,15 +2373,12 @@ pub(crate) fn plot_tree_save_inner(
     expected_project_path: &str,
     session: Option<&ProjectSessionContext>,
 ) -> PlotTreeSaveResult {
-    let outcome = guard_read(state, expected_project_path, session)
-        .and_then(|()| {
-            if !crate::plot_tree::is_plot_tree_source_revision(expected_source_revision) {
-                return Err("剧情树来源版本无效".to_string());
-            }
-            state.with_project_db(|conn| {
-                plot_tree::save(conn, snapshot, expected_source_revision)
-            })
-        });
+    let outcome = guard_read(state, expected_project_path, session).and_then(|()| {
+        if !crate::plot_tree::is_plot_tree_source_revision(expected_source_revision) {
+            return Err("剧情树来源版本无效".to_string());
+        }
+        state.with_project_db(|conn| plot_tree::save(conn, snapshot, expected_source_revision))
+    });
     match outcome {
         Ok(saved) => PlotTreeSaveResult {
             success: true,
@@ -2443,9 +2445,7 @@ pub(crate) fn recovery_candidate_record_inner(
     session: Option<&ProjectSessionContext>,
 ) -> RecoveryCandidateResult {
     let outcome = guard_read(state, expected_project_path, session).and_then(|()| {
-        let project_id = session
-            .map(|s| s.project_id.clone())
-            .unwrap_or_default();
+        let project_id = session.map(|s| s.project_id.clone()).unwrap_or_default();
         state.with_project_db(|conn| recovery::record(conn, &project_id, request))
     });
     match outcome {
@@ -2482,8 +2482,9 @@ pub(crate) fn recovery_candidate_update_inner(
     expected_project_path: &str,
     session: Option<&ProjectSessionContext>,
 ) -> RecoveryCandidateResult {
-    let outcome = guard_read(state, expected_project_path, session)
-        .and_then(|()| state.with_project_db(|conn| recovery::update_pending(conn, candidate_id, visible_text)));
+    let outcome = guard_read(state, expected_project_path, session).and_then(|()| {
+        state.with_project_db(|conn| recovery::update_pending(conn, candidate_id, visible_text))
+    });
     match outcome {
         Ok(candidate) => RecoveryCandidateResult {
             success: true,
@@ -2590,8 +2591,14 @@ pub fn db_continuity_save_finalized(
     expected_project_path: String,
     project_session: Option<ProjectSessionContext>,
 ) -> SimpleResult {
-    let outcome = guard_read(state.inner(), &expected_project_path, project_session.as_ref())
-        .and_then(|()| state.with_project_db(|conn| continuity::save_finalized_continuity(conn, &request)));
+    let outcome = guard_read(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .and_then(|()| {
+        state.with_project_db(|conn| continuity::save_finalized_continuity(conn, &request))
+    });
     simple_mutating_result(outcome)
 }
 
@@ -2603,9 +2610,15 @@ pub fn db_continuity_save_character_state_candidates(
     expected_project_path: String,
     project_session: Option<ProjectSessionContext>,
 ) -> SimpleResult {
-    let outcome = guard_read(state.inner(), &expected_project_path, project_session.as_ref()).and_then(|()| {
-        state
-            .with_project_db(|conn| continuity::save_finalized_character_state_candidates(conn, &request))
+    let outcome = guard_read(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .and_then(|()| {
+        state.with_project_db(|conn| {
+            continuity::save_finalized_character_state_candidates(conn, &request)
+        })
     });
     simple_mutating_result(outcome)
 }
@@ -2618,7 +2631,11 @@ pub fn db_continuity_list_before(
     expected_project_path: String,
     project_session: Option<ProjectSessionContext>,
 ) -> Result<Vec<continuity::FinalizedContinuityProjection>, String> {
-    guard_read(state.inner(), &expected_project_path, project_session.as_ref())?;
+    guard_read(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )?;
     state.with_project_db(|conn| continuity::list_finalized_continuity_before(conn, chapter_number))
 }
 
@@ -2631,7 +2648,11 @@ pub fn db_continuity_read_source(
     expected_project_path: String,
     project_session: Option<ProjectSessionContext>,
 ) -> Result<continuity::FinalizedSourceReadResult, String> {
-    guard_read(state.inner(), &expected_project_path, project_session.as_ref())?;
+    guard_read(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )?;
     state.with_project_db(|conn| continuity::read_finalized_source(conn, draft_id))
 }
 
@@ -2657,8 +2678,16 @@ pub fn db_finalization_link_knowledge_document(
     expected_project_path: String,
     project_session: Option<ProjectSessionContext>,
 ) -> FinalizationLinkResult {
-    let outcome = guard_read(state.inner(), &expected_project_path, project_session.as_ref())
-        .and_then(|()| state.with_project_db(|conn| finalization::link_knowledge_document(conn, draft_id, &document_id)));
+    let outcome = guard_read(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .and_then(|()| {
+        state.with_project_db(|conn| {
+            finalization::link_knowledge_document(conn, draft_id, &document_id)
+        })
+    });
     match outcome {
         Ok(record) => FinalizationLinkResult {
             success: true,
@@ -2683,7 +2712,11 @@ pub fn db_draft_authority_sequence(
     expected_project_path: String,
     project_session: Option<ProjectSessionContext>,
 ) -> Result<draft_import::AuthoritativeChapterSequence, String> {
-    guard_read(state.inner(), &expected_project_path, project_session.as_ref())?;
+    guard_read(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )?;
     state.with_project_db(draft_import::authority_sequence)
 }
 
@@ -2694,7 +2727,11 @@ pub fn db_draft_export_snapshot(
     expected_project_path: String,
     project_session: Option<ProjectSessionContext>,
 ) -> Result<Vec<finalization::FinalizedDraftExportSnapshot>, String> {
-    guard_read(state.inner(), &expected_project_path, project_session.as_ref())?;
+    guard_read(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )?;
     state.with_project_db(finalization::list_authoritative_for_export)
 }
 
@@ -2706,9 +2743,16 @@ pub fn db_draft_export_authority_current(
     expected_project_path: String,
     project_session: Option<ProjectSessionContext>,
 ) -> Result<bool, String> {
-    guard_read(state.inner(), &expected_project_path, project_session.as_ref())?;
-    state
-        .with_project_db(|conn| Ok(finalization::matches_authoritative_export_receipt(conn, &receipt)))
+    guard_read(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )?;
+    state.with_project_db(|conn| {
+        Ok(finalization::matches_authoritative_export_receipt(
+            conn, &receipt,
+        ))
+    })
 }
 
 /// `db:draft-import-finalized-batch` 的 IPC 信封（对齐基线 `{ success, receipt?, error? }`）
@@ -2730,8 +2774,14 @@ pub fn db_draft_import_finalized_batch(
     expected_project_path: String,
     project_session: Option<ProjectSessionContext>,
 ) -> FinalizedDraftImportResult {
-    let outcome = guard_read(state.inner(), &expected_project_path, project_session.as_ref())
-        .and_then(|()| state.with_project_db(|conn| draft_import::commit(conn, &expected_project_path, &request)));
+    let outcome = guard_read(
+        state.inner(),
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .and_then(|()| {
+        state.with_project_db(|conn| draft_import::commit(conn, &expected_project_path, &request))
+    });
     match outcome {
         Ok(receipt) => FinalizedDraftImportResult {
             success: true,
@@ -2970,8 +3020,12 @@ mod tests {
         assert!(!receipt.idempotent);
 
         // 校验失败同样走 MUTATING 包装
-        let invalid =
-            character_roster_commit_inner(&state, &serde_json::json!([1, 2, 3]), &root, Some(&session));
+        let invalid = character_roster_commit_inner(
+            &state,
+            &serde_json::json!([1, 2, 3]),
+            &root,
+            Some(&session),
+        );
         assert!(!invalid.success);
         assert_eq!(
             invalid.error.as_deref(),
@@ -3076,9 +3130,16 @@ mod tests {
 
         // 删除与清空
         assert!(blueprint_delete_inner(&state, 1, &root, Some(&session)).success);
-        assert_eq!(blueprint_get_all_inner(&state, &root, Some(&session)).unwrap().len(), 2);
+        assert_eq!(
+            blueprint_get_all_inner(&state, &root, Some(&session))
+                .unwrap()
+                .len(),
+            2
+        );
         assert!(blueprint_clear_all_inner(&state, &root, Some(&session)).success);
-        assert!(blueprint_get_all_inner(&state, &root, Some(&session)).unwrap().is_empty());
+        assert!(blueprint_get_all_inner(&state, &root, Some(&session))
+            .unwrap()
+            .is_empty());
 
         cleanup(&root);
     }
@@ -3095,7 +3156,10 @@ mod tests {
             operation_id: operation_id.to_string(),
             start_chapter,
             end_chapter,
-            blueprints: chapters.iter().map(|chapter| sample_blueprint(*chapter)).collect(),
+            blueprints: chapters
+                .iter()
+                .map(|chapter| sample_blueprint(*chapter))
+                .collect(),
         }
     }
 
@@ -3152,7 +3216,10 @@ mod tests {
             receipt.character_sync_operation.operation_id,
             "blueprint-sync-op-1"
         );
-        assert!(receipt.character_sync_operation.completion_receipt.is_none());
+        assert!(receipt
+            .character_sync_operation
+            .completion_receipt
+            .is_none());
 
         // 幂等重放：同操作 ID + 同负载 → 回读回执
         let replay = blueprint_commit_range_inner(&state, &request, &root, Some(&session));
@@ -3191,7 +3258,12 @@ mod tests {
             Some(&session),
         );
         assert!(shrunk.success, "全量裁剪应成功：{:?}", shrunk.error);
-        assert_eq!(blueprint_get_all_inner(&state, &root, Some(&session)).unwrap().len(), 1);
+        assert_eq!(
+            blueprint_get_all_inner(&state, &root, Some(&session))
+                .unwrap()
+                .len(),
+            1
+        );
 
         cleanup(&root);
     }
@@ -3219,9 +3291,11 @@ mod tests {
             .unwrap()
             .expect("应读到同步操作");
         assert_eq!(fetched.blueprint_commit_operation_id, "op-1");
-        assert!(blueprint_character_sync_get_inner(&state, "不存在", &root, Some(&session))
-            .unwrap()
-            .is_none());
+        assert!(
+            blueprint_character_sync_get_inner(&state, "不存在", &root, Some(&session))
+                .unwrap()
+                .is_none()
+        );
 
         // 完成（MUTATING）：无名单证据 → already-satisfied
         let completed =
@@ -3230,7 +3304,10 @@ mod tests {
         let operation = completed.operation.expect("应返回操作");
         assert_eq!(operation.status, "completed");
         assert_eq!(
-            operation.completion_receipt.as_ref().map(|receipt| receipt.status.as_str()),
+            operation
+                .completion_receipt
+                .as_ref()
+                .map(|receipt| receipt.status.as_str()),
             Some("already-satisfied")
         );
 
@@ -3250,9 +3327,11 @@ mod tests {
         );
 
         // 完成后待处理列表清空
-        assert!(blueprint_character_sync_list_pending_inner(&state, &root, Some(&session))
-            .unwrap()
-            .is_empty());
+        assert!(
+            blueprint_character_sync_list_pending_inner(&state, &root, Some(&session))
+                .unwrap()
+                .is_empty()
+        );
 
         cleanup(&root);
     }
@@ -3325,7 +3404,9 @@ mod tests {
         );
 
         // 更新状态
-        assert!(draft_update_status_inner(&state, id, "revised", None, &root, Some(&session)).success);
+        assert!(
+            draft_update_status_inner(&state, id, "revised", None, &root, Some(&session)).success
+        );
         assert_eq!(
             draft_get_meta_inner(&state, id, &root, Some(&session))
                 .unwrap()
@@ -3348,7 +3429,9 @@ mod tests {
         let deleted = draft_delete_inner(&state, id, &root, Some(&session));
         assert!(deleted.success, "删除应成功：{:?}", deleted.error);
         assert!(deleted.error_code.is_none());
-        assert!(draft_list_all_inner(&state, &root, Some(&session)).unwrap().is_empty());
+        assert!(draft_list_all_inner(&state, &root, Some(&session))
+            .unwrap()
+            .is_empty());
 
         // 定稿草稿：删除→errorCode；正文→只读文案
         let again = draft_create_inner(&state, &params, &root, Some(&session));
@@ -3543,9 +3626,11 @@ mod tests {
 
         // mark-discarded 成功路径
         assert!(revision_mark_discarded_inner(&state, another_id, &root, Some(&session)).success);
-        assert!(revision_get_pending_inner(&state, draft_id, &root, Some(&session))
-            .unwrap()
-            .is_empty());
+        assert!(
+            revision_get_pending_inner(&state, draft_id, &root, Some(&session))
+                .unwrap()
+                .is_empty()
+        );
 
         cleanup(&root);
     }
@@ -3615,7 +3700,10 @@ mod tests {
         // 读频道
         let list = review_list_inner(&state, draft_id, &root, Some(&session)).unwrap();
         assert_eq!(list.len(), 1);
-        assert_eq!(review_next_index_inner(&state, draft_id, &root, Some(&session)).unwrap(), 2);
+        assert_eq!(
+            review_next_index_inner(&state, draft_id, &root, Some(&session)).unwrap(),
+            2
+        );
         let full = review_get_full_inner(&state, review_id, &root, Some(&session))
             .unwrap()
             .expect("应读到审稿");
@@ -3706,7 +3794,10 @@ mod tests {
         .unwrap());
 
         // 逐步标记成功
-        assert!(post_process_mark_step_ok_inner(&state, &run_id, "extract", &root, Some(&session)).success);
+        assert!(
+            post_process_mark_step_ok_inner(&state, &run_id, "extract", &root, Some(&session))
+                .success
+        );
         assert!(!post_process_is_all_passed_inner(
             &state,
             "chapter_finalize",
@@ -3715,7 +3806,10 @@ mod tests {
             Some(&session)
         )
         .unwrap());
-        assert!(post_process_mark_step_ok_inner(&state, &run_id, "summary", &root, Some(&session)).success);
+        assert!(
+            post_process_mark_step_ok_inner(&state, &run_id, "summary", &root, Some(&session))
+                .success
+        );
         assert!(post_process_is_all_passed_inner(
             &state,
             "chapter_finalize",
@@ -3726,15 +3820,17 @@ mod tests {
         .unwrap());
 
         // 重跑失败 → 汇总重算为 false
-        assert!(post_process_mark_step_failed_inner(
-            &state,
-            &run_id,
-            "extract",
-            "提取超时",
-            &root,
-            Some(&session)
-        )
-        .success);
+        assert!(
+            post_process_mark_step_failed_inner(
+                &state,
+                &run_id,
+                "extract",
+                "提取超时",
+                &root,
+                Some(&session)
+            )
+            .success
+        );
         assert!(!post_process_is_all_passed_inner(
             &state,
             "chapter_finalize",
@@ -3745,7 +3841,8 @@ mod tests {
         .unwrap());
 
         // 步骤不存在 → MUTATING 文案
-        let missing = post_process_mark_step_ok_inner(&state, &run_id, "不存在", &root, Some(&session));
+        let missing =
+            post_process_mark_step_ok_inner(&state, &run_id, "不存在", &root, Some(&session));
         assert!(!missing.success);
         assert_eq!(
             missing.error.as_deref(),
@@ -3788,34 +3885,38 @@ mod tests {
         );
 
         // 记录两次调用
-        assert!(log_llm_call_inner(
-            &state,
-            &serde_json::json!({
-                "modelId": "deepseek-chat",
-                "modelName": "DeepSeek Chat",
-                "purpose": "write",
-                "promptTokens": 10,
-                "completionTokens": 20,
-                "totalTokens": 30,
-                "durationMs": 500,
-                "success": true
-            }),
-            &root,
-            Some(&session)
-        )
-        .success);
-        assert!(log_llm_call_inner(
-            &state,
-            &serde_json::json!({
-                "modelId": "deepseek-chat",
-                "purpose": "review",
-                "success": false,
-                "errorMessage": "finish:content_filter"
-            }),
-            &root,
-            Some(&session)
-        )
-        .success);
+        assert!(
+            log_llm_call_inner(
+                &state,
+                &serde_json::json!({
+                    "modelId": "deepseek-chat",
+                    "modelName": "DeepSeek Chat",
+                    "purpose": "write",
+                    "promptTokens": 10,
+                    "completionTokens": 20,
+                    "totalTokens": 30,
+                    "durationMs": 500,
+                    "success": true
+                }),
+                &root,
+                Some(&session)
+            )
+            .success
+        );
+        assert!(
+            log_llm_call_inner(
+                &state,
+                &serde_json::json!({
+                    "modelId": "deepseek-chat",
+                    "purpose": "review",
+                    "success": false,
+                    "errorMessage": "finish:content_filter"
+                }),
+                &root,
+                Some(&session)
+            )
+            .success
+        );
 
         let stats = get_llm_stats_inner(&state, &root, Some(&session)).unwrap();
         assert_eq!(stats.total_calls, 2);
@@ -3842,7 +3943,8 @@ mod tests {
         );
 
         // 摘要快照（MUTATING）
-        let saved = save_summary_snapshot_inner(&state, 2, "{\"林清玄\":{}}", &root, Some(&session));
+        let saved =
+            save_summary_snapshot_inner(&state, 2, "{\"林清玄\":{}}", &root, Some(&session));
         assert!(saved.success, "保存快照应成功：{:?}", saved.error);
         let latest = get_latest_summary_inner(&state, &root, Some(&session))
             .unwrap()
@@ -3969,9 +4071,11 @@ mod tests {
         );
 
         // 空列表
-        assert!(consistency_exemption_list_inner(&state, &root, Some(&session))
-            .unwrap()
-            .is_empty());
+        assert!(
+            consistency_exemption_list_inner(&state, &root, Some(&session))
+                .unwrap()
+                .is_empty()
+        );
 
         // 保存 → 信封成功
         let saved = consistency_exemption_save_inner(
@@ -4018,13 +4122,9 @@ mod tests {
             .is_empty());
 
         // 创建 → 成功信封（含 plan）
-        let created = narrative_thread_plan_create_inner(
-            &state,
-            &thread_plan_input(),
-            &root,
-            Some(&session),
-        )
-        .unwrap();
+        let created =
+            narrative_thread_plan_create_inner(&state, &thread_plan_input(), &root, Some(&session))
+                .unwrap();
         assert!(created.success);
         assert_eq!(created.error, None);
         let plan = created.plan.expect("应返回计划");
@@ -4062,8 +4162,14 @@ mod tests {
 
         // 更新不存在的计划 → reject
         assert_eq!(
-            narrative_thread_plan_update_inner(&state, 404, &thread_plan_input(), &root, Some(&session))
-                .unwrap_err(),
+            narrative_thread_plan_update_inner(
+                &state,
+                404,
+                &thread_plan_input(),
+                &root,
+                Some(&session)
+            )
+            .unwrap_err(),
             "叙事线索计划不存在"
         );
 
@@ -4088,9 +4194,11 @@ mod tests {
         assert_eq!(relevant.len(), 1);
 
         // 删除 → 成功信封；再删 → reject
-        assert!(narrative_thread_plan_delete_inner(&state, plan.id, &root, Some(&session))
-            .unwrap()
-            .success);
+        assert!(
+            narrative_thread_plan_delete_inner(&state, plan.id, &root, Some(&session))
+                .unwrap()
+                .success
+        );
         assert_eq!(
             narrative_thread_plan_delete_inner(&state, plan.id, &root, Some(&session)).unwrap_err(),
             "叙事线索计划不存在"
@@ -4102,15 +4210,11 @@ mod tests {
     #[test]
     fn narrative_thread_event_channel_test() {
         let (state, root, session) = activated_state("thread-event");
-        let plan = narrative_thread_plan_create_inner(
-            &state,
-            &thread_plan_input(),
-            &root,
-            Some(&session),
-        )
-        .unwrap()
-        .plan
-        .unwrap();
+        let plan =
+            narrative_thread_plan_create_inner(&state, &thread_plan_input(), &root, Some(&session))
+                .unwrap()
+                .plan
+                .unwrap();
         let draft_id = seed_finalized(&state, 2, "第二章", "她握紧了那枚青铜钥匙。");
 
         // 证据不在定稿正文中 → reject（前端据此提示「请粘贴短原文」）
@@ -4204,7 +4308,10 @@ mod tests {
         );
         assert!(!bad_shape.success);
         assert_eq!(bad_shape.error_code, None);
-        assert_eq!(bad_shape.error.as_deref(), Some("Error: 剧情树来源版本无效"));
+        assert_eq!(
+            bad_shape.error.as_deref(),
+            Some("Error: 剧情树来源版本无效")
+        );
 
         // 版本过期 → errorCode = sources-changed
         let stale = plot_tree_save_inner(
@@ -4266,9 +4373,11 @@ mod tests {
         assert_eq!(reread.stored_snapshot_invalid, None);
 
         // 清除 → 只清缓存列
-        assert!(plot_tree_clear_inner(&state, &root, Some(&session))
-            .unwrap()
-            .success);
+        assert!(
+            plot_tree_clear_inner(&state, &root, Some(&session))
+                .unwrap()
+                .success
+        );
         let cleared = plot_tree_read_inner(&state, &root, Some(&session)).unwrap();
         assert!(cleared.snapshot.is_none());
         assert_eq!(cleared.facts.blueprints.len(), 1, "来源事实不受清快照影响");
@@ -4285,25 +4394,26 @@ mod tests {
             recovery_candidate_list_inner(&state, &root, None).unwrap_err(),
             "缺少项目会话上下文，已拒绝操作"
         );
-        let req = serde_json::from_value::<recovery::RecoveryCandidateRecordRequest>(serde_json::json!({
-            "runId": "run-1",
-            "stepId": "step-1",
-            "chapterNumber": 1,
-            "chapterTitle": "第一章",
-            "source": {
+        let req =
+            serde_json::from_value::<recovery::RecoveryCandidateRecordRequest>(serde_json::json!({
+                "runId": "run-1",
+                "stepId": "step-1",
                 "chapterNumber": 1,
-                "title": "标题",
-                "role": "main",
-                "purpose": "推进",
-                "keyEvents": "事件A",
-                "characters": ["甲"]
-            },
-            "sourceDraft": null,
-            "visibleText": "<think>思考</think>正文",
-            "failureCode": "TIMEOUT",
-            "failureReason": "超时"
-        }))
-        .unwrap();
+                "chapterTitle": "第一章",
+                "source": {
+                    "chapterNumber": 1,
+                    "title": "标题",
+                    "role": "main",
+                    "purpose": "推进",
+                    "keyEvents": "事件A",
+                    "characters": ["甲"]
+                },
+                "sourceDraft": null,
+                "visibleText": "<think>思考</think>正文",
+                "failureCode": "TIMEOUT",
+                "failureReason": "超时"
+            }))
+            .unwrap();
         let blocked = recovery_candidate_record_inner(&state, &req, &root, None);
         assert!(!blocked.success);
         assert_eq!(
@@ -4316,7 +4426,10 @@ mod tests {
         assert!(recorded.success, "record 应成功：{:?}", recorded.error);
         let candidate = recorded.candidate.as_ref().unwrap();
         assert_eq!(candidate.visible_text, "正文");
-        assert_eq!(candidate.project_id, session.project_id, "projectId 注入自租约");
+        assert_eq!(
+            candidate.project_id, session.project_id,
+            "projectId 注入自租约"
+        );
 
         // list → update → resolve 全链路
         let listed = recovery_candidate_list_inner(&state, &root, Some(&session)).unwrap();

@@ -397,9 +397,7 @@ fn validated_capabilities(value: Option<&ModelCapabilities>) -> Option<ModelCapa
         None => true,
         Some(tokens) => tokens > 0 && tokens <= MAX_SAFE_INTEGER,
     };
-    if !valid_context
-        || value.max_output_tokens == 0
-        || value.max_output_tokens > MAX_SAFE_INTEGER
+    if !valid_context || value.max_output_tokens == 0 || value.max_output_tokens > MAX_SAFE_INTEGER
     {
         return None;
     }
@@ -417,7 +415,9 @@ fn matching_preset<'a>(
     let provider = profile.provider?;
     let protocol = profile.protocol?;
     profile.model_name?;
-    let preset = presets.iter().find(|candidate| candidate.provider == provider)?;
+    let preset = presets
+        .iter()
+        .find(|candidate| candidate.provider == provider)?;
     if preset.protocol != protocol {
         return None;
     }
@@ -640,7 +640,11 @@ mod tests {
         let mut first = resolve_model_profile_reasoning_mapping(&deepseek).unwrap();
         first.supported_efforts.clear();
         let second = resolve_model_profile_reasoning_mapping(&deepseek).unwrap();
-        assert_eq!(second.supported_efforts.len(), 4, "返回的映射不得被调用方污染全局预设");
+        assert_eq!(
+            second.supported_efforts.len(),
+            4,
+            "返回的映射不得被调用方污染全局预设"
+        );
     }
 
     #[test]

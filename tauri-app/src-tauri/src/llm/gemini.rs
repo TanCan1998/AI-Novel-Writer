@@ -45,7 +45,11 @@ fn to_gemini_contents(messages: &[ChatMessage]) -> (Vec<Value>, Option<String>) 
             system_instruction = Some(message.content.clone());
             continue;
         }
-        let role = if message.role == "assistant" { "model" } else { "user" };
+        let role = if message.role == "assistant" {
+            "model"
+        } else {
+            "user"
+        };
         contents.push(json!({
             "role": role,
             "parts": [{ "text": message.content }],
@@ -102,16 +106,16 @@ pub fn build_request_body(
         .and_then(Value::as_str)
         == Some("json_object")
     {
-        generation_config.insert(
-            "responseMimeType".to_string(),
-            json!("application/json"),
-        );
+        generation_config.insert("responseMimeType".to_string(), json!("application/json"));
     }
     apply_reasoning(&mut generation_config, opts);
 
     let mut body = Map::new();
     body.insert("contents".to_string(), Value::Array(contents));
-    body.insert("generationConfig".to_string(), Value::Object(generation_config));
+    body.insert(
+        "generationConfig".to_string(),
+        Value::Object(generation_config),
+    );
     if let Some(system_instruction) = system_instruction {
         body.insert(
             "systemInstruction".to_string(),
@@ -124,7 +128,10 @@ pub fn build_request_body(
 fn build_request_headers(model: &Value) -> Result<HeaderMap, String> {
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    let api_key = model.get("apiKey").and_then(Value::as_str).unwrap_or_default();
+    let api_key = model
+        .get("apiKey")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     headers.insert(
         "x-goog-api-key",
         HeaderValue::from_str(api_key).map_err(|error| format!("API Key 含非法字符：{error}"))?,
@@ -169,8 +176,14 @@ async fn generate_inner(
     messages: &[ChatMessage],
     opts: &LlmGenerateOptions,
 ) -> Result<LlmResponse, String> {
-    let base_url = model.get("baseUrl").and_then(Value::as_str).unwrap_or_default();
-    let model_name = model.get("modelName").and_then(Value::as_str).unwrap_or_default();
+    let base_url = model
+        .get("baseUrl")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let model_name = model
+        .get("modelName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let url = generate_content_url(base_url, model_name, false);
     let body = build_request_body(model, messages, opts);
 
@@ -335,8 +348,14 @@ async fn stream_inner(
     opts: &LlmStreamOptions<'_>,
     decoder: &mut GeminiSseDecoder,
 ) -> Result<(), StreamFailure> {
-    let base_url = model.get("baseUrl").and_then(Value::as_str).unwrap_or_default();
-    let model_name = model.get("modelName").and_then(Value::as_str).unwrap_or_default();
+    let base_url = model
+        .get("baseUrl")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let model_name = model
+        .get("modelName")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let url = generate_content_url(base_url, model_name, true);
     let body = build_request_body(model, messages, &opts.generate);
 
@@ -390,7 +409,10 @@ mod tests {
     #[test]
     fn finish_reason_maps_gemini_vocabulary_test() {
         assert_eq!(normalize_finish_reason(Some("STOP")), LlmFinishReason::Stop);
-        assert_eq!(normalize_finish_reason(Some("MAX_TOKENS")), LlmFinishReason::Length);
+        assert_eq!(
+            normalize_finish_reason(Some("MAX_TOKENS")),
+            LlmFinishReason::Length
+        );
         for blocked in ["SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT"] {
             assert_eq!(
                 normalize_finish_reason(Some(blocked)),
@@ -398,17 +420,32 @@ mod tests {
                 "{blocked}"
             );
         }
-        assert_eq!(normalize_finish_reason(Some("OTHER")), LlmFinishReason::Unknown);
+        assert_eq!(
+            normalize_finish_reason(Some("OTHER")),
+            LlmFinishReason::Unknown
+        );
         assert_eq!(normalize_finish_reason(None), LlmFinishReason::Unknown);
     }
 
     #[test]
     fn contents_hoist_system_instruction_and_rename_assistant_test() {
         let messages = vec![
-            ChatMessage { role: "system".to_string(), content: "第一".to_string() },
-            ChatMessage { role: "user".to_string(), content: "问".to_string() },
-            ChatMessage { role: "assistant".to_string(), content: "答".to_string() },
-            ChatMessage { role: "system".to_string(), content: "第二".to_string() },
+            ChatMessage {
+                role: "system".to_string(),
+                content: "第一".to_string(),
+            },
+            ChatMessage {
+                role: "user".to_string(),
+                content: "问".to_string(),
+            },
+            ChatMessage {
+                role: "assistant".to_string(),
+                content: "答".to_string(),
+            },
+            ChatMessage {
+                role: "system".to_string(),
+                content: "第二".to_string(),
+            },
         ];
         let (contents, system) = to_gemini_contents(&messages);
         assert_eq!(system.as_deref(), Some("第二"), "后写的 system 覆盖前一个");
@@ -422,7 +459,10 @@ mod tests {
         let profile = json!({"modelName": "gemini-2.5-pro", "maxTokens": 2048});
         let body = build_request_body(
             &profile,
-            &[ChatMessage { role: "user".to_string(), content: "你好".to_string() }],
+            &[ChatMessage {
+                role: "user".to_string(),
+                content: "你好".to_string(),
+            }],
             &LlmGenerateOptions {
                 temperature: None,
                 max_tokens: None,
@@ -558,7 +598,10 @@ mod tests {
         let split = prefix.len() + 1;
 
         let mut decoder = GeminiSseDecoder::default();
-        assert!(decoder.push(&bytes[..split], false).is_empty(), "行未结束时不得派发");
+        assert!(
+            decoder.push(&bytes[..split], false).is_empty(),
+            "行未结束时不得派发"
+        );
         let chunks = decoder.push(&bytes[split..], false);
         assert_eq!(chunks.concat(), "甲");
         assert_eq!(decoder.full_text(), "甲");

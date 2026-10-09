@@ -43,7 +43,10 @@ fn prompts_directory() -> PathBuf {
 }
 
 fn is_contained(root: &Path, candidate: &Path) -> bool {
-    lexically_contained(&lexically_normalize(&root.to_string_lossy()), &lexically_normalize(&candidate.to_string_lossy()))
+    lexically_contained(
+        &lexically_normalize(&root.to_string_lossy()),
+        &lexically_normalize(&candidate.to_string_lossy()),
+    )
 }
 
 fn is_prompt_template(value: &Value) -> bool {
@@ -80,7 +83,9 @@ fn prompt_key_from_filename(filename: &str) -> String {
 
 fn prompt_language_from_filename(filename: &str) -> Option<String> {
     let matched = regex::Regex::new(r"\.(zh-CN|en-US)\.json$").unwrap();
-    matched.captures(filename).map(|captures| captures[1].to_string())
+    matched
+        .captures(filename)
+        .map(|captures| captures[1].to_string())
 }
 
 /// 对齐契约 `PromptLoadDiagnostic`
@@ -118,7 +123,10 @@ pub struct UserWritingSkill {
 /// `prompt:load-global` 逻辑
 pub fn load_global_prompts_at(directory: &Path) -> AppPromptLoadReceipt {
     if !directory.exists() {
-        return AppPromptLoadReceipt { templates: Vec::new(), diagnostics: Vec::new() };
+        return AppPromptLoadReceipt {
+            templates: Vec::new(),
+            diagnostics: Vec::new(),
+        };
     }
     let entries = match std::fs::read_dir(directory) {
         Ok(entries) => entries,
@@ -134,24 +142,29 @@ pub fn load_global_prompts_at(directory: &Path) -> AppPromptLoadReceipt {
             }
         }
     };
-    let canonical_directory = std::fs::canonicalize(directory).unwrap_or_else(|_| directory.to_path_buf());
+    let canonical_directory =
+        std::fs::canonicalize(directory).unwrap_or_else(|_| directory.to_path_buf());
     let mut templates: Vec<Value> = Vec::new();
     let mut diagnostics: Vec<PromptLoadDiagnostic> = Vec::new();
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
-        if !entry.file_type().map(|kind| kind.is_file()).unwrap_or(false) || !name.ends_with(".json") {
+        if !entry
+            .file_type()
+            .map(|kind| kind.is_file())
+            .unwrap_or(false)
+            || !name.ends_with(".json")
+        {
             continue;
         }
         let outcome: Result<Value, String> = (|| {
             let candidate = directory.join(&name);
-            let canonical = std::fs::canonicalize(&candidate)
-                .map_err(|error| error.to_string())?;
+            let canonical = std::fs::canonicalize(&candidate).map_err(|error| error.to_string())?;
             if !lexically_contained(&canonical_directory, &canonical) {
                 return Err("提示词目标超出应用目录".to_string());
             }
             let raw = std::fs::read_to_string(&canonical).map_err(|error| error.to_string())?;
-            let parsed: Value = serde_json::from_str(&raw)
-                .map_err(|_| "提示词内容结构无效".to_string())?;
+            let parsed: Value =
+                serde_json::from_str(&raw).map_err(|_| "提示词内容结构无效".to_string())?;
             if !is_prompt_template(&parsed) {
                 return Err("提示词内容结构无效".to_string());
             }
@@ -171,7 +184,10 @@ pub fn load_global_prompts_at(directory: &Path) -> AppPromptLoadReceipt {
             }),
         }
     }
-    AppPromptLoadReceipt { templates, diagnostics }
+    AppPromptLoadReceipt {
+        templates,
+        diagnostics,
+    }
 }
 
 /// `prompt:save-global` 逻辑
@@ -179,7 +195,10 @@ pub fn save_global_prompt_at(directory: &Path, template: &Value) -> Result<(), S
     if !is_prompt_template(template) {
         return Err("提示词内容无效".to_string());
     }
-    let key = template.get("key").and_then(Value::as_str).unwrap_or_default();
+    let key = template
+        .get("key")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let language = template
         .get("writingLanguage")
         .and_then(Value::as_str)
@@ -187,7 +206,10 @@ pub fn save_global_prompt_at(directory: &Path, template: &Value) -> Result<(), S
         .unwrap_or("zh-CN");
     let mut stored = template.clone();
     if let Some(object) = stored.as_object_mut() {
-        object.insert("writingLanguage".to_string(), Value::String(language.to_string()));
+        object.insert(
+            "writingLanguage".to_string(),
+            Value::String(language.to_string()),
+        );
     }
     let target = prompt_key_path_in(directory, key, Some(language))?;
     crate::json_store::write_json_file(&target, &stored)?;
@@ -227,7 +249,9 @@ fn prompt_key_path_in(
     if !prompt_key_pattern().is_match(key) || key == "." || key == ".." {
         return Err("提示词标识无效".to_string());
     }
-    let suffix = writing_language.map(|language| format!(".{language}")).unwrap_or_default();
+    let suffix = writing_language
+        .map(|language| format!(".{language}"))
+        .unwrap_or_default();
     let candidate = directory.join(format!("{key}{suffix}.json"));
     if !is_contained(directory, &candidate) {
         return Err("提示词目标超出应用目录".to_string());
@@ -297,7 +321,8 @@ fn ensure_owned_skill_target_at(home: &Path, name: &str) -> Result<(PathBuf, Pat
         if info.file_type().is_symlink() || !info.is_file() {
             return Err("拒绝覆盖链接或非文件 SKILL.md".to_string());
         }
-        let canonical_file = std::fs::canonicalize(&file_path).map_err(|error| error.to_string())?;
+        let canonical_file =
+            std::fs::canonicalize(&file_path).map_err(|error| error.to_string())?;
         if !lexically_contained(&directory, &canonical_file) {
             return Err("SKILL.md 超出 Skill 目录".to_string());
         }
@@ -324,15 +349,20 @@ pub fn list_user_skills_at(home: &Path) -> Result<Vec<UserWritingSkill>, String>
         }
         let name = entry.file_name().to_string_lossy().to_string();
         let attempt: Result<UserWritingSkill, String> = (|| {
-            let base_dir = std::fs::canonicalize(entry.path()).map_err(|error| error.to_string())?;
+            let base_dir =
+                std::fs::canonicalize(entry.path()).map_err(|error| error.to_string())?;
             if !lexically_contained(&canonical_root, &base_dir) {
                 return Err("写作 Skill 目标超出应用目录".to_string());
             }
-            let file_path = std::fs::canonicalize(base_dir.join("SKILL.md")).map_err(|error| error.to_string())?;
+            let file_path = std::fs::canonicalize(base_dir.join("SKILL.md"))
+                .map_err(|error| error.to_string())?;
             if !lexically_contained(&base_dir, &file_path) {
                 return Err("SKILL.md 超出 Skill 目录".to_string());
             }
-            if !std::fs::metadata(&file_path).map(|info| info.is_file()).unwrap_or(false) {
+            if !std::fs::metadata(&file_path)
+                .map(|info| info.is_file())
+                .unwrap_or(false)
+            {
                 return Err("SKILL.md 不是文件".to_string());
             }
             Ok(UserWritingSkill {
@@ -365,7 +395,8 @@ pub fn uninstall_user_skill_at(home: &Path, name: &str) -> Result<(), String> {
     if info.file_type().is_symlink() {
         return Err("拒绝删除符号链接 Skill".to_string());
     }
-    let canonical_directory = std::fs::canonicalize(&directory).map_err(|error| error.to_string())?;
+    let canonical_directory =
+        std::fs::canonicalize(&directory).map_err(|error| error.to_string())?;
     if !lexically_contained(&canonical_root, &canonical_directory) {
         return Err("写作 Skill 目标超出应用目录".to_string());
     }
@@ -379,9 +410,7 @@ struct FetchedWritingSkill {
     inspection: RemoteWritingSkillInspection,
 }
 
-async fn fetch_github_writing_skill(
-    source_url: &str,
-) -> Result<FetchedWritingSkill, String> {
+async fn fetch_github_writing_skill(source_url: &str) -> Result<FetchedWritingSkill, String> {
     let location = parse_github_writing_skill_url(source_url)?;
     let config = crate::json_store::read_json_value_or(
         &app_paths::global_config_path(),
@@ -445,8 +474,8 @@ async fn fetch_github_writing_skill(
     if bytes.len() > MAX_SKILL_BYTES {
         return Err("SKILL.md is larger than 64 KiB".to_string());
     }
-    let raw = String::from_utf8(bytes.to_vec())
-        .map_err(|_| "SKILL.md is not valid UTF-8".to_string())?;
+    let raw =
+        String::from_utf8(bytes.to_vec()).map_err(|_| "SKILL.md is not valid UTF-8".to_string())?;
 
     let inspected = inspect_writing_skill_markdown(&raw)?;
     let inspection = RemoteWritingSkillInspection {
@@ -508,7 +537,11 @@ pub fn prompt_save_global(template: Value) -> SimpleResult {
 /// `prompt:delete-global`
 #[tauri::command]
 pub fn prompt_delete_global(key: String, writing_language: String) -> SimpleResult {
-    simple_mutating_result(delete_global_prompt_at(&prompts_directory(), &key, &writing_language))
+    simple_mutating_result(delete_global_prompt_at(
+        &prompts_directory(),
+        &key,
+        &writing_language,
+    ))
 }
 
 /// `skills:list-user`（根目录不可信时 reject，对齐基线无 try/catch）
@@ -523,7 +556,11 @@ pub async fn skills_inspect_github(
     state: State<'_, AppState>,
     source_url: String,
 ) -> Result<SkillInspectResult, String> {
-    let failure = |error: String| SkillInspectResult { success: false, inspection: None, error: Some(error) };
+    let failure = |error: String| SkillInspectResult {
+        success: false,
+        inspection: None,
+        error: Some(error),
+    };
     if validate_source_url(&source_url).is_err() {
         return Ok(failure("GitHub 地址无效".to_string()));
     }
@@ -535,9 +572,16 @@ pub async fn skills_inspect_github(
                 .map_err(|_| "写作 Skill 检查缓存被污染".to_string())?;
             cache.insert(
                 source_url.clone(),
-                (fetched.inspection.content_sha256.clone(), fetched.inspection.resolved_url.clone()),
+                (
+                    fetched.inspection.content_sha256.clone(),
+                    fetched.inspection.resolved_url.clone(),
+                ),
             );
-            Ok(SkillInspectResult { success: true, inspection: Some(fetched.inspection), error: None })
+            Ok(SkillInspectResult {
+                success: true,
+                inspection: Some(fetched.inspection),
+                error: None,
+            })
         }
         Err(error) => {
             if let Ok(mut cache) = state.writing_skill_inspections.lock() {
@@ -554,7 +598,11 @@ pub async fn skills_install_github(
     state: State<'_, AppState>,
     source_url: String,
 ) -> Result<SkillInstallResult, String> {
-    let failure = |error: String| SkillInstallResult { success: false, skill: None, error: Some(error) };
+    let failure = |error: String| SkillInstallResult {
+        success: false,
+        skill: None,
+        error: Some(error),
+    };
     if validate_source_url(&source_url).is_err() {
         return Ok(failure("GitHub 地址无效".to_string()));
     }
@@ -578,7 +626,9 @@ pub async fn skills_install_github(
         Ok(fetched) => fetched,
         Err(error) => return Ok(failure(error)),
     };
-    if fetched.inspection.content_sha256 != confirmed.0 || fetched.inspection.resolved_url != confirmed.1 {
+    if fetched.inspection.content_sha256 != confirmed.0
+        || fetched.inspection.resolved_url != confirmed.1
+    {
         return Ok(failure(
             "Writing Skill 在检查后已发生变化，请重新检查".to_string(),
         ));
@@ -630,8 +680,14 @@ pub async fn skills_install_github(
 pub fn skills_uninstall_user(name: String) -> SimpleResult {
     // 注意：skills 频道失败**不带** `Error: ` 前缀（对齐基线 `error.message`）
     match uninstall_user_skill_at(&app_paths::lorekeeper_home(), &name) {
-        Ok(()) => SimpleResult { success: true, error: None },
-        Err(error) => SimpleResult { success: false, error: Some(error) },
+        Ok(()) => SimpleResult {
+            success: true,
+            error: None,
+        },
+        Err(error) => SimpleResult {
+            success: false,
+            error: Some(error),
+        },
     }
 }
 
@@ -658,7 +714,9 @@ mod tests {
 
         // 空目录 / 目录不存在
         assert!(load_global_prompts_at(&prompts).templates.is_empty());
-        assert!(load_global_prompts_at(&home.join("nope")).diagnostics.is_empty());
+        assert!(load_global_prompts_at(&home.join("nope"))
+            .diagnostics
+            .is_empty());
 
         // 保存（缺省语言 → zh-CN，并写 `.zh-CN` 后缀文件）
         let template = json!({ "key": "draft-helper", "content": "请先写大纲" });
@@ -672,20 +730,31 @@ mod tests {
         assert!(receipt.diagnostics.is_empty());
 
         // en-US 变体共存
-        save_global_prompt_at(&prompts, &json!({ "key": "draft-helper", "writingLanguage": "en-US" })).unwrap();
+        save_global_prompt_at(
+            &prompts,
+            &json!({ "key": "draft-helper", "writingLanguage": "en-US" }),
+        )
+        .unwrap();
         assert_eq!(load_global_prompts_at(&prompts).templates.len(), 2);
 
         // 保存 zh-CN 会清掉无语言后缀的 legacy 文件
         std::fs::write(prompts.join("draft-helper.json"), "{}").unwrap();
         save_global_prompt_at(&prompts, &template).unwrap();
-        assert!(!prompts.join("draft-helper.json").exists(), "zh-CN 保存应清理 legacy 文件");
+        assert!(
+            !prompts.join("draft-helper.json").exists(),
+            "zh-CN 保存应清理 legacy 文件"
+        );
 
         // 删除 zh-CN 同时删 legacy
         std::fs::write(prompts.join("draft-helper.json"), "{}").unwrap();
         delete_global_prompt_at(&prompts, "draft-helper", "zh-CN").unwrap();
         assert!(!prompts.join("draft-helper.zh-CN.json").exists());
         assert!(!prompts.join("draft-helper.json").exists());
-        assert_eq!(load_global_prompts_at(&prompts).templates.len(), 1, "en-US 变体应保留");
+        assert_eq!(
+            load_global_prompts_at(&prompts).templates.len(),
+            1,
+            "en-US 变体应保留"
+        );
 
         let _ = std::fs::remove_dir_all(&home);
     }
@@ -696,26 +765,48 @@ mod tests {
         let prompts = home.join("prompts");
         std::fs::create_dir_all(&prompts).unwrap();
 
-        std::fs::write(prompts.join("ok.zh-CN.json"), json!({ "key": "ok", "writingLanguage": "zh-CN" }).to_string()).unwrap();
+        std::fs::write(
+            prompts.join("ok.zh-CN.json"),
+            json!({ "key": "ok", "writingLanguage": "zh-CN" }).to_string(),
+        )
+        .unwrap();
         // 非法 JSON
         std::fs::write(prompts.join("broken.zh-CN.json"), "{ not json").unwrap();
         // 结构无效
-        std::fs::write(prompts.join("shape.zh-CN.json"), json!({ "key": 7 }).to_string()).unwrap();
+        std::fs::write(
+            prompts.join("shape.zh-CN.json"),
+            json!({ "key": 7 }).to_string(),
+        )
+        .unwrap();
         // 标识与文件名不一致
-        std::fs::write(prompts.join("mismatch.zh-CN.json"), json!({ "key": "other" }).to_string()).unwrap();
+        std::fs::write(
+            prompts.join("mismatch.zh-CN.json"),
+            json!({ "key": "other" }).to_string(),
+        )
+        .unwrap();
 
         let receipt = load_global_prompts_at(&prompts);
         assert_eq!(receipt.templates.len(), 1);
         assert_eq!(receipt.diagnostics.len(), 3);
-        assert!(receipt.diagnostics.iter().all(|item| item.writing_language.as_deref() == Some("zh-CN")));
+        assert!(receipt
+            .diagnostics
+            .iter()
+            .all(|item| item.writing_language.as_deref() == Some("zh-CN")));
         assert_eq!(receipt.diagnostics[0].key.as_deref(), Some("broken"));
         assert_eq!(receipt.diagnostics[0].path, "broken.zh-CN.json");
 
         // 非法 key / 非法模板
-        assert_eq!(prompt_key_path_in(&prompts, "../escape", None).unwrap_err(), "提示词标识无效");
-        assert_eq!(prompt_key_path_in(&prompts, "..", None).unwrap_err(), "提示词标识无效");
         assert_eq!(
-            save_global_prompt_at(&prompts, &json!({ "key": "x", "writingLanguage": "ja-JP" })).unwrap_err(),
+            prompt_key_path_in(&prompts, "../escape", None).unwrap_err(),
+            "提示词标识无效"
+        );
+        assert_eq!(
+            prompt_key_path_in(&prompts, "..", None).unwrap_err(),
+            "提示词标识无效"
+        );
+        assert_eq!(
+            save_global_prompt_at(&prompts, &json!({ "key": "x", "writingLanguage": "ja-JP" }))
+                .unwrap_err(),
             "提示词内容无效"
         );
 
@@ -730,7 +821,11 @@ mod tests {
 
         let skill_dir = home.join("skills").join("fog-harbor");
         std::fs::create_dir_all(&skill_dir).unwrap();
-        std::fs::write(skill_dir.join("SKILL.md"), "---\nname: fog-harbor\n---\n正文").unwrap();
+        std::fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: fog-harbor\n---\n正文",
+        )
+        .unwrap();
         // 无 SKILL.md 的目录被静默跳过
         std::fs::create_dir_all(home.join("skills").join("empty-skill")).unwrap();
 

@@ -198,7 +198,9 @@ impl LocalVectorIndex {
     /// 活节点数量（已扣除墓碑）
     pub async fn len(&self) -> usize {
         let core = self.inner.read().await;
-        core.hnsw.get_nb_point().saturating_sub(core.tombstones.len())
+        core.hnsw
+            .get_nb_point()
+            .saturating_sub(core.tombstones.len())
     }
 
     /// 是否没有活节点
@@ -211,7 +213,13 @@ impl LocalVectorIndex {
     /// 供「回填计划 / vectorless 计数」使用：调用方拿它与本项目 `kb_chunks` 求差集。
     /// 不含墓碑节点（墓碑只在检索时用于过滤）。
     pub async fn live_doc_ids(&self) -> Vec<String> {
-        self.inner.read().await.doc_id_to_idx.keys().cloned().collect()
+        self.inner
+            .read()
+            .await
+            .doc_id_to_idx
+            .keys()
+            .cloned()
+            .collect()
     }
 
     /// 是否已登记该 `doc_id` 的向量（读锁）
@@ -460,10 +468,8 @@ mod tests {
 
     /// 每个用例独立的临时目录（进程级 + 用例名，避免并行冲突）
     fn temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "lorekeeper-vector-{name}-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("lorekeeper-vector-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         dir
     }
@@ -480,9 +486,18 @@ mod tests {
         let dir = temp_dir("insert-search");
         let index = LocalVectorIndex::new(4, 128, &dir).unwrap();
 
-        index.insert_vector("doc-x", &[1.0, 0.0, 0.0, 0.0]).await.unwrap();
-        index.insert_vector("doc-y", &[0.0, 1.0, 0.0, 0.0]).await.unwrap();
-        index.insert_vector("doc-z", &[0.0, 0.9, 0.1, 0.0]).await.unwrap();
+        index
+            .insert_vector("doc-x", &[1.0, 0.0, 0.0, 0.0])
+            .await
+            .unwrap();
+        index
+            .insert_vector("doc-y", &[0.0, 1.0, 0.0, 0.0])
+            .await
+            .unwrap();
+        index
+            .insert_vector("doc-z", &[0.0, 0.9, 0.1, 0.0])
+            .await
+            .unwrap();
 
         let hits = index.search_rag(&[1.0, 0.0, 0.0, 0.0], 2).await.unwrap();
         assert_eq!(hits.len(), 2);
@@ -498,9 +513,15 @@ mod tests {
         let dir = temp_dir("update");
         let index = LocalVectorIndex::new(4, 128, &dir).unwrap();
 
-        let first = index.insert_vector("doc", &[1.0, 0.0, 0.0, 0.0]).await.unwrap();
+        let first = index
+            .insert_vector("doc", &[1.0, 0.0, 0.0, 0.0])
+            .await
+            .unwrap();
         // 更新为另一个方向：旧点应进墓碑并分配新图内 ID
-        let second = index.insert_vector("doc", &[0.0, 1.0, 0.0, 0.0]).await.unwrap();
+        let second = index
+            .insert_vector("doc", &[0.0, 1.0, 0.0, 0.0])
+            .await
+            .unwrap();
         assert_ne!(first, second, "更新必须分配新的图内 ID");
         assert_eq!(index.len().await, 1, "活节点仅 1 个");
 
@@ -516,8 +537,14 @@ mod tests {
         let dir = temp_dir("delete");
         let index = LocalVectorIndex::new(4, 128, &dir).unwrap();
 
-        index.insert_vector("keep", &[1.0, 0.0, 0.0, 0.0]).await.unwrap();
-        index.insert_vector("drop", &[0.0, 1.0, 0.0, 0.0]).await.unwrap();
+        index
+            .insert_vector("keep", &[1.0, 0.0, 0.0, 0.0])
+            .await
+            .unwrap();
+        index
+            .insert_vector("drop", &[0.0, 1.0, 0.0, 0.0])
+            .await
+            .unwrap();
 
         assert!(index.delete_vector("drop").await);
         assert!(!index.delete_vector("drop").await, "重复删除应为未命中");
@@ -539,14 +566,23 @@ mod tests {
         let insert_err = index.insert_vector("doc", &[1.0, 0.0]).await.unwrap_err();
         assert!(matches!(
             insert_err,
-            VectorIndexError::DimensionMismatch { expected: 4, got: 2 }
+            VectorIndexError::DimensionMismatch {
+                expected: 4,
+                got: 2
+            }
         ));
 
-        index.insert_vector("doc", &[1.0, 0.0, 0.0, 0.0]).await.unwrap();
+        index
+            .insert_vector("doc", &[1.0, 0.0, 0.0, 0.0])
+            .await
+            .unwrap();
         let search_err = index.search_rag(&[1.0, 0.0, 0.0], 1).await.unwrap_err();
         assert!(matches!(
             search_err,
-            VectorIndexError::DimensionMismatch { expected: 4, got: 3 }
+            VectorIndexError::DimensionMismatch {
+                expected: 4,
+                got: 3
+            }
         ));
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -558,7 +594,10 @@ mod tests {
         assert!(LocalVectorIndex::new(0, 16, &dir).is_err());
 
         let index = LocalVectorIndex::new(4, 16, &dir).unwrap();
-        assert!(index.insert_vector("", &[1.0, 0.0, 0.0, 0.0]).await.is_err());
+        assert!(index
+            .insert_vector("", &[1.0, 0.0, 0.0, 0.0])
+            .await
+            .is_err());
         assert!(index.file_dump("").await.is_err());
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -582,8 +621,14 @@ mod tests {
         let dir = temp_dir("roundtrip");
         {
             let index = LocalVectorIndex::new(4, 128, &dir).unwrap();
-            index.insert_vector("doc-a", &[1.0, 0.0, 0.0, 0.0]).await.unwrap();
-            index.insert_vector("doc-b", &[0.0, 1.0, 0.0, 0.0]).await.unwrap();
+            index
+                .insert_vector("doc-a", &[1.0, 0.0, 0.0, 0.0])
+                .await
+                .unwrap();
+            index
+                .insert_vector("doc-b", &[0.0, 1.0, 0.0, 0.0])
+                .await
+                .unwrap();
             assert!(index.delete_vector("doc-b").await);
 
             index.file_dump("kb").await.unwrap();
@@ -609,8 +654,14 @@ mod tests {
         let dir = temp_dir("live-ids");
         let index = LocalVectorIndex::new(4, 64, &dir).unwrap();
 
-        index.insert_vector("a", &[1.0, 0.0, 0.0, 0.0]).await.unwrap();
-        index.insert_vector("b", &[0.0, 1.0, 0.0, 0.0]).await.unwrap();
+        index
+            .insert_vector("a", &[1.0, 0.0, 0.0, 0.0])
+            .await
+            .unwrap();
+        index
+            .insert_vector("b", &[0.0, 1.0, 0.0, 0.0])
+            .await
+            .unwrap();
         assert!(index.contains("a").await);
         assert!(!index.contains("missing").await);
 

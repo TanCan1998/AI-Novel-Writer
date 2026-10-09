@@ -82,7 +82,10 @@ pub fn revoke(conn: &Connection, stable_fact_key: &str) -> Result<(), String> {
 
 /// 读取单条豁免（仅供测试断言 upsert 语义；基线未暴露此频道）
 #[cfg(test)]
-pub fn find(conn: &Connection, stable_fact_key: &str) -> Result<Option<ConsistencyExemption>, String> {
+pub fn find(
+    conn: &Connection,
+    stable_fact_key: &str,
+) -> Result<Option<ConsistencyExemption>, String> {
     use rusqlite::OptionalExtension;
     conn.query_row(
         "SELECT stable_fact_key AS stableFactKey, reason, revoked
@@ -177,22 +180,10 @@ mod tests {
     #[test]
     fn empty_and_blank_inputs_are_rejected_test() {
         let conn = memory_conn();
-        assert_eq!(
-            save(&conn, "", "原因").unwrap_err(),
-            "稳定事实键无效"
-        );
-        assert_eq!(
-            save(&conn, "   ", "原因").unwrap_err(),
-            "稳定事实键无效"
-        );
-        assert_eq!(
-            save(&conn, "fact:abc", "   ").unwrap_err(),
-            "豁免原因无效"
-        );
-        assert_eq!(
-            revoke(&conn, "").unwrap_err(),
-            "稳定事实键无效"
-        );
+        assert_eq!(save(&conn, "", "原因").unwrap_err(), "稳定事实键无效");
+        assert_eq!(save(&conn, "   ", "原因").unwrap_err(), "稳定事实键无效");
+        assert_eq!(save(&conn, "fact:abc", "   ").unwrap_err(), "豁免原因无效");
+        assert_eq!(revoke(&conn, "").unwrap_err(), "稳定事实键无效");
     }
 
     #[test]

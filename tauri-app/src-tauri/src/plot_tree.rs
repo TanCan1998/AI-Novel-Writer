@@ -981,22 +981,23 @@ mod tests {
     #[test]
     fn source_reference_rejects_invalid_shapes_test() {
         let mut payload = valid_snapshot_json(&"b".repeat(64));
-        payload["tracks"][0]["events"][0]["sources"] = json!([{ "type": "unknown", "chapterNumber": 1 }]);
+        payload["tracks"][0]["events"][0]["sources"] =
+            json!([{ "type": "unknown", "chapterNumber": 1 }]);
         assert_eq!(
             assert_stored_plot_tree_snapshot(&payload).unwrap_err(),
             "剧情树来源引用无效"
         );
 
         let mut payload = valid_snapshot_json(&"b".repeat(64));
-        payload["tracks"][0]["events"][0]["sources"] = json!([{ "type": "blueprint", "chapterNumber": 0 }]);
+        payload["tracks"][0]["events"][0]["sources"] =
+            json!([{ "type": "blueprint", "chapterNumber": 0 }]);
         assert_eq!(
             assert_stored_plot_tree_snapshot(&payload).unwrap_err(),
             "剧情树来源章节无效"
         );
 
         let mut payload = valid_snapshot_json(&"b".repeat(64));
-        payload["tracks"][0]["events"][0]["sources"] =
-            json!([{ "type": "narrative-thread" }]);
+        payload["tracks"][0]["events"][0]["sources"] = json!([{ "type": "narrative-thread" }]);
         assert_eq!(
             assert_stored_plot_tree_snapshot(&payload).unwrap_err(),
             "剧情树来源叙事计划无效"
@@ -1038,8 +1039,7 @@ mod tests {
 
         // occurred + eventId 引用
         let mut payload = valid_snapshot_json(&"b".repeat(64));
-        payload["tracks"][0]["events"][1]["sources"] =
-            json!([{ "type": "narrative-thread", "planId": 999, "eventId": 9, "chapterNumber": 2 }]);
+        payload["tracks"][0]["events"][1]["sources"] = json!([{ "type": "narrative-thread", "planId": 999, "eventId": 9, "chapterNumber": 2 }]);
         assert!(assert_stored_plot_tree_snapshot(&payload).is_ok());
     }
 
@@ -1234,19 +1234,23 @@ mod tests {
             "剧情树来源引用不存在"
         );
         assert_eq!(
-            assert_plot_tree_snapshot_chapter_bounds(&payload_snapshot(&revision), &sources).unwrap_err(),
+            assert_plot_tree_snapshot_chapter_bounds(&payload_snapshot(&revision), &sources)
+                .unwrap_err(),
             "剧情树缺少有效事件来源"
         );
     }
 
     #[test]
     fn snapshot_serialization_omits_optional_fields_test() {
-        let snapshot = assert_stored_plot_tree_snapshot(&valid_snapshot_json(&"b".repeat(64)))
-            .unwrap();
+        let snapshot =
+            assert_stored_plot_tree_snapshot(&valid_snapshot_json(&"b".repeat(64))).unwrap();
         // ⚠️ 必须用 `to_string` 断言键顺序：`to_value` 会按字母序重排（BTreeMap），
         // 而真实序列化路径（及黄金哈希）走的是 `to_string`。
         let json = serde_json::to_string(&snapshot).unwrap();
-        assert!(json.contains(r#""sourceRevision":"#), "已设置时须输出版本号");
+        assert!(
+            json.contains(r#""sourceRevision":"#),
+            "已设置时须输出版本号"
+        );
         assert!(
             !json.contains("parentTrackId"),
             "未设置父轨道时不得输出 null 占位"
@@ -1291,7 +1295,8 @@ mod tests {
 
         // 另两种来源引用的形状
         assert_eq!(
-            serde_json::to_string(&PlotTreeSourceReference::Blueprint { chapter_number: 1 }).unwrap(),
+            serde_json::to_string(&PlotTreeSourceReference::Blueprint { chapter_number: 1 })
+                .unwrap(),
             r#"{"type":"blueprint","chapterNumber":1}"#
         );
         assert_eq!(

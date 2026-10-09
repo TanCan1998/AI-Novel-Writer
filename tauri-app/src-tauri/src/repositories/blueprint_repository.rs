@@ -62,7 +62,9 @@ impl BlueprintData {
             title: row.get::<_, Option<String>>("title")?.unwrap_or_default(),
             role: row.get::<_, Option<String>>("role")?.unwrap_or_default(),
             purpose: row.get::<_, Option<String>>("purpose")?.unwrap_or_default(),
-            key_events: row.get::<_, Option<String>>("key_events")?.unwrap_or_default(),
+            key_events: row
+                .get::<_, Option<String>>("key_events")?
+                .unwrap_or_default(),
             characters,
             // 非表列字段：读回恒为缺失（对齐基线 undefined）
             new_character_candidates: None,
@@ -101,7 +103,10 @@ pub fn get_all(conn: &Connection) -> Result<Vec<BlueprintData>, String> {
 }
 
 /// 读取单章蓝图（未找到返回 `None`，对齐基线 `null`）
-pub fn get_by_chapter(conn: &Connection, chapter_number: i64) -> Result<Option<BlueprintData>, String> {
+pub fn get_by_chapter(
+    conn: &Connection,
+    chapter_number: i64,
+) -> Result<Option<BlueprintData>, String> {
     conn.query_row(
         "SELECT chapter_number, title, role, purpose, key_events, characters,
                 suspense_hook, user_guidance, notes, notes_updated_at
@@ -187,9 +192,12 @@ pub fn update_notes(conn: &Connection, chapter_number: i64, notes: &str) -> Resu
 
 /// 删除单章蓝图
 pub fn delete(conn: &Connection, chapter_number: i64) -> Result<(), String> {
-    conn.execute("DELETE FROM blueprints WHERE chapter_number = ?1", [chapter_number])
-        .map(|_| ())
-        .map_err(|error| format!("删除蓝图失败：{error}"))
+    conn.execute(
+        "DELETE FROM blueprints WHERE chapter_number = ?1",
+        [chapter_number],
+    )
+    .map(|_| ())
+    .map_err(|error| format!("删除蓝图失败：{error}"))
 }
 
 /// 在调用方事务内清空蓝图相关事实（供 `clearAll` 与后续项目清理/导入复用）。
@@ -197,8 +205,7 @@ pub fn delete(conn: &Connection, chapter_number: i64) -> Result<(), String> {
 /// 顺序与基线 `clearBlueprintFactsWithinTransaction` 一致：
 /// 先收敛 schema，再按"子表 → 父表"删除（避让外键）。
 pub fn clear_blueprint_facts_within_transaction(conn: &Connection) -> Result<(), String> {
-    ensure_blueprint_commit_schema(conn)
-        .map_err(|error| format!("蓝图提交表收敛失败：{error}"))?;
+    ensure_blueprint_commit_schema(conn).map_err(|error| format!("蓝图提交表收敛失败：{error}"))?;
     conn.execute("DELETE FROM blueprint_character_sync_operations", [])
         .map_err(|error| format!("清空蓝图角色同步操作失败：{error}"))?;
     conn.execute("DELETE FROM blueprint_commit_operations", [])
@@ -214,7 +221,8 @@ pub fn clear_all(conn: &Connection) -> Result<(), String> {
         .unchecked_transaction()
         .map_err(|error| format!("开启事务失败：{error}"))?;
     clear_blueprint_facts_within_transaction(&tx)?;
-    tx.commit().map_err(|error| format!("清空蓝图失败：{error}"))
+    tx.commit()
+        .map_err(|error| format!("清空蓝图失败：{error}"))
 }
 
 // ============================================================================
@@ -423,7 +431,10 @@ fn read_exact_range(
         )
         .map_err(|error| format!("读取蓝图范围失败：{error}"))?;
     let rows = stmt
-        .query_map(rusqlite::params![start_chapter, end_chapter], BlueprintData::from_row)
+        .query_map(
+            rusqlite::params![start_chapter, end_chapter],
+            BlueprintData::from_row,
+        )
         .map_err(|error| format!("读取蓝图范围失败：{error}"))?;
     let mut snapshot = Vec::new();
     for row in rows {
@@ -445,11 +456,12 @@ fn parse_character_sync_input(serialized: &str) -> Result<Vec<BlueprintData>, St
     if !parsed.is_array() {
         return Err("蓝图角色同步操作的冻结输入格式无效".to_string());
     }
-    serde_json::from_value(parsed)
-        .map_err(|_| "蓝图角色同步操作的冻结输入格式无效".to_string())
+    serde_json::from_value(parsed).map_err(|_| "蓝图角色同步操作的冻结输入格式无效".to_string())
 }
 
-fn read_character_sync_input(row: &BlueprintCommitOperationRow) -> Result<Vec<BlueprintData>, String> {
+fn read_character_sync_input(
+    row: &BlueprintCommitOperationRow,
+) -> Result<Vec<BlueprintData>, String> {
     parse_character_sync_input(&row.character_sync_input)
 }
 
@@ -459,8 +471,8 @@ fn parse_completion_receipt(
     let Some(raw) = serialized else {
         return Ok(None);
     };
-    let parsed: serde_json::Value = serde_json::from_str(&raw)
-        .map_err(|_| "蓝图角色同步完成回执已损坏".to_string())?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|_| "蓝图角色同步完成回执已损坏".to_string())?;
     if !parsed.is_object() {
         return Err("蓝图角色同步完成回执格式无效".to_string());
     }
@@ -882,12 +894,10 @@ fn assert_authoritative_character_sync_completion(
         return Ok(());
     }
     let authoritative = authoritative_character_sync_completion_receipt(conn, operation)?;
-    let stored_json = canonical_json(
-        &serde_json::to_value(stored).map_err(|error| error.to_string())?,
-    )?;
-    let authoritative_json = canonical_json(
-        &serde_json::to_value(&authoritative).map_err(|error| error.to_string())?,
-    )?;
+    let stored_json =
+        canonical_json(&serde_json::to_value(stored).map_err(|error| error.to_string())?)?;
+    let authoritative_json =
+        canonical_json(&serde_json::to_value(&authoritative).map_err(|error| error.to_string())?)?;
     if stored_json != authoritative_json {
         return Err("蓝图角色同步完成回执与角色名单事实不匹配".to_string());
     }
@@ -933,11 +943,9 @@ fn receipt_from_existing_operation(
         existing.end_chapter,
     )?;
     let snapshot = snapshot_with_character_sync_facts(&persisted, &character_sync_input);
-    let character_sync_operation = read_character_sync_operation(
-        conn,
-        &character_sync_operation_id(&existing.operation_id),
-    )?
-    .ok_or_else(|| "蓝图提交缺少可恢复的角色同步操作".to_string())?;
+    let character_sync_operation =
+        read_character_sync_operation(conn, &character_sync_operation_id(&existing.operation_id))?
+            .ok_or_else(|| "蓝图提交缺少可恢复的角色同步操作".to_string())?;
     assert_authoritative_character_sync_completion(conn, &character_sync_operation)?;
     Ok(BlueprintCommitRangeReceipt {
         mode: existing.mode.clone(),
@@ -946,7 +954,10 @@ fn receipt_from_existing_operation(
         idempotent: true,
         start_chapter: existing.start_chapter,
         end_chapter: existing.end_chapter,
-        chapter_numbers: snapshot.iter().map(|blueprint| blueprint.chapter_number).collect(),
+        chapter_numbers: snapshot
+            .iter()
+            .map(|blueprint| blueprint.chapter_number)
+            .collect(),
         snapshot,
         character_sync_input,
         character_sync_operation,
@@ -1004,7 +1015,10 @@ pub fn commit_range(
                 .map(|expected| same_persisted_blueprint(saved, expected))
                 .unwrap_or(false);
             if !matches {
-                return Err(format!("蓝图提交回读不一致：第 {} 章", saved.chapter_number));
+                return Err(format!(
+                    "蓝图提交回读不一致：第 {} 章",
+                    saved.chapter_number
+                ));
             }
         }
 
@@ -1066,7 +1080,8 @@ pub fn commit_range(
 
     match outcome {
         Ok(receipt) => {
-            tx.commit().map_err(|error| format!("提交蓝图失败：{error}"))?;
+            tx.commit()
+                .map_err(|error| format!("提交蓝图失败：{error}"))?;
             Ok(receipt)
         }
         // `tx` drop 即回滚
@@ -1194,7 +1209,11 @@ mod tests {
         clear_all(&conn).unwrap();
         assert!(get_all(&conn).unwrap().is_empty());
         let operations: i64 = conn
-            .query_row("SELECT COUNT(*) FROM blueprint_commit_operations", [], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM blueprint_commit_operations",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         let syncs: i64 = conn
             .query_row(
@@ -1255,7 +1274,10 @@ mod tests {
             operation_id: "op-1".to_string(),
             start_chapter,
             end_chapter,
-            blueprints: chapters.iter().map(|chapter| sample(*chapter, "")).collect(),
+            blueprints: chapters
+                .iter()
+                .map(|chapter| sample(*chapter, ""))
+                .collect(),
         }
     }
 
@@ -1303,12 +1325,14 @@ mod tests {
         assert_eq!(error, "蓝图提交必须完整且唯一地覆盖第 1–2 章");
 
         // 重复章节（长度相同但集合缺项）
-        let error = assert_exact_range(&commit_request(COMMIT_MODE_FULL, 1, 2, &[1, 1])).unwrap_err();
+        let error =
+            assert_exact_range(&commit_request(COMMIT_MODE_FULL, 1, 2, &[1, 1])).unwrap_err();
         assert_eq!(error, "蓝图提交必须完整且唯一地覆盖第 1–2 章");
 
         // 范围越界（起点为 0）
         assert_eq!(
-            assert_exact_range(&commit_request(COMMIT_MODE_REPLACE_RANGE, 0, 1, &[0, 1])).unwrap_err(),
+            assert_exact_range(&commit_request(COMMIT_MODE_REPLACE_RANGE, 0, 1, &[0, 1]))
+                .unwrap_err(),
             "蓝图提交范围无效"
         );
 
@@ -1333,7 +1357,10 @@ mod tests {
         // 缺操作 ID
         let mut no_id = commit_request(COMMIT_MODE_FULL, 1, 1, &[1]);
         no_id.operation_id = "  ".to_string();
-        assert_eq!(assert_exact_range(&no_id).unwrap_err(), "蓝图提交缺少操作 ID");
+        assert_eq!(
+            assert_exact_range(&no_id).unwrap_err(),
+            "蓝图提交缺少操作 ID"
+        );
     }
 
     #[test]
@@ -1359,7 +1386,11 @@ mod tests {
         assert_eq!(replay.payload_hash, first.payload_hash);
         assert_eq!(replay.chapter_numbers, vec![1, 2]);
         let operations: i64 = conn
-            .query_row("SELECT COUNT(*) FROM blueprint_commit_operations", [], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM blueprint_commit_operations",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(operations, 1, "幂等重放不得新增操作记录");
 
@@ -1379,7 +1410,11 @@ mod tests {
         upsert(&conn, &sample(2, "")).unwrap();
 
         // replace-range：只覆盖第 2 章，第 1 章保留
-        let replaced = commit_range(&conn, &commit_request(COMMIT_MODE_REPLACE_RANGE, 2, 2, &[2])).unwrap();
+        let replaced = commit_range(
+            &conn,
+            &commit_request(COMMIT_MODE_REPLACE_RANGE, 2, 2, &[2]),
+        )
+        .unwrap();
         assert_eq!(replaced.snapshot.len(), 1);
         assert_eq!(get_all(&conn).unwrap().len(), 2);
 
@@ -1440,8 +1475,9 @@ mod tests {
     fn blueprint_character_sync_fact_error_matches_baseline_test() {
         // 缺声明的候选
         let mut blueprint = sample(3, "");
-        blueprint.new_character_candidates =
-            Some(vec![serde_json::json!({ "name": "苏晚", "role": "supporting" })]);
+        blueprint.new_character_candidates = Some(vec![
+            serde_json::json!({ "name": "苏晚", "role": "supporting" }),
+        ]);
         assert_eq!(
             blueprint_character_sync_fact_error(&[blueprint.clone()], &[]).unwrap(),
             "角色名单缺少第3章蓝图声明的新角色候选「苏晚」"
@@ -1505,7 +1541,9 @@ mod tests {
         commit_range(&conn, &request).unwrap();
         let sync_id = character_sync_operation_id("op-1");
 
-        let pending = read_character_sync_operation(&conn, &sync_id).unwrap().unwrap();
+        let pending = read_character_sync_operation(&conn, &sync_id)
+            .unwrap()
+            .unwrap();
         assert_eq!(pending.status, "pending");
 
         // pending 携带完整完成回执 → 视为损坏（基线：解析成功后再判状态）
@@ -1538,7 +1576,9 @@ mod tests {
             "已完成蓝图角色同步操作缺少完成回执"
         );
 
-        assert!(read_character_sync_operation(&conn, "不存在").unwrap().is_none());
+        assert!(read_character_sync_operation(&conn, "不存在")
+            .unwrap()
+            .is_none());
     }
 
     // ===== S2-c：角色同步操作 =====
@@ -1546,7 +1586,9 @@ mod tests {
     #[test]
     fn list_and_get_character_sync_operations_test() {
         let conn = memory_db();
-        assert!(list_pending_character_sync_operations(&conn).unwrap().is_empty());
+        assert!(list_pending_character_sync_operations(&conn)
+            .unwrap()
+            .is_empty());
 
         commit_range(&conn, &commit_request(COMMIT_MODE_FULL, 1, 1, &[1])).unwrap();
         let mut second = commit_request(COMMIT_MODE_REPLACE_RANGE, 2, 2, &[2]);
@@ -1555,14 +1597,20 @@ mod tests {
 
         let pending = list_pending_character_sync_operations(&conn).unwrap();
         assert_eq!(pending.len(), 2);
-        assert!(pending.iter().all(|operation| operation.status == "pending"));
+        assert!(pending
+            .iter()
+            .all(|operation| operation.status == "pending"));
 
         let target = character_sync_operation_id("op-1");
-        let fetched = get_character_sync_operation(&conn, &target).unwrap().unwrap();
+        let fetched = get_character_sync_operation(&conn, &target)
+            .unwrap()
+            .unwrap();
         assert_eq!(fetched.blueprint_commit_operation_id, "op-1");
         assert_eq!(fetched.character_sync_input.len(), 1);
 
-        assert!(get_character_sync_operation(&conn, "不存在").unwrap().is_none());
+        assert!(get_character_sync_operation(&conn, "不存在")
+            .unwrap()
+            .is_none());
         assert_eq!(
             get_character_sync_operation(&conn, "  ").unwrap_err(),
             "蓝图角色同步操作 ID 不能为空"
@@ -1589,7 +1637,10 @@ mod tests {
         assert_eq!(completed.status, "completed");
         let receipt = completed.completion_receipt.expect("应有完成回执");
         assert_eq!(receipt.status, "already-satisfied");
-        assert!(receipt.roster_receipt.is_none(), "无名单操作证据时不返回名单证据");
+        assert!(
+            receipt.roster_receipt.is_none(),
+            "无名单操作证据时不返回名单证据"
+        );
     }
 
     #[test]
@@ -1644,9 +1695,13 @@ mod tests {
         assert_eq!(again.completion_receipt, completed.completion_receipt);
 
         // 完成后的回读仍通过权威校验
-        let fetched = get_character_sync_operation(&conn, &sync_id).unwrap().unwrap();
+        let fetched = get_character_sync_operation(&conn, &sync_id)
+            .unwrap()
+            .unwrap();
         assert_eq!(fetched.status, "completed");
-        assert!(list_pending_character_sync_operations(&conn).unwrap().is_empty());
+        assert!(list_pending_character_sync_operations(&conn)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]
@@ -1666,9 +1721,14 @@ mod tests {
         );
 
         // 失败必须回滚：状态仍为 pending 且仍在待处理列表
-        let pending = read_character_sync_operation(&conn, &sync_id).unwrap().unwrap();
+        let pending = read_character_sync_operation(&conn, &sync_id)
+            .unwrap()
+            .unwrap();
         assert_eq!(pending.status, "pending");
         assert!(pending.completion_receipt.is_none());
-        assert_eq!(list_pending_character_sync_operations(&conn).unwrap().len(), 1);
+        assert_eq!(
+            list_pending_character_sync_operations(&conn).unwrap().len(),
+            1
+        );
     }
 }

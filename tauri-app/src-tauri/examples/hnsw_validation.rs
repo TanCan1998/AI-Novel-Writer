@@ -66,7 +66,10 @@ impl<'a> LocalVectorIndex<'a> {
             std::io::Error::new(std::io::ErrorKind::Other, format!("HNSW Dump 失败: {}", e))
         })?;
 
-        println!("✅ 极速持久化完成！已在 {} 目录下生成二进制图快照：{}.hnsw.graph/.data", self.storage_dir, prefix);
+        println!(
+            "✅ 极速持久化完成！已在 {} 目录下生成二进制图快照：{}.hnsw.graph/.data",
+            self.storage_dir, prefix
+        );
         Ok(())
     }
 }

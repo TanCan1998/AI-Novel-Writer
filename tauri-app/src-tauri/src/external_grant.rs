@@ -87,8 +87,7 @@ pub struct ExternalGrantRegistry {
 }
 
 /// 无效/过期授权的统一文案（对齐控制器 `invalidExternalGrantText` 的中文口径）
-pub const INVALID_GRANT_MESSAGE: &str =
-    "外部文件授权无效或已失效，请重新选择。";
+pub const INVALID_GRANT_MESSAGE: &str = "外部文件授权无效或已失效，请重新选择。";
 
 /// 已解析的授权目标（仅在后端内部流通，绝不序列化回渲染层）
 ///
@@ -109,13 +108,9 @@ pub fn assert_safe_relative_path(relative_path: &str) -> Result<(), String> {
         return Err("外部文件授权的相对路径无效".to_string());
     }
     let bytes = relative_path.as_bytes();
-    let drive_prefixed = bytes.len() >= 2
-        && bytes[1] == b':'
-        && (bytes[0] as char).is_ascii_alphabetic();
-    if relative_path.starts_with('/')
-        || relative_path.starts_with('\\')
-        || drive_prefixed
-    {
+    let drive_prefixed =
+        bytes.len() >= 2 && bytes[1] == b':' && (bytes[0] as char).is_ascii_alphabetic();
+    if relative_path.starts_with('/') || relative_path.starts_with('\\') || drive_prefixed {
         return Err("外部文件授权的相对路径不能是绝对路径".to_string());
     }
     if relative_path
@@ -210,7 +205,10 @@ impl ExternalGrantRegistry {
         consume: bool,
     ) -> Result<GrantedTarget, String> {
         let requested = relative_path.unwrap_or("");
-        if !matches!(self.grants.get(grant_id).map(|record| record.scope), Some(GrantScope::File)) {
+        if !matches!(
+            self.grants.get(grant_id).map(|record| record.scope),
+            Some(GrantScope::File)
+        ) {
             assert_safe_relative_path(requested)?;
         }
 
@@ -234,14 +232,16 @@ impl ExternalGrantRegistry {
             GrantScope::Directory => {
                 let joined = granted.path.join(requested);
                 let target = crate::security::lexically_normalize(&joined.to_string_lossy());
-                let root_lex = crate::security::lexically_normalize(&granted.path.to_string_lossy());
+                let root_lex =
+                    crate::security::lexically_normalize(&granted.path.to_string_lossy());
                 if !crate::security::lexically_contained(&root_lex, &target) {
                     return Err("外部文件授权目标超出授权范围".to_string());
                 }
                 let root_canonical = std::fs::canonicalize(&root_lex)
                     .map_err(|error| format!("外部文件授权目录已失效（{error}）"))?;
                 match crate::security::canonical_writable_target(&target) {
-                    Some(canonical) if crate::security::lexically_contained(&root_canonical, &canonical) => {}
+                    Some(canonical)
+                        if crate::security::lexically_contained(&root_canonical, &canonical) => {}
                     Some(_) => return Err("外部文件授权目标超出授权范围".to_string()),
                     None => return Err("外部文件授权目标无效".to_string()),
                 }
@@ -292,10 +292,7 @@ impl ExternalGrantRegistry {
                 (true, None)
             } else {
                 if !record.operations.contains(&operation) {
-                    return Err(format!(
-                        "外部文件授权不允许{}操作",
-                        operation.label()
-                    ));
+                    return Err(format!("外部文件授权不允许{}操作", operation.label()));
                 }
                 (
                     false,
@@ -352,10 +349,8 @@ mod tests {
     use super::*;
 
     fn temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "lorekeeper-grant-{name}-{}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("lorekeeper-grant-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -380,7 +375,9 @@ mod tests {
 
         // 再解析报「已用尽」；但 revalidate 仍可用（记录尚在）
         assert_eq!(
-            registry.resolve(&grant_id, GrantOperation::Read).unwrap_err(),
+            registry
+                .resolve(&grant_id, GrantOperation::Read)
+                .unwrap_err(),
             "外部文件授权已用尽"
         );
         assert!(registry.revalidate(&grant_id, GrantOperation::Read).is_ok());
@@ -406,7 +403,9 @@ mod tests {
         assert!(registry.resolve(&grant_id, GrantOperation::List).is_ok());
         assert_eq!(registry.len(), 1, "用尽后保留记录（对齐基线）");
         assert_eq!(
-            registry.resolve(&grant_id, GrantOperation::List).unwrap_err(),
+            registry
+                .resolve(&grant_id, GrantOperation::List)
+                .unwrap_err(),
             "外部文件授权已用尽"
         );
 
@@ -420,7 +419,9 @@ mod tests {
         std::fs::write(&file, "x").unwrap();
 
         let mut registry = ExternalGrantRegistry::default();
-        let grant_id = registry.issue_file(&file, KNOWLEDGE_BASE_GRANT_TTL, None).unwrap();
+        let grant_id = registry
+            .issue_file(&file, KNOWLEDGE_BASE_GRANT_TTL, None)
+            .unwrap();
         for _ in 0..3 {
             assert!(registry.resolve(&grant_id, GrantOperation::Read).is_ok());
         }
@@ -433,7 +434,9 @@ mod tests {
     fn issue_rejects_missing_or_wrong_kind_test() {
         let dir = temp_dir("kind");
         let mut registry = ExternalGrantRegistry::default();
-        assert!(registry.issue_file(&dir, KNOWLEDGE_BASE_GRANT_TTL, Some(1)).is_err());
+        assert!(registry
+            .issue_file(&dir, KNOWLEDGE_BASE_GRANT_TTL, Some(1))
+            .is_err());
         assert!(registry
             .issue_directory(&dir.join("missing"), KNOWLEDGE_BASE_GRANT_TTL, Some(1))
             .is_err());
@@ -446,7 +449,9 @@ mod tests {
         let file = dir.join("a.txt");
         std::fs::write(&file, "x").unwrap();
         let mut registry = ExternalGrantRegistry::default();
-        let grant_id = registry.issue_file(&file, KNOWLEDGE_BASE_GRANT_TTL, Some(1)).unwrap();
+        let grant_id = registry
+            .issue_file(&file, KNOWLEDGE_BASE_GRANT_TTL, Some(1))
+            .unwrap();
         registry.revoke(&grant_id);
         assert!(registry.is_empty());
         assert!(registry.resolve(&grant_id, GrantOperation::Read).is_err());
@@ -467,11 +472,19 @@ mod tests {
             .unwrap();
 
         // 导出授权不得读取/枚举
-        assert!(registry.revalidate(&grant_id, GrantOperation::Read).is_err());
-        assert!(registry.revalidate(&grant_id, GrantOperation::List).is_err());
+        assert!(registry
+            .revalidate(&grant_id, GrantOperation::Read)
+            .is_err());
+        assert!(registry
+            .revalidate(&grant_id, GrantOperation::List)
+            .is_err());
         // 写入与创建均可用，且 revalidate 不消耗
-        assert!(registry.revalidate(&grant_id, GrantOperation::Write).is_ok());
-        assert!(registry.revalidate(&grant_id, GrantOperation::Create).is_ok());
+        assert!(registry
+            .revalidate(&grant_id, GrantOperation::Write)
+            .is_ok());
+        assert!(registry
+            .revalidate(&grant_id, GrantOperation::Create)
+            .is_ok());
         assert_eq!(registry.len(), 1);
 
         let _ = std::fs::remove_dir_all(&dir);

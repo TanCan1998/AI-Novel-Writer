@@ -250,16 +250,24 @@ fn normalize_embedding_options(model: &Value) -> (usize, usize, Option<usize>) {
 }
 
 /// 调用远程 Embedding（含代理装配）。返回 `f32` 向量以直接喂给 HNSW。
-async fn embed_texts(setup: &EmbeddingSetup, texts: &[String]) -> Result<Vec<Vec<f32>>, embedding::EmbeddingError> {
+async fn embed_texts(
+    setup: &EmbeddingSetup,
+    texts: &[String],
+) -> Result<Vec<Vec<f32>>, embedding::EmbeddingError> {
     if texts.is_empty() {
         return Ok(Vec::new());
     }
     let config = crate::commands::config::read_global_config_at(&app_paths::global_config_path());
     let proxy = proxy_from_config(&config);
     let client = build_client(proxy.as_ref()).map_err(embedding::EmbeddingError::Plain)?;
-    let vectors =
-        embedding::generate_embeddings(&client, texts, &setup.protocol, &setup.model, setup.batch_size)
-            .await?;
+    let vectors = embedding::generate_embeddings(
+        &client,
+        texts,
+        &setup.protocol,
+        &setup.model,
+        setup.batch_size,
+    )
+    .await?;
     Ok(vectors
         .into_iter()
         .map(|vector| vector.into_iter().map(|value| value as f32).collect())
@@ -484,7 +492,10 @@ async fn import_text_core(
     let (chunk_ids, plan) = {
         let setup_fp = setup.as_ref().map(|setup| setup.fingerprint.clone());
         let generated_dim = generated.as_ref().map(|vectors| {
-            vectors.first().map(|vector| vector.len() as i64).unwrap_or(0)
+            vectors
+                .first()
+                .map(|vector| vector.len() as i64)
+                .unwrap_or(0)
         });
         state.with_project_db(|conn| {
             let mut plan: Option<(i64, i64)> = None;
@@ -519,10 +530,17 @@ async fn import_text_core(
     // 异步：写向量 + 激活代际
     if let (Some(vectors), Some((generation, dimension))) = (generated.as_ref(), plan) {
         if !chunk_ids.is_empty() {
-            write_vectors(state, project_root, generation, dimension, &chunk_ids, vectors).await?;
+            write_vectors(
+                state,
+                project_root,
+                generation,
+                dimension,
+                &chunk_ids,
+                vectors,
+            )
+            .await?;
             state.with_project_db(|conn| {
-                hybrid::activate_generation(conn, generation)
-                    .map_err(|error| error.to_string())?;
+                hybrid::activate_generation(conn, generation).map_err(|error| error.to_string())?;
                 Ok(())
             })?;
         }
@@ -685,8 +703,7 @@ async fn vectorless_count(state: &AppState, project_root: &str) -> Result<i64, S
     let index = state
         .kb_vector_index(project_root, generation, dimension as usize)
         .await?;
-    let live: std::collections::HashSet<String> =
-        index.live_doc_ids().await.into_iter().collect();
+    let live: std::collections::HashSet<String> = index.live_doc_ids().await.into_iter().collect();
     Ok(all_ids
         .iter()
         .filter(|id| !live.contains(id.as_str()))
@@ -778,7 +795,9 @@ pub async fn kb_import_document(
         registry.resolve(&grant_id, GrantOperation::Read)
     };
     let Ok(granted) = granted else {
-        return Ok(KbImportResult::failure(crate::external_grant::INVALID_GRANT_MESSAGE));
+        return Ok(KbImportResult::failure(
+            crate::external_grant::INVALID_GRANT_MESSAGE,
+        ));
     };
 
     let content = match std::fs::read_to_string(&granted.path) {
@@ -842,7 +861,8 @@ fn collect_folder_files(root: &Path) -> Result<Vec<(String, String)>, String> {
             }
             let name = entry.file_name().to_string_lossy().to_string();
             let lower = name.to_lowercase();
-            if !(lower.ends_with(".txt") || lower.ends_with(".md") || lower.ends_with(".markdown")) {
+            if !(lower.ends_with(".txt") || lower.ends_with(".md") || lower.ends_with(".markdown"))
+            {
                 continue;
             }
             if out.len() >= MAX_IMPORT_FILES {
@@ -1083,7 +1103,14 @@ pub async fn kb_remove_document(
         Ok((ids, spaces, hit))
     })?;
     for space in spaces {
-        purge_vectors(state, &expected_project_path, space.generation, space.dimension, &ids).await;
+        purge_vectors(
+            state,
+            &expected_project_path,
+            space.generation,
+            space.dimension,
+            &ids,
+        )
+        .await;
     }
     Ok(if hit {
         SimpleResult {
@@ -1277,10 +1304,9 @@ pub async fn kb_backfill_vectors(
         let fingerprint = setup.fingerprint.clone();
         state.with_project_db(move |conn| {
             let spaces = hybrid::list_spaces(conn).map_err(|error| error.to_string())?;
-            if let Some(space) = spaces
-                .iter()
-                .find(|space| space.model_fingerprint == fingerprint && space.dimension == dimension)
-            {
+            if let Some(space) = spaces.iter().find(|space| {
+                space.model_fingerprint == fingerprint && space.dimension == dimension
+            }) {
                 return Ok(space.generation);
             }
             let generation = hybrid::next_generation(conn).map_err(|error| error.to_string())?;
@@ -1302,8 +1328,7 @@ pub async fn kb_backfill_vectors(
     let index = state
         .kb_vector_index(&expected_project_path, generation, dimension as usize)
         .await?;
-    let live: std::collections::HashSet<String> =
-        index.live_doc_ids().await.into_iter().collect();
+    let live: std::collections::HashSet<String> = index.live_doc_ids().await.into_iter().collect();
     let missing: Vec<(String, String)> = rows
         .iter()
         .filter(|row| !live.contains(&row.id))
@@ -1440,10 +1465,7 @@ pub async fn dialog_select_knowledge_folder(
     state: State<'_, AppState>,
 ) -> Result<Option<ExternalGrantDto>, String> {
     let (sender, receiver) = std::sync::mpsc::channel();
-    let mut builder = app
-        .dialog()
-        .file()
-        .set_title("选择要批量导入的文件夹");
+    let mut builder = app.dialog().file().set_title("选择要批量导入的文件夹");
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         builder = builder.set_parent(&window);
     }
@@ -1491,7 +1513,8 @@ mod tests {
         let model = json!({"embeddingOptions": {"chunkSize": 100000, "chunkOverlap": 99999, "batchSize": 999}});
         assert_eq!(normalize_embedding_options(&model), (4000, 3999, Some(50)));
 
-        let model = json!({"embeddingOptions": {"chunkSize": 1, "chunkOverlap": -5, "batchSize": 0}});
+        let model =
+            json!({"embeddingOptions": {"chunkSize": 1, "chunkOverlap": -5, "batchSize": 0}});
         assert_eq!(normalize_embedding_options(&model), (100, 0, Some(1)));
     }
 
@@ -1503,7 +1526,10 @@ mod tests {
             "openai|https://api.example.com|text-embedding-3-small"
         );
         let model = json!({"baseUrl": "https://api.example.com"});
-        assert_eq!(model_fingerprint("gemini", &model), "gemini|https://api.example.com|default");
+        assert_eq!(
+            model_fingerprint("gemini", &model),
+            "gemini|https://api.example.com|default"
+        );
     }
 
     #[test]
@@ -1517,7 +1543,10 @@ mod tests {
             Some((3, "云涌".to_string()))
         );
         assert_eq!(parse_chapter_meta_from_file_name("随手笔记.md"), None);
-        assert_eq!(parse_chapter_meta_from_file_name("第x章 风起 正文.md"), None);
+        assert_eq!(
+            parse_chapter_meta_from_file_name("第x章 风起 正文.md"),
+            None
+        );
     }
 
     #[test]
@@ -1533,7 +1562,14 @@ mod tests {
         let mut files = collect_folder_files(&dir).unwrap();
         files.sort();
         let names: Vec<String> = files.into_iter().map(|(name, _)| name).collect();
-        assert_eq!(names, vec!["a.txt".to_string(), "b.md".to_string(), "d.markdown".to_string()]);
+        assert_eq!(
+            names,
+            vec![
+                "a.txt".to_string(),
+                "b.md".to_string(),
+                "d.markdown".to_string()
+            ]
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }

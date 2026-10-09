@@ -87,7 +87,10 @@ pub struct FtsHit {
 
 /// 写入 / 覆盖一条文本块的 FTS 索引（FTS5 无 UPSERT，先删后插）
 pub fn replace_chunk(conn: &Connection, chunk: &FtsChunk<'_>) -> rusqlite::Result<()> {
-    conn.execute("DELETE FROM kb_fts WHERE chunk_id = ?1", params![chunk.chunk_id])?;
+    conn.execute(
+        "DELETE FROM kb_fts WHERE chunk_id = ?1",
+        params![chunk.chunk_id],
+    )?;
     conn.execute(
         "INSERT INTO kb_fts (chunk_id, doc_id, file_name, corpus_kind, tokens)
          VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -222,7 +225,11 @@ mod tests {
     #[test]
     fn chinese_keyword_hits_pre_tokenized_row_test() {
         let conn = conn();
-        replace_chunk(&conn, &chunk("c1", "d1", "春江潮水连海平，海上明月共潮生。")).unwrap();
+        replace_chunk(
+            &conn,
+            &chunk("c1", "d1", "春江潮水连海平，海上明月共潮生。"),
+        )
+        .unwrap();
         replace_chunk(&conn, &chunk("c2", "d2", "大江东去，浪淘尽千古风流人物。")).unwrap();
 
         let hits = search(&conn, "明月", 5).unwrap();
@@ -238,7 +245,11 @@ mod tests {
         replace_chunk(&conn, &chunk("c1", "d1", "新文本 丙丁")).unwrap();
 
         let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM kb_fts WHERE chunk_id = 'c1'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM kb_fts WHERE chunk_id = 'c1'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(count, 1, "覆盖写不得留下重复行");
         assert!(search(&conn, "丙丁", 5).unwrap().len() == 1);

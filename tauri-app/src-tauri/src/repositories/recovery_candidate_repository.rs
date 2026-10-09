@@ -202,7 +202,10 @@ pub(crate) fn visible_only(text: &str) -> String {
     let re_orphan = regex::Regex::new(r"(?i)</think>").unwrap();
     let re_tags = regex::Regex::new(r"(?i)</?think>").unwrap();
     match re_orphan.find(&without_paired_thinking) {
-        None => re_tags.replace_all(&without_paired_thinking, "").trim().to_string(),
+        None => re_tags
+            .replace_all(&without_paired_thinking, "")
+            .trim()
+            .to_string(),
         Some(m) => re_tags
             .replace_all(&without_paired_thinking[m.end()..], "")
             .trim()
@@ -238,11 +241,13 @@ fn source_is_current(conn: &Connection, row: &CandidateRow) -> Result<bool, Stri
         return Ok(current_draft.is_none());
     }
     Ok(match current_draft {
-        Some(d) => Some((d.id, d.version))
-            == row
-                .source_draft_id
-                .zip(row.source_draft_version)
-                .map(|(id, v)| (id, v)),
+        Some(d) => {
+            Some((d.id, d.version))
+                == row
+                    .source_draft_id
+                    .zip(row.source_draft_version)
+                    .map(|(id, v)| (id, v))
+        }
         None => false,
     })
 }
@@ -333,9 +338,11 @@ pub fn record(
 
     if let Some(replaces_id) = &request.replaces_candidate_id {
         let replaced = get_row(conn, replaces_id)?;
-        let valid = replaced
-            .as_ref()
-            .is_some_and(|r| r.run_id == run_id && r.project_id == project_id && r.chapter_number == request.chapter_number);
+        let valid = replaced.as_ref().is_some_and(|r| {
+            r.run_id == run_id
+                && r.project_id == project_id
+                && r.chapter_number == request.chapter_number
+        });
         if !valid {
             return Err("替代候选关系无效".to_string());
         }
@@ -361,8 +368,18 @@ pub fn record(
             request.source_draft.as_ref().map(|d| d.version),
             visible_text,
             sha256_hex(&visible_text),
-            request.failure_code.trim().chars().take(MAX_IDENTITY_TEXT).collect::<String>(),
-            request.failure_reason.trim().chars().take(MAX_FAILURE_REASON).collect::<String>(),
+            request
+                .failure_code
+                .trim()
+                .chars()
+                .take(MAX_IDENTITY_TEXT)
+                .collect::<String>(),
+            request
+                .failure_reason
+                .trim()
+                .chars()
+                .take(MAX_FAILURE_REASON)
+                .collect::<String>(),
             request.replaces_candidate_id,
         ],
     )
@@ -381,7 +398,9 @@ pub fn list_pending(conn: &Connection) -> Result<Vec<RecoveryCandidate>, String>
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
-    rows.iter().map(|r| to_candidate_with_conn(conn, r)).collect()
+    rows.iter()
+        .map(|r| to_candidate_with_conn(conn, r))
+        .collect()
 }
 
 /// 基线 `RecoveryCandidateRepository.updatePending`
@@ -562,25 +581,40 @@ mod tests {
         // 替代不存在的候选 → 拒绝
         let mut req = request(1);
         req.replaces_candidate_id = Some("no-such-id".to_string());
-        assert_eq!(record(&conn, "proj-1", &req).unwrap_err(), "替代候选关系无效");
+        assert_eq!(
+            record(&conn, "proj-1", &req).unwrap_err(),
+            "替代候选关系无效"
+        );
 
         // 合法替代链：同 run/project/章节
         let first = record(&conn, "proj-1", &request(1)).unwrap();
         let mut second = request(1);
         second.replaces_candidate_id = Some(first.candidate_id.clone());
         let replaced = record(&conn, "proj-1", &second).unwrap();
-        assert_eq!(replaced.replaces_candidate_id.as_deref(), Some(first.candidate_id.as_str()));
+        assert_eq!(
+            replaced.replaces_candidate_id.as_deref(),
+            Some(first.candidate_id.as_str())
+        );
 
         // 身份校验
         let mut bad = request(1);
         bad.run_id = "  ".to_string();
-        assert_eq!(record(&conn, "proj-1", &bad).unwrap_err(), "候选任务身份无效");
+        assert_eq!(
+            record(&conn, "proj-1", &bad).unwrap_err(),
+            "候选任务身份无效"
+        );
         let mut mismatch = request(1);
         mismatch.source.chapter_number = 9;
-        assert_eq!(record(&conn, "proj-1", &mismatch).unwrap_err(), "候选源章节身份不一致");
+        assert_eq!(
+            record(&conn, "proj-1", &mismatch).unwrap_err(),
+            "候选源章节身份不一致"
+        );
         let mut empty_text = request(1);
         empty_text.visible_text = "<think>只有思考</think>".to_string();
-        assert_eq!(record(&conn, "proj-1", &empty_text).unwrap_err(), "恢复候选没有可见正文");
+        assert_eq!(
+            record(&conn, "proj-1", &empty_text).unwrap_err(),
+            "恢复候选没有可见正文"
+        );
         assert_eq!(resolve(&conn, "x", "nope").unwrap_err(), "恢复候选动作无效");
     }
 }

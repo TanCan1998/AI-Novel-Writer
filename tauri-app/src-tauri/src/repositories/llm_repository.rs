@@ -96,7 +96,11 @@ pub fn log_call(conn: &Connection, call: &serde_json::Value) -> Result<(), Strin
             json_number(call.get("completionTokens")),
             json_number(call.get("totalTokens")),
             json_number(call.get("durationMs")),
-            if json_truthy(call.get("success")) { 1 } else { 0 },
+            if json_truthy(call.get("success")) {
+                1
+            } else {
+                0
+            },
             json_text(call.get("errorMessage")),
         ],
     )
@@ -350,7 +354,11 @@ mod tests {
     fn history_respects_limit_test() {
         let conn = memory_db();
         for index in 0..5 {
-            log_call(&conn, &json!({ "modelId": "m", "purpose": format!("p{index}") })).unwrap();
+            log_call(
+                &conn,
+                &json!({ "modelId": "m", "purpose": format!("p{index}") }),
+            )
+            .unwrap();
         }
         assert_eq!(get_history(&conn, 2).unwrap().len(), 2);
         assert_eq!(get_history(&conn, 50).unwrap().len(), 5);

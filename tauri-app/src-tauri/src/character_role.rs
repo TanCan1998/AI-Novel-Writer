@@ -85,9 +85,13 @@ impl<'de> Deserialize<'de> for CharacterRole {
 /// 历史/中英文别名表（逐条对齐 `CHARACTER_ROLE_ALIASES`）。
 fn character_role_alias(value: &str) -> Option<CharacterRole> {
     Some(match value {
-        "protagonist" | "main" | "主角" | "男主" | "女主" | "核心主角" => CharacterRole::Protagonist,
+        "protagonist" | "main" | "主角" | "男主" | "女主" | "核心主角" => {
+            CharacterRole::Protagonist
+        }
         "antagonist" | "villain" | "反派" | "对手" | "敌人" => CharacterRole::Antagonist,
-        "supporting" | "support" | "配角" | "重要配角" | "核心配角" => CharacterRole::Supporting,
+        "supporting" | "support" | "配角" | "重要配角" | "核心配角" => {
+            CharacterRole::Supporting
+        }
         "minor" | "龙套" | "次要角色" => CharacterRole::Minor,
         _ => return None,
     })
@@ -111,11 +115,20 @@ mod tests {
     fn normalize_character_role_matches_baseline_aliases_test() {
         assert_eq!(normalize_character_role("主角"), CharacterRole::Protagonist);
         assert_eq!(normalize_character_role("MAIN"), CharacterRole::Protagonist);
-        assert_eq!(normalize_character_role(" villain "), CharacterRole::Antagonist);
-        assert_eq!(normalize_character_role("核心配角"), CharacterRole::Supporting);
+        assert_eq!(
+            normalize_character_role(" villain "),
+            CharacterRole::Antagonist
+        );
+        assert_eq!(
+            normalize_character_role("核心配角"),
+            CharacterRole::Supporting
+        );
         assert_eq!(normalize_character_role("次要角色"), CharacterRole::Minor);
         // 未知取值回落 supporting
-        assert_eq!(normalize_character_role("未知定位"), CharacterRole::Supporting);
+        assert_eq!(
+            normalize_character_role("未知定位"),
+            CharacterRole::Supporting
+        );
         assert_eq!(normalize_character_role(""), CharacterRole::Supporting);
     }
 
@@ -137,7 +150,10 @@ mod tests {
     #[test]
     fn role_labels_match_baseline_test() {
         assert_eq!(CharacterRole::Protagonist.label(false), "主角");
-        assert_eq!(CharacterRole::Supporting.label(true), "Supporting character");
+        assert_eq!(
+            CharacterRole::Supporting.label(true),
+            "Supporting character"
+        );
         assert_eq!(CharacterRole::Minor.label(false), "龙套");
         assert_eq!(CharacterRole::Antagonist.sort_weight(), 2);
     }

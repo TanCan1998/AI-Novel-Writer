@@ -96,11 +96,20 @@ pub fn project_recent_remove(project_path: String) -> SimpleResult {
         .collect();
     if filtered.len() == before.len() {
         // 无匹配项也视为成功（幂等删除）。
-        return SimpleResult { success: true, error: None };
+        return SimpleResult {
+            success: true,
+            error: None,
+        };
     }
     match write_recent_projects(&filtered) {
-        Ok(()) => SimpleResult { success: true, error: None },
-        Err(err) => SimpleResult { success: false, error: Some(err) },
+        Ok(()) => SimpleResult {
+            success: true,
+            error: None,
+        },
+        Err(err) => SimpleResult {
+            success: false,
+            error: Some(err),
+        },
     }
 }
 
@@ -124,13 +133,19 @@ pub fn project_smoke_open_request() -> Option<SmokeOpenRequest> {
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty());
     match (project_path, marker_path) {
-        (Some(project_path), Some(marker_path)) => Some(SmokeOpenRequest { project_path, marker_path }),
+        (Some(project_path), Some(marker_path)) => Some(SmokeOpenRequest {
+            project_path,
+            marker_path,
+        }),
         _ => None,
     }
 }
 
 #[tauri::command]
-pub fn project_smoke_open_confirm(state: State<'_, AppState>, project_path: String) -> SimpleResult {
+pub fn project_smoke_open_confirm(
+    state: State<'_, AppState>,
+    project_path: String,
+) -> SimpleResult {
     let requested = std::env::var("AI_NOVEL_SMOKE_OPEN_PROJECT")
         .ok()
         .map(|v| v.trim().to_string())
@@ -167,8 +182,14 @@ pub fn project_smoke_open_confirm(state: State<'_, AppState>, project_path: Stri
         .map_err(|e| e.to_string())
         .and_then(|body| std::fs::write(&marker_path_for_write, body).map_err(|e| e.to_string()))
     {
-        Ok(()) => SimpleResult { success: true, error: None },
-        Err(err) => SimpleResult { success: false, error: Some(err) },
+        Ok(()) => SimpleResult {
+            success: true,
+            error: None,
+        },
+        Err(err) => SimpleResult {
+            success: false,
+            error: Some(err),
+        },
     }
 }
 
@@ -397,7 +418,10 @@ fn novel_config_core_update(
     let mut update = serde_json::Map::new();
 
     if with_writing_language {
-        if let Some(value) = novel_config.get("writingLanguage").and_then(|item| item.as_str()) {
+        if let Some(value) = novel_config
+            .get("writingLanguage")
+            .and_then(|item| item.as_str())
+        {
             update.insert(
                 "writingLanguage".to_string(),
                 serde_json::json!(project_core::resolve_writing_language(value)),
@@ -436,7 +460,10 @@ fn novel_config_core_update(
         update.insert(key.to_string(), normalized);
     }
 
-    if let Some(value) = novel_config.get("creativeStrategy").and_then(|item| item.as_str()) {
+    if let Some(value) = novel_config
+        .get("creativeStrategy")
+        .and_then(|item| item.as_str())
+    {
         if !value.is_empty() {
             update.insert(
                 "creativeStrategy".to_string(),
@@ -559,7 +586,12 @@ fn open_project_inner(
     ))
 }
 
-fn open_failure(token: &str, state: &AppState, error: String, error_code: Option<String>) -> ProjectOpenResult {
+fn open_failure(
+    token: &str,
+    state: &AppState,
+    error: String,
+    error_code: Option<String>,
+) -> ProjectOpenResult {
     let database_state = fallback_database_state(state);
     ProjectOpenResult {
         success: false,
@@ -595,7 +627,11 @@ fn create_failure(
     }
 }
 
-fn delete_failure(database_restored: bool, error: String, warning: Option<String>) -> ProjectDeleteResult {
+fn delete_failure(
+    database_restored: bool,
+    error: String,
+    warning: Option<String>,
+) -> ProjectDeleteResult {
     ProjectDeleteResult {
         success: false,
         directory_deleted: false,
@@ -650,15 +686,15 @@ pub fn project_create(
         return create_failure(&request_token, app, "项目目录不能为空".to_string(), None);
     }
     let display_name = project_access::sanitize_project_name(
-        config.get("name").and_then(|item| item.as_str()).unwrap_or_default(),
+        config
+            .get("name")
+            .and_then(|item| item.as_str())
+            .unwrap_or_default(),
     );
     let home = project_access::home_directory();
 
-    let trusted = match project_access::create_project(
-        &parent_path,
-        &display_name,
-        home.as_deref(),
-    ) {
+    let trusted = match project_access::create_project(&parent_path, &display_name, home.as_deref())
+    {
         Ok(trusted) => trusted,
         Err(error) => {
             let error_code = if error == PROJECT_ROOT_REQUIRED_MESSAGE {
@@ -922,7 +958,11 @@ pub fn project_delete(
     let _ = (project_id, session_lease);
     let app = state.inner();
     let Some(active) = app.active_project_snapshot() else {
-        return delete_failure(true, guard_message(crate::security::GuardKind::LeaseInvalid), None);
+        return delete_failure(
+            true,
+            guard_message(crate::security::GuardKind::LeaseInvalid),
+            None,
+        );
     };
     if let Err(kind) = assert_current_project_context(&project_session, Some(&active)) {
         return delete_failure(true, guard_message(kind), None);
@@ -972,10 +1012,19 @@ mod tests {
     fn iso8601_utc_matches_javascript_to_iso_string_test() {
         // 对齐 `new Date(ms).toISOString()`（从 2023-11-14T22:13:20.000Z 起校验）
         assert_eq!(iso8601_utc_from_millis(0), "1970-01-01T00:00:00.000Z");
-        assert_eq!(iso8601_utc_from_millis(1_700_000_000_000), "2023-11-14T22:13:20.000Z");
-        assert_eq!(iso8601_utc_from_millis(1_700_000_000_123), "2023-11-14T22:13:20.123Z");
+        assert_eq!(
+            iso8601_utc_from_millis(1_700_000_000_000),
+            "2023-11-14T22:13:20.000Z"
+        );
+        assert_eq!(
+            iso8601_utc_from_millis(1_700_000_000_123),
+            "2023-11-14T22:13:20.123Z"
+        );
         // 闰年 2 月 29 日
-        assert_eq!(iso8601_utc_from_millis(1_709_164_800_000), "2024-02-29T00:00:00.000Z");
+        assert_eq!(
+            iso8601_utc_from_millis(1_709_164_800_000),
+            "2024-02-29T00:00:00.000Z"
+        );
     }
 
     #[test]
@@ -989,14 +1038,20 @@ mod tests {
     fn file_path_to_string_keeps_windows_absolute_path_test() {
         use tauri_plugin_dialog::FilePath;
         let picked = FilePath::Path(std::path::PathBuf::from(r"F:\Novel\My Book"));
-        assert_eq!(file_path_to_string(picked), Some(r"F:\Novel\My Book".to_string()));
+        assert_eq!(
+            file_path_to_string(picked),
+            Some(r"F:\Novel\My Book".to_string())
+        );
     }
 
     #[test]
     fn file_path_to_string_treats_empty_path_as_cancel_test() {
         use tauri_plugin_dialog::FilePath;
         // 空路径不得回传给渲染层（否则会被当成「选中了空目录」）。
-        assert_eq!(file_path_to_string(FilePath::Path(std::path::PathBuf::new())), None);
+        assert_eq!(
+            file_path_to_string(FilePath::Path(std::path::PathBuf::new())),
+            None
+        );
     }
 
     #[test]
@@ -1004,7 +1059,10 @@ mod tests {
         use tauri_plugin_dialog::FilePath;
         let url = url::Url::parse("file:///F:/Novel/My%20Book").expect("合法 file URL");
         // 百分号编码需被解码为普通路径（非桌面平台可能返回 Url 变体）。
-        assert_eq!(file_path_to_string(FilePath::Url(url)), Some(r"F:\Novel\My Book".to_string()));
+        assert_eq!(
+            file_path_to_string(FilePath::Url(url)),
+            Some(r"F:\Novel\My Book".to_string())
+        );
     }
 
     #[test]

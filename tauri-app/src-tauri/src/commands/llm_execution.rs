@@ -103,7 +103,11 @@ pub(crate) fn begin_execution_lease_at(
 }
 
 /// 关闭租约核心（`Closed` 与墓碑窗口内的 `AlreadyClosed` 都算成功）。
-pub(crate) fn close_execution_lease_at(state: &AppState, lease_id: &str, now_ms: u64) -> LlmCloseExecutionLeaseResult {
+pub(crate) fn close_execution_lease_at(
+    state: &AppState,
+    lease_id: &str,
+    now_ms: u64,
+) -> LlmCloseExecutionLeaseResult {
     let Ok(mut store) = state.llm_leases.lock() else {
         return LlmCloseExecutionLeaseResult {
             success: false,
@@ -214,7 +218,8 @@ mod tests {
         let path = models_path(&dir);
         let state = AppState::new();
 
-        let result = begin_execution_lease_at(&state, &path, "missing", "lease-a".to_string(), 1_000);
+        let result =
+            begin_execution_lease_at(&state, &path, "missing", "lease-a".to_string(), 1_000);
         let serialized = serde_json::to_value(&result).unwrap();
 
         assert!(!result.success);
@@ -296,7 +301,9 @@ mod tests {
             json!("verified-provider-preset")
         );
         assert!(
-            !serde_json::to_string(&serialized).unwrap().contains("sk-secret"),
+            !serde_json::to_string(&serialized)
+                .unwrap()
+                .contains("sk-secret"),
             "回执不得携带密钥"
         );
         let _ = std::fs::remove_dir_all(&dir);

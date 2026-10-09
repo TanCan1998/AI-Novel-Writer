@@ -48,9 +48,7 @@ impl<'a> GenerationParameterModel<'a> {
                 .and_then(|value| value.as_str())
                 .unwrap_or_default(),
             temperature: model.get("temperature").and_then(|value| value.as_f64()),
-            max_tokens: model
-                .get("maxTokens")
-                .and_then(|value| value.as_u64()),
+            max_tokens: model.get("maxTokens").and_then(|value| value.as_u64()),
             reasoning_override: model
                 .get("reasoningOverride")
                 .and_then(|value| value.as_str()),
@@ -180,9 +178,11 @@ mod tests {
     #[test]
     fn temperature_comes_from_profile_only_test() {
         let model = deepseek_model();
-        let resolved =
-            resolve_generation_parameters(&GenerationParameterModel::from_value(&model), &request())
-                .unwrap();
+        let resolved = resolve_generation_parameters(
+            &GenerationParameterModel::from_value(&model),
+            &request(),
+        )
+        .unwrap();
         assert_eq!(resolved.temperature, Some(0.7));
         assert_eq!(resolved.max_tokens, Some(4096), "缺省预算来自档案");
     }
@@ -207,22 +207,28 @@ mod tests {
             "baseUrl": "https://api.deepseek.com",
             "modelName": "deepseek-v4-flash",
         });
-        let without_limits = resolve_generation_parameters(
-            &GenerationParameterModel::from_value(&bare),
-            &request(),
-        )
-        .unwrap();
-        assert_eq!(without_limits.temperature, None, "缺省温度必须省略字段而非回退");
+        let without_limits =
+            resolve_generation_parameters(&GenerationParameterModel::from_value(&bare), &request())
+                .unwrap();
+        assert_eq!(
+            without_limits.temperature, None,
+            "缺省温度必须省略字段而非回退"
+        );
         assert_eq!(without_limits.max_tokens, None);
     }
 
     #[test]
     fn verified_mapping_is_attached_for_builtin_endpoint_test() {
         let model = deepseek_model();
-        let resolved =
-            resolve_generation_parameters(&GenerationParameterModel::from_value(&model), &request())
-                .unwrap();
-        assert!(resolved.reasoning.is_some(), "内置端点必须带出已验证推理指令");
+        let resolved = resolve_generation_parameters(
+            &GenerationParameterModel::from_value(&model),
+            &request(),
+        )
+        .unwrap();
+        assert!(
+            resolved.reasoning.is_some(),
+            "内置端点必须带出已验证推理指令"
+        );
     }
 
     #[test]
@@ -235,9 +241,11 @@ mod tests {
             "temperature": 0.5,
             "maxTokens": 4096,
         });
-        let resolved =
-            resolve_generation_parameters(&GenerationParameterModel::from_value(&model), &request())
-                .unwrap();
+        let resolved = resolve_generation_parameters(
+            &GenerationParameterModel::from_value(&model),
+            &request(),
+        )
+        .unwrap();
         assert!(resolved.reasoning.is_none(), "无协议证据时必须省略推理字段");
         assert_eq!(resolved.temperature, Some(0.5));
     }
@@ -309,11 +317,14 @@ mod tests {
             "temperature": 1,
             "maxTokens": 4096,
         });
-        assert!(resolve_generation_parameters(
-            &GenerationParameterModel::from_value(&in_range),
-            &request()
-        )
-        .is_ok(), "边界值 1 必须被接受");
+        assert!(
+            resolve_generation_parameters(
+                &GenerationParameterModel::from_value(&in_range),
+                &request()
+            )
+            .is_ok(),
+            "边界值 1 必须被接受"
+        );
     }
 
     #[test]
@@ -357,7 +368,10 @@ mod tests {
             &with_format,
         )
         .unwrap();
-        assert_eq!(resolved.response_format, Some(json!({ "type": "json_object" })));
+        assert_eq!(
+            resolved.response_format,
+            Some(json!({ "type": "json_object" }))
+        );
 
         let empty = resolve_generation_parameters(
             &GenerationParameterModel::from_value(&model),
@@ -409,10 +423,13 @@ mod tests {
         )
         .unwrap();
         assert_ne!(overridden.reasoning, review.reasoning);
-        assert_eq!(overridden.reasoning.unwrap(), crate::llm::reasoning::ProviderReasoningDirective::DeepSeekV4Thinking {
-            thinking: crate::llm::reasoning::ThinkingState::Disabled,
-            reasoning_effort: None,
-        });
+        assert_eq!(
+            overridden.reasoning.unwrap(),
+            crate::llm::reasoning::ProviderReasoningDirective::DeepSeekV4Thinking {
+                thinking: crate::llm::reasoning::ThinkingState::Disabled,
+                reasoning_effort: None,
+            }
+        );
     }
 
     #[test]

@@ -93,7 +93,10 @@ mod tests {
 
     #[test]
     fn project_key_folds_case_and_separators_test() {
-        assert_eq!(project_key("F:\\Workplace\\Novel"), project_key("f:/workplace/novel"));
+        assert_eq!(
+            project_key("F:\\Workplace\\Novel"),
+            project_key("f:/workplace/novel")
+        );
     }
 
     #[test]

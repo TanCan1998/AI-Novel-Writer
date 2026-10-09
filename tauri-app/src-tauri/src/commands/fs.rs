@@ -122,8 +122,11 @@ fn assert_project_file_operation(
     let active = state.active_project_snapshot();
     let active_root = active.as_ref().map(|project| project.root_path.as_str());
     assert_current_project_context(context, active.as_ref())?;
-    crate::security::assert_required_expected_project_path(active_root, Some(expected_project_path))
-        .map_err(FsError::Guard)?;
+    crate::security::assert_required_expected_project_path(
+        active_root,
+        Some(expected_project_path),
+    )
+    .map_err(FsError::Guard)?;
     assert_project_file_path(target_path, active_root.unwrap_or_default(), mode)
         .map_err(FsError::Guard)?;
     Ok(())
@@ -157,7 +160,10 @@ fn write_text_atomically(target: &std::path::Path, content: &str) -> std::io::Re
 }
 
 /// 递归列目录：过滤 `.` 开头、目录优先、名称排序（TODO locale 对齐 zh-CN）。
-fn read_dir_recursive(root_display: &std::path::Path, dir: &std::path::Path) -> FsOutcome<Vec<FileNode>> {
+fn read_dir_recursive(
+    root_display: &std::path::Path,
+    dir: &std::path::Path,
+) -> FsOutcome<Vec<FileNode>> {
     let entries = std::fs::read_dir(dir).map_err(|err| {
         if err.kind() == std::io::ErrorKind::NotFound {
             FsError::MissingFile
@@ -172,7 +178,10 @@ fn read_dir_recursive(root_display: &std::path::Path, dir: &std::path::Path) -> 
         if name.starts_with('.') {
             continue;
         }
-        let is_dir = entry.file_type().map_err(|err| FsError::Io(err.to_string()))?.is_dir();
+        let is_dir = entry
+            .file_type()
+            .map_err(|err| FsError::Io(err.to_string()))?
+            .is_dir();
         visible.push((name, is_dir, entry.path()));
     }
     visible.sort_by(|a, b| match (a.1, b.1) {
@@ -215,7 +224,11 @@ pub async fn fs_read_file(
     let _file_lock = state.fs_lock.lock().expect("fs_lock 锁中毒");
     Ok(
         match read_file_inner(&state, &project_session, &file_path, &expected_project_path) {
-            Ok(content) => TextReadResponse { success: true, content, error: None },
+            Ok(content) => TextReadResponse {
+                success: true,
+                content,
+                error: None,
+            },
             Err(error) => TextReadResponse {
                 success: false,
                 content: String::new(),
@@ -231,7 +244,13 @@ fn read_file_inner(
     file_path: &str,
     expected_project_path: &str,
 ) -> FsOutcome<String> {
-    assert_project_file_operation(state, context, file_path, expected_project_path, PathCheckMode::Existing)?;
+    assert_project_file_operation(
+        state,
+        context,
+        file_path,
+        expected_project_path,
+        PathCheckMode::Existing,
+    )?;
     std::fs::read_to_string(file_path).map_err(|err| {
         if err.kind() == std::io::ErrorKind::NotFound {
             FsError::MissingFile
@@ -253,7 +272,13 @@ pub async fn fs_write_file(
 ) -> Result<WriteFileResponse, String> {
     let _file_lock = state.fs_lock.lock().expect("fs_lock 锁中毒");
     Ok(
-        match write_file_inner(&state, &project_session, &file_path, &content, &expected_project_path) {
+        match write_file_inner(
+            &state,
+            &project_session,
+            &file_path,
+            &content,
+            &expected_project_path,
+        ) {
             Ok(()) => WriteFileResponse {
                 success: true,
                 commit_state: FileWriteCommitState::Committed,
@@ -275,8 +300,15 @@ fn write_file_inner(
     content: &str,
     expected_project_path: &str,
 ) -> FsOutcome<()> {
-    assert_project_file_operation(state, context, file_path, expected_project_path, PathCheckMode::Writable)?;
-    write_text_atomically(std::path::Path::new(file_path), content).map_err(|err| FsError::Io(err.to_string()))
+    assert_project_file_operation(
+        state,
+        context,
+        file_path,
+        expected_project_path,
+        PathCheckMode::Writable,
+    )?;
+    write_text_atomically(std::path::Path::new(file_path), content)
+        .map_err(|err| FsError::Io(err.to_string()))
 }
 
 // ===== fs:list-dir =====
@@ -289,8 +321,14 @@ pub async fn fs_list_dir(
     expected_project_path: String,
 ) -> Result<Vec<FileNode>, String> {
     let _file_lock = state.fs_lock.lock().expect("fs_lock 锁中毒");
-    assert_project_file_operation(&state, &project_session, &dir_path, &expected_project_path, PathCheckMode::Existing)
-        .map_err(|error| fs_error_message("fs:list-dir", &error))?;
+    assert_project_file_operation(
+        &state,
+        &project_session,
+        &dir_path,
+        &expected_project_path,
+        PathCheckMode::Existing,
+    )
+    .map_err(|error| fs_error_message("fs:list-dir", &error))?;
     let root_display = crate::security::lexically_normalize(&dir_path);
     read_dir_recursive(&root_display, std::path::Path::new(&dir_path))
         .map_err(|error| fs_error_message("fs:list-dir", &error))
@@ -308,7 +346,10 @@ pub async fn fs_mkdir(
     let _file_lock = state.fs_lock.lock().expect("fs_lock 锁中毒");
     Ok(
         match mkdir_inner(&state, &project_session, &dir_path, &expected_project_path) {
-            Ok(()) => SimpleResult { success: true, error: None },
+            Ok(()) => SimpleResult {
+                success: true,
+                error: None,
+            },
             Err(_) => SimpleResult {
                 success: false,
                 error: Some("无法创建项目目录。".to_string()),
@@ -323,7 +364,13 @@ fn mkdir_inner(
     dir_path: &str,
     expected_project_path: &str,
 ) -> FsOutcome<()> {
-    assert_project_file_operation(state, context, dir_path, expected_project_path, PathCheckMode::Writable)?;
+    assert_project_file_operation(
+        state,
+        context,
+        dir_path,
+        expected_project_path,
+        PathCheckMode::Writable,
+    )?;
     std::fs::create_dir_all(dir_path).map_err(|err| FsError::Io(err.to_string()))
 }
 
@@ -337,8 +384,14 @@ pub async fn fs_check_exists(
     expected_project_path: String,
 ) -> Result<bool, String> {
     let _file_lock = state.fs_lock.lock().expect("fs_lock 锁中毒");
-    assert_project_file_operation(&state, &project_session, &file_path, &expected_project_path, PathCheckMode::Writable)
-        .map_err(|error| fs_error_message("fs:check-exists", &error))?;
+    assert_project_file_operation(
+        &state,
+        &project_session,
+        &file_path,
+        &expected_project_path,
+        PathCheckMode::Writable,
+    )
+    .map_err(|error| fs_error_message("fs:check-exists", &error))?;
     Ok(std::path::Path::new(&file_path).exists())
 }
 
@@ -353,7 +406,13 @@ pub async fn fs_read_json(
 ) -> Result<JsonReadResponse, String> {
     let _file_lock = state.fs_lock.lock().expect("fs_lock 锁中毒");
     let outcome = (|| -> FsOutcome<serde_json::Value> {
-        assert_project_file_operation(&state, &project_session, &file_path, &expected_project_path, PathCheckMode::Existing)?;
+        assert_project_file_operation(
+            &state,
+            &project_session,
+            &file_path,
+            &expected_project_path,
+            PathCheckMode::Existing,
+        )?;
         let content = std::fs::read_to_string(file_path).map_err(|err| {
             if err.kind() == std::io::ErrorKind::NotFound {
                 FsError::MissingFile
@@ -364,7 +423,11 @@ pub async fn fs_read_json(
         serde_json::from_str(&content).map_err(|err| FsError::Io(err.to_string()))
     })();
     match outcome {
-        Ok(data) => Ok(JsonReadResponse { success: true, data: Some(data), error: None }),
+        Ok(data) => Ok(JsonReadResponse {
+            success: true,
+            data: Some(data),
+            error: None,
+        }),
         Err(_) => Ok(JsonReadResponse {
             success: false,
             data: None,
@@ -385,14 +448,27 @@ pub async fn fs_write_json(
 ) -> Result<SimpleResult, String> {
     let _file_lock = state.fs_lock.lock().expect("fs_lock 锁中毒");
     let outcome = (|| -> FsOutcome<()> {
-        assert_project_file_operation(&state, &project_session, &file_path, &expected_project_path, PathCheckMode::Writable)?;
-        let pretty = serde_json::to_string_pretty(&data).map_err(|err| FsError::Io(err.to_string()))?;
+        assert_project_file_operation(
+            &state,
+            &project_session,
+            &file_path,
+            &expected_project_path,
+            PathCheckMode::Writable,
+        )?;
+        let pretty =
+            serde_json::to_string_pretty(&data).map_err(|err| FsError::Io(err.to_string()))?;
         write_text_atomically(std::path::Path::new(&file_path), &pretty)
             .map_err(|err| FsError::Io(err.to_string()))
     })();
     match outcome {
-        Ok(()) => Ok(SimpleResult { success: true, error: None }),
-        Err(_) => Ok(SimpleResult { success: false, error: Some("无法写入项目数据。".to_string()) }),
+        Ok(()) => Ok(SimpleResult {
+            success: true,
+            error: None,
+        }),
+        Err(_) => Ok(SimpleResult {
+            success: false,
+            error: Some("无法写入项目数据。".to_string()),
+        }),
     }
 }
 

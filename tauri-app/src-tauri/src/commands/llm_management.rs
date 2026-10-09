@@ -33,7 +33,8 @@ use serde_json::Value;
 
 use crate::app_paths;
 use crate::llm::chat::{
-    build_client, is_gemini, provider_error_text, proxy_from_config, ChatMessage, LlmGenerateOptions,
+    build_client, is_gemini, provider_error_text, proxy_from_config, ChatMessage,
+    LlmGenerateOptions,
 };
 use crate::llm::discovery::{
     build_discovery_client, discover_models, ModelDiscoveryErrorCode, ModelDiscoveryResult,
@@ -79,7 +80,11 @@ pub fn is_embedding_probe(model: &Value) -> bool {
     model
         .get("purposes")
         .and_then(Value::as_array)
-        .map(|purposes| purposes.iter().any(|purpose| purpose.as_str() == Some("embedding")))
+        .map(|purposes| {
+            purposes
+                .iter()
+                .any(|purpose| purpose.as_str() == Some("embedding"))
+        })
         .unwrap_or(false)
 }
 
@@ -137,7 +142,9 @@ pub async fn llm_test_connection(
 ) -> LlmTestConnectionResult {
     let options = match resolve_connection_options(
         &model,
-        creative_strategy.as_deref().unwrap_or(DEFAULT_CREATIVE_STRATEGY),
+        creative_strategy
+            .as_deref()
+            .unwrap_or(DEFAULT_CREATIVE_STRATEGY),
     ) {
         Ok(options) => options,
         Err(message) => return failure(message),
@@ -214,9 +221,16 @@ mod tests {
     fn embedding_probe_detection_matches_optional_chaining_test() {
         assert!(!is_embedding_probe(&json!({})), "purposes 缺失");
         assert!(!is_embedding_probe(&json!({"purposes": []})), "空数组");
-        assert!(!is_embedding_probe(&json!({"purposes": "embedding"})), "非数组");
-        assert!(!is_embedding_probe(&json!({"purposes": ["generation", "summary"]})));
-        assert!(is_embedding_probe(&json!({"purposes": ["generation", "embedding"]})));
+        assert!(
+            !is_embedding_probe(&json!({"purposes": "embedding"})),
+            "非数组"
+        );
+        assert!(!is_embedding_probe(
+            &json!({"purposes": ["generation", "summary"]})
+        ));
+        assert!(is_embedding_probe(
+            &json!({"purposes": ["generation", "embedding"]})
+        ));
         assert!(is_embedding_probe(&json!({"purposes": ["embedding"]})));
     }
 
@@ -259,7 +273,10 @@ mod tests {
             "maxTokens": 4096,
         });
         let options = resolve_connection_options(&kimi, "auto").unwrap();
-        assert_eq!(options.temperature, None, "固定采样家族必须省略 temperature");
+        assert_eq!(
+            options.temperature, None,
+            "固定采样家族必须省略 temperature"
+        );
     }
 
     #[test]

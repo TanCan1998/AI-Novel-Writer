@@ -19,7 +19,9 @@ use crate::manuscript_publisher::{publish_manuscript, resolve_manuscript_target}
 use crate::project_access::random_uuid_v4;
 use crate::repositories::finalization_repository as repo;
 use crate::repositories::finalized_continuity_repository::sha256_hex;
-use crate::security::{assert_current_project_context, guard_message, GuardKind, ProjectSessionContext};
+use crate::security::{
+    assert_current_project_context, guard_message, GuardKind, ProjectSessionContext,
+};
 use crate::state::AppState;
 
 /// 基线 `FinalizationResult`（camelCase；未设置字段不序列化，对齐 JS 的
@@ -66,7 +68,11 @@ fn js_error(message: String) -> String {
 }
 
 /// 基线 `toResult(record, success, error)`
-fn to_result(record: &repo::FinalizationRecord, success: bool, error: Option<String>) -> FinalizationResult {
+fn to_result(
+    record: &repo::FinalizationRecord,
+    success: bool,
+    error: Option<String>,
+) -> FinalizationResult {
     FinalizationResult {
         success,
         committed: true,
@@ -516,9 +522,33 @@ mod tests {
             last_error: String::new(),
             published_at: None,
         };
-        assert!(has_same_frozen_request(&record, 7, 3, "初遇", 2, &record.content_hash, "正文"));
-        assert!(!has_same_frozen_request(&record, 7, 3, "初遇", 2, &record.content_hash, "改过的正文"));
-        assert!(!has_same_frozen_request(&record, 7, 3, "初遇", 3, &record.content_hash, "正文"));
+        assert!(has_same_frozen_request(
+            &record,
+            7,
+            3,
+            "初遇",
+            2,
+            &record.content_hash,
+            "正文"
+        ));
+        assert!(!has_same_frozen_request(
+            &record,
+            7,
+            3,
+            "初遇",
+            2,
+            &record.content_hash,
+            "改过的正文"
+        ));
+        assert!(!has_same_frozen_request(
+            &record,
+            7,
+            3,
+            "初遇",
+            3,
+            &record.content_hash,
+            "正文"
+        ));
 
         // 快照哈希漂移 → 拒绝发布
         let mut drifted = record.clone();

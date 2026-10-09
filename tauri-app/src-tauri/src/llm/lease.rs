@@ -124,7 +124,10 @@ impl<'a> LeaseModelProfile<'a> {
     /// 因此「缺字段」与基线的 `undefined` 在能力解析上等价（都拿不到证据）。
     pub fn from_value(model: &'a serde_json::Value) -> Self {
         LeaseModelProfile {
-            id: model.get("id").and_then(|value| value.as_str()).unwrap_or_default(),
+            id: model
+                .get("id")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default(),
             provider: model
                 .get("provider")
                 .and_then(|value| value.as_str())
@@ -254,17 +257,10 @@ pub fn subject_fingerprint(
 
 /// 模型修订指纹：身份 + 端点 + 模型名 + 采样与预算 + 能力 + 用途 + embedding 选项。
 fn model_revision(model: &LeaseModelProfile<'_>) -> String {
-    let capabilities = canonical_json(
-        model
-            .capabilities
-            .unwrap_or(&serde_json::Value::Null),
-    );
+    let capabilities = canonical_json(model.capabilities.unwrap_or(&serde_json::Value::Null));
     let purposes = canonical_json(model.purposes.unwrap_or(&serde_json::Value::Null));
-    let embedding_options = canonical_json(
-        model
-            .embedding_options
-            .unwrap_or(&serde_json::Value::Null),
-    );
+    let embedding_options =
+        canonical_json(model.embedding_options.unwrap_or(&serde_json::Value::Null));
     let temperature = canonical_json(model.temperature.unwrap_or(&serde_json::Value::Null));
     let max_tokens = canonical_json(model.max_tokens.unwrap_or(&serde_json::Value::Null));
     sha256_hex(&format!(
@@ -278,9 +274,11 @@ fn model_revision(model: &LeaseModelProfile<'_>) -> String {
 /// 正整数读取（对齐 `Number.isSafeInteger(x) && x > 0`）。
 fn positive_safe_integer(value: Option<&serde_json::Value>) -> Option<u64> {
     let raw = value?;
-    let number = raw
-        .as_u64()
-        .or_else(|| raw.as_f64().filter(|float| float.fract() == 0.0).map(|float| float as u64))?;
+    let number = raw.as_u64().or_else(|| {
+        raw.as_f64()
+            .filter(|float| float.fract() == 0.0)
+            .map(|float| float as u64)
+    })?;
     if number == 0 || number > MAX_SAFE_INTEGER {
         return None;
     }
@@ -601,8 +599,7 @@ mod tests {
         let model = deepseek_model(0.7);
         let receipt = receipt_for(&model);
         assert_eq!(
-            receipt.capability_evidence.max_output_tokens,
-            4_096,
+            receipt.capability_evidence.max_output_tokens, 4_096,
             "legacy 上限必须封顶已验证上限"
         );
         assert_eq!(
@@ -710,7 +707,10 @@ mod tests {
     fn fingerprints_are_stable_and_distinguish_subjects_test() {
         let first = receipt_for(&deepseek_model(0.7));
         let second = receipt_for(&deepseek_model(0.7));
-        assert_eq!(first.model_revision, second.model_revision, "同快照必须同指纹");
+        assert_eq!(
+            first.model_revision, second.model_revision,
+            "同快照必须同指纹"
+        );
         assert_eq!(first.endpoint_fingerprint, second.endpoint_fingerprint);
         assert_eq!(
             first.capability_evidence.subject_fingerprint,
@@ -756,7 +756,10 @@ mod tests {
             normalize_endpoint("https://api.deepseek.com/v1/?a=1#frag"),
             "https://api.deepseek.com/v1"
         );
-        assert_eq!(normalize_endpoint("  https://API.DeepSeek.com  "), "https://api.deepseek.com");
+        assert_eq!(
+            normalize_endpoint("  https://API.DeepSeek.com  "),
+            "https://api.deepseek.com"
+        );
         assert_eq!(normalize_endpoint(""), "");
         assert_eq!(normalize_endpoint("not a url/"), "not a url");
     }
@@ -782,14 +785,21 @@ mod tests {
             .unwrap();
         assert_eq!(receipt.model_id, "m-1");
         assert_eq!(receipt.created_at, 1_000);
-        assert_eq!(receipt.expires_at, 1_000 + DEFAULT_MODEL_EXECUTION_LEASE_TTL_MS);
+        assert_eq!(
+            receipt.expires_at,
+            1_000 + DEFAULT_MODEL_EXECUTION_LEASE_TTL_MS
+        );
         assert_eq!(store.live_lease_count(), 1);
 
         // 冻结语义：签发后改写档案不影响已发出的租约
         std::fs::write(&models_path, "[]").unwrap();
         let snapshot = store.resolve_model_at("lease-a", 1_001).unwrap();
         assert_eq!(snapshot["modelName"], json!("deepseek-v4-flash"));
-        assert_eq!(snapshot["apiKey"], json!("sk-secret"), "快照保留完整档案（主进程内）");
+        assert_eq!(
+            snapshot["apiKey"],
+            json!("sk-secret"),
+            "快照保留完整档案（主进程内）"
+        );
 
         assert_eq!(
             store
@@ -810,7 +820,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            store.resolve_model_at("lease-a", receipt.expires_at).unwrap_err(),
+            store
+                .resolve_model_at("lease-a", receipt.expires_at)
+                .unwrap_err(),
             "模型执行租约已过期"
         );
         assert_eq!(store.live_lease_count(), 0, "过期租约必须被清理");

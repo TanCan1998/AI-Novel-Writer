@@ -350,7 +350,10 @@ pub enum DiscoveryTransport {
     HttpStatus(u16),
     /// 2xx 响应体：`json` 为 `None` 表示 body 读取或 JSON 解析失败；
     /// `timed_out` 对应基线 `abortController.signal.aborted`。
-    Payload { json: Option<Value>, timed_out: bool },
+    Payload {
+        json: Option<Value>,
+        timed_out: bool,
+    },
 }
 
 /// 解释传输结果（对齐 `discoverModels()` 的判定顺序）。
@@ -566,14 +569,13 @@ mod tests {
     #[test]
     fn gemini_models_url_matches_baseline_branches_test() {
         assert_eq!(
-            resolve_gemini_models_url("https://generativelanguage.googleapis.com/v1beta").as_deref(),
+            resolve_gemini_models_url("https://generativelanguage.googleapis.com/v1beta")
+                .as_deref(),
             Some("https://generativelanguage.googleapis.com/v1beta/models")
         );
         assert_eq!(
-            resolve_gemini_models_url(
-                "https://generativelanguage.googleapis.com/v1beta/models"
-            )
-            .as_deref(),
+            resolve_gemini_models_url("https://generativelanguage.googleapis.com/v1beta/models")
+                .as_deref(),
             Some("https://generativelanguage.googleapis.com/v1beta/models")
         );
         assert_eq!(
@@ -588,7 +590,10 @@ mod tests {
 
     #[test]
     fn credential_guard_covers_raw_encoded_and_decoded_forms_test() {
-        assert!(!url_contains_credential("https://a.com/v1/models", ""), "空凭据恒为假");
+        assert!(
+            !url_contains_credential("https://a.com/v1/models", ""),
+            "空凭据恒为假"
+        );
         assert!(url_contains_credential(
             "https://a.com/sk-live-123/models",
             "sk-live-123"
@@ -601,9 +606,15 @@ mod tests {
             url_contains_credential("https://a.com/sk%2Flive/models", "sk/live"),
             "解码形态必须命中"
         );
-        assert!(!url_contains_credential("https://a.com/v1/models", "sk-live-123"));
+        assert!(!url_contains_credential(
+            "https://a.com/v1/models",
+            "sk-live-123"
+        ));
         // 非法百分号转义 → decodeURIComponent 抛错 → 按未命中处理
-        assert!(!url_contains_credential("https://a.com/100%/models", "sk-live-123"));
+        assert!(!url_contains_credential(
+            "https://a.com/100%/models",
+            "sk-live-123"
+        ));
     }
 
     #[test]
@@ -621,7 +632,10 @@ mod tests {
             "控制字符"
         );
         assert_eq!(
-            safe_provider_text(Some(&json!("a".repeat(MAX_DISCOVERED_MODEL_TEXT_BYTES + 1))), "sk"),
+            safe_provider_text(
+                Some(&json!("a".repeat(MAX_DISCOVERED_MODEL_TEXT_BYTES + 1))),
+                "sk"
+            ),
             None,
             "超长"
         );
@@ -650,7 +664,9 @@ mod tests {
 
         // 任一条目非法 → 整体 None（不是丢弃该条）
         assert!(parse_openai_models(&json!({"data": [{"id": "ok"}, {"id": 42}]}), "sk").is_none());
-        assert!(parse_openai_models(&json!({"data": [{"id": "ok"}, "not-an-object"]}), "sk").is_none());
+        assert!(
+            parse_openai_models(&json!({"data": [{"id": "ok"}, "not-an-object"]}), "sk").is_none()
+        );
         assert!(parse_openai_models(&json!({"data": [{"name": "无 id"}]}), "sk").is_none());
         // 形状不符
         assert!(parse_openai_models(&json!({"data": "nope"}), "sk").is_none());
@@ -677,7 +693,10 @@ mod tests {
         assert_eq!(parsed[0].id, "models/gemini-2.5-pro");
         assert_eq!(parsed[0].value, "gemini-2.5-pro");
         assert_eq!(parsed[0].name, "Gemini 2.5 Pro");
-        assert_eq!(parsed[1].name, "models/gemini-2.5-flash", "缺失 displayName 回落为 id");
+        assert_eq!(
+            parsed[1].name, "models/gemini-2.5-flash",
+            "缺失 displayName 回落为 id"
+        );
         assert_eq!(parsed[1].value, "gemini-2.5-flash");
 
         // `models/` 之后为空 → 整体拒绝
@@ -690,7 +709,11 @@ mod tests {
         assert_eq!(classify_http_failure(401), ModelDiscoveryErrorCode::Auth);
         assert_eq!(classify_http_failure(403), ModelDiscoveryErrorCode::Auth);
         for status in [408, 425, 429, 500, 503] {
-            assert_eq!(classify_http_failure(status), ModelDiscoveryErrorCode::Network, "{status}");
+            assert_eq!(
+                classify_http_failure(status),
+                ModelDiscoveryErrorCode::Network,
+                "{status}"
+            );
         }
         for status in [400, 404, 405, 422] {
             assert_eq!(
@@ -736,7 +759,10 @@ mod tests {
             interpret_discovery_response(
                 "openai",
                 "sk",
-                DiscoveryTransport::Payload { json: None, timed_out: true }
+                DiscoveryTransport::Payload {
+                    json: None,
+                    timed_out: true
+                }
             )
             .error_code(),
             Some(ModelDiscoveryErrorCode::Network),
@@ -746,7 +772,10 @@ mod tests {
             interpret_discovery_response(
                 "openai",
                 "sk",
-                DiscoveryTransport::Payload { json: None, timed_out: false }
+                DiscoveryTransport::Payload {
+                    json: None,
+                    timed_out: false
+                }
             )
             .error_code(),
             Some(ModelDiscoveryErrorCode::InvalidResponse),
@@ -756,7 +785,10 @@ mod tests {
             interpret_discovery_response(
                 "openai",
                 "sk",
-                DiscoveryTransport::Payload { json: Some(json!({"data": []})), timed_out: false }
+                DiscoveryTransport::Payload {
+                    json: Some(json!({"data": []})),
+                    timed_out: false
+                }
             )
             .error_code(),
             Some(ModelDiscoveryErrorCode::Empty)
@@ -765,7 +797,10 @@ mod tests {
             interpret_discovery_response(
                 "openai",
                 "sk",
-                DiscoveryTransport::Payload { json: Some(json!({"nope": true})), timed_out: false }
+                DiscoveryTransport::Payload {
+                    json: Some(json!({"nope": true})),
+                    timed_out: false
+                }
             )
             .error_code(),
             Some(ModelDiscoveryErrorCode::InvalidResponse)
@@ -783,7 +818,10 @@ mod tests {
         assert_eq!(success["success"], json!(true));
         assert_eq!(success["models"][0]["id"], json!("m-1"));
         assert_eq!(success["models"][0]["value"], json!("m-1"));
-        assert!(success.get("errorCode").is_none(), "成功分支不得出现 errorCode");
+        assert!(
+            success.get("errorCode").is_none(),
+            "成功分支不得出现 errorCode"
+        );
 
         let failure =
             serde_json::to_value(ModelDiscoveryResult::Failed(ModelDiscoveryErrorCode::Empty))
@@ -834,7 +872,10 @@ mod tests {
             "apiKey": "g-key",
         }))
         .unwrap();
-        assert_eq!(gemini.request_url, "https://generativelanguage.googleapis.com/v1beta/models");
+        assert_eq!(
+            gemini.request_url,
+            "https://generativelanguage.googleapis.com/v1beta/models"
+        );
 
         // 缺 `protocol` 时与 `LLMFactory.getProvider()` 一致地按 openai 兼容处理。
         let defaulted = resolve_discovery_request(&json!({

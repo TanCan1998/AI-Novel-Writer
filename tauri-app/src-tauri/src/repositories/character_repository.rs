@@ -151,7 +151,9 @@ fn parse_provenance(value: Option<String>) -> Option<CharacterStateProvenance> {
 /// provenance → 落库文本：空映射写 `{}`（对齐基线 `JSON.stringify(state.provenance ?? {})`）。
 pub fn provenance_to_text(provenance: Option<&CharacterStateProvenance>) -> String {
     match provenance {
-        Some(map) if !map.is_empty() => serde_json::to_string(map).unwrap_or_else(|_| "{}".to_string()),
+        Some(map) if !map.is_empty() => {
+            serde_json::to_string(map).unwrap_or_else(|_| "{}".to_string())
+        }
         _ => "{}".to_string(),
     }
 }
@@ -160,12 +162,24 @@ fn row_to_data(row: &rusqlite::Row) -> rusqlite::Result<CharacterData> {
     let updated_at_chapter: Option<i64> = row.get("cs_updated_at_chapter")?;
     let current_state = match updated_at_chapter {
         Some(updated_at_chapter) => Some(CharacterStateData {
-            location: row.get::<_, Option<String>>("cs_location")?.unwrap_or_default(),
-            power_level: row.get::<_, Option<String>>("cs_power_level")?.unwrap_or_default(),
-            physical_state: row.get::<_, Option<String>>("cs_physical_state")?.unwrap_or_default(),
-            mental_state: row.get::<_, Option<String>>("cs_mental_state")?.unwrap_or_default(),
-            key_items: row.get::<_, Option<String>>("cs_key_items")?.unwrap_or_default(),
-            recent_events: row.get::<_, Option<String>>("cs_recent_events")?.unwrap_or_default(),
+            location: row
+                .get::<_, Option<String>>("cs_location")?
+                .unwrap_or_default(),
+            power_level: row
+                .get::<_, Option<String>>("cs_power_level")?
+                .unwrap_or_default(),
+            physical_state: row
+                .get::<_, Option<String>>("cs_physical_state")?
+                .unwrap_or_default(),
+            mental_state: row
+                .get::<_, Option<String>>("cs_mental_state")?
+                .unwrap_or_default(),
+            key_items: row
+                .get::<_, Option<String>>("cs_key_items")?
+                .unwrap_or_default(),
+            recent_events: row
+                .get::<_, Option<String>>("cs_recent_events")?
+                .unwrap_or_default(),
             updated_at_chapter,
             provenance: parse_provenance(row.get::<_, Option<String>>("cs_provenance")?),
         }),
@@ -177,12 +191,24 @@ fn row_to_data(row: &rusqlite::Row) -> rusqlite::Result<CharacterData> {
         role: normalize_character_role(&row.get::<_, Option<String>>("role")?.unwrap_or_default()),
         gender: row.get::<_, Option<String>>("gender")?.unwrap_or_default(),
         age: row.get::<_, Option<String>>("age")?.unwrap_or_default(),
-        appearance: row.get::<_, Option<String>>("appearance")?.unwrap_or_default(),
-        personality: row.get::<_, Option<String>>("personality")?.unwrap_or_default(),
-        background: row.get::<_, Option<String>>("background")?.unwrap_or_default(),
-        abilities: row.get::<_, Option<String>>("abilities")?.unwrap_or_default(),
-        motivation: row.get::<_, Option<String>>("motivation")?.unwrap_or_default(),
-        relationships: row.get::<_, Option<String>>("relationships")?.unwrap_or_default(),
+        appearance: row
+            .get::<_, Option<String>>("appearance")?
+            .unwrap_or_default(),
+        personality: row
+            .get::<_, Option<String>>("personality")?
+            .unwrap_or_default(),
+        background: row
+            .get::<_, Option<String>>("background")?
+            .unwrap_or_default(),
+        abilities: row
+            .get::<_, Option<String>>("abilities")?
+            .unwrap_or_default(),
+        motivation: row
+            .get::<_, Option<String>>("motivation")?
+            .unwrap_or_default(),
+        relationships: row
+            .get::<_, Option<String>>("relationships")?
+            .unwrap_or_default(),
         arc: row.get::<_, Option<String>>("arc")?.unwrap_or_default(),
         notes: row.get::<_, Option<String>>("notes")?.unwrap_or_default(),
         current_state,
@@ -360,8 +386,16 @@ pub fn save_all(
         .iter()
         .map(|rename| rename.new_name.clone())
         .collect();
-    if original_names.iter().collect::<std::collections::HashSet<_>>().len() != original_names.len()
-        || target_names.iter().collect::<std::collections::HashSet<_>>().len() != target_names.len()
+    if original_names
+        .iter()
+        .collect::<std::collections::HashSet<_>>()
+        .len()
+        != original_names.len()
+        || target_names
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len()
+            != target_names.len()
     {
         return Err("角色改名目标必须唯一".to_string());
     }
@@ -392,7 +426,8 @@ pub fn save_all(
             return Err(format!("角色名「{}」已存在", rename.new_name));
         }
         if !names.contains(&rename.new_name)
-            || (!target_names.contains(&rename.original_name) && names.contains(&rename.original_name))
+            || (!target_names.contains(&rename.original_name)
+                && names.contains(&rename.original_name))
         {
             return Err(format!(
                 "角色改名「{} → {}」与保存内容不一致",
@@ -478,15 +513,20 @@ pub fn save_all(
                 let Some(name) = item.as_str() else {
                     return Err(format!("第 {chapter_number} 章蓝图角色列表格式错误"));
                 };
-                renamed_names.push(rename_by_original.get(name).cloned().unwrap_or_else(|| name.to_string()));
+                renamed_names.push(
+                    rename_by_original
+                        .get(name)
+                        .cloned()
+                        .unwrap_or_else(|| name.to_string()),
+                );
             }
             let changed = items
                 .iter()
                 .zip(renamed_names.iter())
                 .any(|(item, renamed)| item.as_str() != Some(renamed.as_str()));
             if changed {
-                let payload = serde_json::to_string(&renamed_names)
-                    .map_err(|error| error.to_string())?;
+                let payload =
+                    serde_json::to_string(&renamed_names).map_err(|error| error.to_string())?;
                 tx.execute(
                     "UPDATE blueprints SET characters = ?1, updated_at = datetime('now') WHERE chapter_number = ?2",
                     rusqlite::params![payload, chapter_number],
@@ -515,7 +555,11 @@ pub fn delete(conn: &Connection, name: &str) -> Result<(), String> {
 // 已平移但暂无调用点：由后续批次（drafts / reviews / post-process / import）接线。
 #[allow(dead_code)]
 /// 仅更新角色动态状态（后处理使用，不动角色卡其它字段）。
-pub fn update_state(conn: &Connection, name: &str, state: &CharacterStateData) -> Result<(), String> {
+pub fn update_state(
+    conn: &Connection,
+    name: &str,
+    state: &CharacterStateData,
+) -> Result<(), String> {
     conn.execute(
         "UPDATE characters SET \
            cs_location = ?1, cs_power_level = ?2, cs_physical_state = ?3, \
@@ -604,7 +648,10 @@ mod tests {
         upsert(&conn, &character("苏白", CharacterRole::Supporting)).unwrap();
 
         let loaded = get_by_name(&conn, "苏白").unwrap().unwrap();
-        assert!(loaded.current_state.is_none(), "currentState 缺失应清空 cs_* 列");
+        assert!(
+            loaded.current_state.is_none(),
+            "currentState 缺失应清空 cs_* 列"
+        );
     }
 
     #[test]
@@ -654,7 +701,10 @@ mod tests {
         let json = serde_json::to_value(&data).unwrap();
         let provenance_json = &json["currentState"]["provenance"];
         assert_eq!(provenance_json["location"]["kind"], "derived");
-        assert_eq!(provenance_json["location"]["source"]["finalizationId"], "fin-12");
+        assert_eq!(
+            provenance_json["location"]["source"]["finalizationId"],
+            "fin-12"
+        );
         assert_eq!(provenance_json["powerLevel"]["kind"], "author");
         assert_eq!(provenance_json["powerLevel"]["chapterNumber"], 6);
     }
@@ -703,7 +753,10 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(renamed, serde_json::to_string(&vec!["新名", "路人"]).unwrap());
+        assert_eq!(
+            renamed,
+            serde_json::to_string(&vec!["新名", "路人"]).unwrap()
+        );
         // 未命中的蓝图不写回（updated_at 保持默认空值语义不变）
         let untouched: String = conn
             .query_row(

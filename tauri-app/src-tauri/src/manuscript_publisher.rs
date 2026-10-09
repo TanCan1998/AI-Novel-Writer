@@ -63,8 +63,8 @@ fn manuscript_file_name(chapter_number: i64, chapter_title: &str) -> String {
 /// 基线 `containedDirectChild`：目标必须是项目根的**直接子文件**
 fn contained_direct_child(project_root: &str, file_name: &str) -> Result<ManuscriptTarget, String> {
     let mut components = Path::new(file_name).components();
-    let single_normal = matches!(components.next(), Some(Component::Normal(_)))
-        && components.next().is_none();
+    let single_normal =
+        matches!(components.next(), Some(Component::Normal(_))) && components.next().is_none();
     if !single_normal {
         return Err("实体稿目标越出受信项目 manuscript 边界".to_string());
     }
@@ -121,7 +121,8 @@ pub fn resolve_manuscript_target(
         } else {
             format!(" ({marker}-{index})")
         };
-        let candidate = contained_direct_child(project_root, &format!("{stem}{suffix}{extension}"))?;
+        let candidate =
+            contained_direct_child(project_root, &format!("{stem}{suffix}{extension}"))?;
         if !candidate.absolute_path.exists() {
             return Ok(candidate);
         }
@@ -163,7 +164,8 @@ fn write_new_file(path: &Path, body: &str) -> Result<(), String> {
         .create_new(true)
         .open(path)
         .map_err(|error| error.to_string())?;
-    file.write_all(body.as_bytes()).map_err(|error| error.to_string())?;
+    file.write_all(body.as_bytes())
+        .map_err(|error| error.to_string())?;
     file.flush().map_err(|error| error.to_string())
 }
 
@@ -178,7 +180,8 @@ pub fn publish_manuscript(
     let target = resolve_stored_manuscript_target(project_root, target_file_name)?;
     let serialized = serialize_manuscript(chapter_number, chapter_title, content);
     if target.absolute_path.exists() {
-        let current = std::fs::read_to_string(&target.absolute_path).map_err(|error| error.to_string())?;
+        let current =
+            std::fs::read_to_string(&target.absolute_path).map_err(|error| error.to_string())?;
         if current == serialized {
             return Ok(());
         }
@@ -195,7 +198,8 @@ pub fn publish_manuscript(
     );
     let temporary = contained_direct_child(project_root, &temporary_name)?;
     let outcome = write_new_file(&temporary.absolute_path, &serialized).and_then(|()| {
-        std::fs::rename(&temporary.absolute_path, &target.absolute_path).map_err(|error| error.to_string())
+        std::fs::rename(&temporary.absolute_path, &target.absolute_path)
+            .map_err(|error| error.to_string())
     });
     if temporary.absolute_path.exists() {
         let _ = std::fs::remove_file(&temporary.absolute_path);
@@ -204,7 +208,10 @@ pub fn publish_manuscript(
 }
 
 /// 基线 `removePublishedManuscript`：缺失文件视为投影已清理，幂等成功
-pub fn remove_published_manuscript(project_root: &str, target_file_name: &str) -> Result<(), String> {
+pub fn remove_published_manuscript(
+    project_root: &str,
+    target_file_name: &str,
+) -> Result<(), String> {
     let target = resolve_stored_manuscript_target(project_root, target_file_name)?;
     if !target.absolute_path.exists() {
         return Ok(());
@@ -227,7 +234,10 @@ mod tests {
 
     #[test]
     fn sanitize_matches_baseline_rules_test() {
-        assert_eq!(sanitize_windows_file_name_part("我的/小说:01"), "我的_小说_01");
+        assert_eq!(
+            sanitize_windows_file_name_part("我的/小说:01"),
+            "我的_小说_01"
+        );
         assert_eq!(sanitize_windows_file_name_part("  标题.  "), "标题");
         assert_eq!(sanitize_windows_file_name_part(""), "");
         assert_eq!(sanitize_windows_file_name_part("con"), "con_");

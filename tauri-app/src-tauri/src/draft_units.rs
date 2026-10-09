@@ -23,14 +23,18 @@ pub fn count_draft_units(text: &str) -> i64 {
     let without_han = re_han.replace_all(&normalized, " ").into_owned();
     let words = re_word.find_iter(&without_han).count() as i64;
     let after_words = re_word.replace_all(&without_han, "").into_owned();
-    let other_visible = after_words.chars().filter(|c| !re_skip.is_match(&c.to_string())).count() as i64;
+    let other_visible = after_words
+        .chars()
+        .filter(|c| !re_skip.is_match(&c.to_string()))
+        .count() as i64;
     han_characters + words + other_visible
 }
 
 /// 对齐基线 `countLegacyDraftUnitsV1`（v0.9.0 幂等兼容口径）
 pub fn count_legacy_draft_units_v1(text: &str) -> i64 {
     let re_english = regex::Regex::new(r"[A-Za-z]+(?:['’][A-Za-z]+)*").unwrap();
-    let re_legacy_han = regex::Regex::new(r"[\u{3400}-\u{4DBF}\u{4E00}-\u{9FFF}\u{F900}-\u{FAFF}]").unwrap();
+    let re_legacy_han =
+        regex::Regex::new(r"[\u{3400}-\u{4DBF}\u{4E00}-\u{9FFF}\u{F900}-\u{FAFF}]").unwrap();
     let re_skip = regex::Regex::new(r"[\s\p{P}\p{S}]").unwrap();
 
     let english_words = re_english.find_iter(text).count() as i64;

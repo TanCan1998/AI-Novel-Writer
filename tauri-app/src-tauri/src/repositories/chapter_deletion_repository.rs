@@ -11,7 +11,6 @@
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
-
 /// 对齐 `src/shared/chapter-deletion.ts`
 pub type ProjectionStatus = &'static str; // pending | completed | failed | not_required
 
@@ -280,16 +279,32 @@ pub fn begin(
                 target.target_file_name.clone().unwrap_or_default(),
                 target.knowledge_document_id.clone().unwrap_or_default(),
                 serde_json::to_string(&post_process_run_ids).unwrap_or_else(|_| "[]".into()),
-                if target.target_file_name.is_some() { "pending" } else { "not_required" },
+                if target.target_file_name.is_some() {
+                    "pending"
+                } else {
+                    "not_required"
+                },
                 if legacy_knowledge_authorization_required
-                    || !target.knowledge_document_id.clone().unwrap_or_default().is_empty()
+                    || !target
+                        .knowledge_document_id
+                        .clone()
+                        .unwrap_or_default()
+                        .is_empty()
                 {
                     "pending"
                 } else {
                     "not_required"
                 },
-                if legacy_knowledge_authorization_required { "required" } else { "not_required" },
-                if legacy_knowledge_authorization_required { "authorization_required" } else { "pending" },
+                if legacy_knowledge_authorization_required {
+                    "required"
+                } else {
+                    "not_required"
+                },
+                if legacy_knowledge_authorization_required {
+                    "authorization_required"
+                } else {
+                    "pending"
+                },
             ],
         )
         .map_err(|e| e.to_string())?;
@@ -312,22 +327,28 @@ pub fn confirm_legacy_knowledge_absent(
 ) -> Result<ChapterDeletionOperation, String> {
     let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
     let outcome = (|| -> Result<String, String> {
-        let row: Option<ChapterDeletionOperation> = get_row(&tx, operation_id)
-            .map_err(|e| e.to_string())?;
+        let row: Option<ChapterDeletionOperation> =
+            get_row(&tx, operation_id).map_err(|e| e.to_string())?;
         let Some(row) = row else {
             return Err(format!("章节删除操作不存在：{operation_id}"));
         };
         if row.status != "authorization_required"
             || row.legacy_knowledge_authorization != "required"
         {
-            return Err("legacy 知识投影人工确认是一次性授权，当前删除收据不允许再次确认".to_string());
+            return Err(
+                "legacy 知识投影人工确认是一次性授权，当前删除收据不允许再次确认".to_string(),
+            );
         }
 
         let target = require_finalized_target(&tx, row.draft_id, row.chapter_number)?;
         if target.finalization_id != row.finalization_id
             || target.chapter_title.clone().unwrap_or_default() != row.chapter_title
             || target.target_file_name.clone().unwrap_or_default() != row.target_file_name
-            || !target.knowledge_document_id.clone().unwrap_or_default().is_empty()
+            || !target
+                .knowledge_document_id
+                .clone()
+                .unwrap_or_default()
+                .is_empty()
         {
             return Err("章节事实或定稿收据在人工确认前已变化，已拒绝继续删除".to_string());
         }
@@ -351,18 +372,24 @@ pub fn confirm_legacy_knowledge_absent(
             )
             .map_err(|e| e.to_string())?;
         if changed != 1 {
-            return Err("legacy 知识投影人工确认是一次性授权，当前删除收据不允许再次确认".to_string());
+            return Err(
+                "legacy 知识投影人工确认是一次性授权，当前删除收据不允许再次确认".to_string(),
+            );
         }
         delete_chapter_facts(&tx, &target, &row.post_process_run_ids)?;
         Ok(operation_id.to_string())
     })();
     let confirmed_operation_id = outcome?;
     tx.commit().map_err(|e| e.to_string())?;
-    get(conn, &confirmed_operation_id)?.ok_or_else(|| format!("章节删除操作不存在：{confirmed_operation_id}"))
+    get(conn, &confirmed_operation_id)?
+        .ok_or_else(|| format!("章节删除操作不存在：{confirmed_operation_id}"))
 }
 
 /// 基线 `get`
-pub fn get(conn: &Connection, operation_id: &str) -> Result<Option<ChapterDeletionOperation>, String> {
+pub fn get(
+    conn: &Connection,
+    operation_id: &str,
+) -> Result<Option<ChapterDeletionOperation>, String> {
     get_row(conn, operation_id).map_err(|e| e.to_string())
 }
 
@@ -454,7 +481,8 @@ mod tests {
 
     /// 建一个已定稿草稿 + outbox 收据（无知识文档），返回 draft_id
     fn finalize_draft(conn: &Connection, chapter: i64) -> i64 {
-        conn.execute("INSERT INTO contents (body) VALUES ('正文')", []).unwrap();
+        conn.execute("INSERT INTO contents (body) VALUES ('正文')", [])
+            .unwrap();
         let content_id = conn.last_insert_rowid();
         conn.execute(
             "INSERT INTO drafts (chapter_number, version, status, content_id) VALUES (?1, 1, 'finalized', ?2)",
@@ -496,16 +524,23 @@ mod tests {
         let operation = begin(
             &conn,
             "op-1",
-            &DeleteFinalizedChapterRequest { draft_id: draft_id as i64, chapter_number: 3 },
+            &DeleteFinalizedChapterRequest {
+                draft_id: draft_id as i64,
+                chapter_number: 3,
+            },
             false,
         )
         .unwrap();
         assert_eq!(operation.status, "pending");
         assert_eq!(operation.manuscript_status, "pending");
         assert_eq!(operation.knowledge_status, "not_required");
-        let drafts_left: i64 =
-            conn.query_row("SELECT COUNT(*) FROM drafts", [], |row| row.get(0)).unwrap();
-        assert_eq!(drafts_left, 0, "无 legacy 授权要求时章节事实应随冻结同事务删除");
+        let drafts_left: i64 = conn
+            .query_row("SELECT COUNT(*) FROM drafts", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            drafts_left, 0,
+            "无 legacy 授权要求时章节事实应随冻结同事务删除"
+        );
     }
 
     /// 同一 draft 重复冻结幂等返回同一收据；章号不匹配拒绝
@@ -516,22 +551,34 @@ mod tests {
         let first = begin(
             &conn,
             "op-1",
-            &DeleteFinalizedChapterRequest { draft_id: draft_id as i64, chapter_number: 5 },
+            &DeleteFinalizedChapterRequest {
+                draft_id: draft_id as i64,
+                chapter_number: 5,
+            },
             false,
         )
         .unwrap();
         let second = begin(
             &conn,
             "op-2",
-            &DeleteFinalizedChapterRequest { draft_id: draft_id as i64, chapter_number: 5 },
+            &DeleteFinalizedChapterRequest {
+                draft_id: draft_id as i64,
+                chapter_number: 5,
+            },
             false,
         )
         .unwrap();
-        assert_eq!(first.operation_id, second.operation_id, "同 draft 重复冻结应返回已冻结收据");
+        assert_eq!(
+            first.operation_id, second.operation_id,
+            "同 draft 重复冻结应返回已冻结收据"
+        );
         let mismatch = begin(
             &conn,
             "op-3",
-            &DeleteFinalizedChapterRequest { draft_id: draft_id as i64, chapter_number: 4 },
+            &DeleteFinalizedChapterRequest {
+                draft_id: draft_id as i64,
+                chapter_number: 4,
+            },
             false,
         );
         assert!(mismatch.is_err(), "章号与已冻结操作不匹配必须拒绝");
@@ -545,19 +592,24 @@ mod tests {
         let frozen = begin(
             &conn,
             "op-9",
-            &DeleteFinalizedChapterRequest { draft_id: draft_id as i64, chapter_number: 7 },
+            &DeleteFinalizedChapterRequest {
+                draft_id: draft_id as i64,
+                chapter_number: 7,
+            },
             true,
         )
         .unwrap();
         assert_eq!(frozen.status, "authorization_required");
-        let drafts_left: i64 =
-            conn.query_row("SELECT COUNT(*) FROM drafts", [], |row| row.get(0)).unwrap();
+        let drafts_left: i64 = conn
+            .query_row("SELECT COUNT(*) FROM drafts", [], |row| row.get(0))
+            .unwrap();
         assert_eq!(drafts_left, 1, "人工授权确认前不得删除章节事实");
 
         let confirmed = confirm_legacy_knowledge_absent(&conn, "op-9").unwrap();
         assert_eq!(confirmed.legacy_knowledge_authorization, "consumed");
-        let drafts_left: i64 =
-            conn.query_row("SELECT COUNT(*) FROM drafts", [], |row| row.get(0)).unwrap();
+        let drafts_left: i64 = conn
+            .query_row("SELECT COUNT(*) FROM drafts", [], |row| row.get(0))
+            .unwrap();
         assert_eq!(drafts_left, 0, "确认后补做章节事实删除");
         assert!(
             confirm_legacy_knowledge_absent(&conn, "op-9").is_err(),

@@ -8,7 +8,10 @@ use tauri::AppHandle;
 
 /// 模型资源 URL 映射（固定）
 const MODEL_PROVIDER_RESOURCE_URLS: &[(&str, &str)] = &[
-    ("siliconflow-invite", "https://cloud.siliconflow.cn/i/klFgdwZa"),
+    (
+        "siliconflow-invite",
+        "https://cloud.siliconflow.cn/i/klFgdwZa",
+    ),
     ("siliconflow-console", "https://cloud.siliconflow.cn"),
     ("siliconflow-docs", "https://docs.siliconflow.cn"),
 ];

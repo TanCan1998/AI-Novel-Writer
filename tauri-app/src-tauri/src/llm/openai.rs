@@ -25,7 +25,10 @@ const OPENCODE_GO_USER_AGENT_PREFIX: &str = "ai-novel-writer/";
 
 /// 与基线 `package.json` 版本一致的 UA（crate 版本与其同步维护）。
 pub fn user_agent() -> String {
-    format!("{OPENCODE_GO_USER_AGENT_PREFIX}{}", env!("CARGO_PKG_VERSION"))
+    format!(
+        "{OPENCODE_GO_USER_AGENT_PREFIX}{}",
+        env!("CARGO_PKG_VERSION")
+    )
 }
 
 /// 是否为 opencode Go 端点（需要会话粘性头）。
@@ -87,12 +90,18 @@ pub fn build_request_body(
     stream: bool,
 ) -> Value {
     let is_novel_ai = model.get("provider").and_then(Value::as_str) == Some("novelai");
-    let provider = model.get("provider").and_then(Value::as_str).unwrap_or_default();
+    let provider = model
+        .get("provider")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let mut body = Map::new();
 
     body.insert(
         "model".to_string(),
-        json!(model.get("modelName").and_then(Value::as_str).unwrap_or_default()),
+        json!(model
+            .get("modelName")
+            .and_then(Value::as_str)
+            .unwrap_or_default()),
     );
     body.insert(
         "messages".to_string(),
@@ -168,13 +177,19 @@ fn build_request_headers(
 ) -> Result<HeaderMap, String> {
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
-    let api_key = model.get("apiKey").and_then(Value::as_str).unwrap_or_default();
+    let api_key = model
+        .get("apiKey")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     headers.insert(
         AUTHORIZATION,
         HeaderValue::from_str(&format!("Bearer {api_key}"))
             .map_err(|error| format!("API Key 含非法字符：{error}"))?,
     );
-    let base_url = model.get("baseUrl").and_then(Value::as_str).unwrap_or_default();
+    let base_url = model
+        .get("baseUrl")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     if is_opencode_go_base_url(base_url) {
         // 缺失会话作用域时退化为单请求 UUID，绝不与创作运行共享会话粘性。
         let session_id = conversation_id
@@ -216,8 +231,14 @@ async fn generate_inner(
     messages: &[ChatMessage],
     opts: &LlmGenerateOptions,
 ) -> Result<LlmResponse, String> {
-    let base_url = model.get("baseUrl").and_then(Value::as_str).unwrap_or_default();
-    let provider = model.get("provider").and_then(Value::as_str).unwrap_or("openai");
+    let base_url = model
+        .get("baseUrl")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let provider = model
+        .get("provider")
+        .and_then(Value::as_str)
+        .unwrap_or("openai");
     let url = resolve_chat_completions_url(base_url, provider)?;
     let body = build_request_body(model, messages, opts, false);
     let headers = build_request_headers(model, opts.conversation_id.as_deref())?;
@@ -563,10 +584,15 @@ async fn stream_inner(
     opts: &LlmStreamOptions<'_>,
     decoder: &mut OpenAiSseDecoder,
 ) -> Result<(), StreamFailure> {
-    let base_url = model.get("baseUrl").and_then(Value::as_str).unwrap_or_default();
-    let provider = model.get("provider").and_then(Value::as_str).unwrap_or("openai");
-    let url = resolve_chat_completions_url(base_url, provider)
-        .map_err(StreamFailure::Message)?;
+    let base_url = model
+        .get("baseUrl")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let provider = model
+        .get("provider")
+        .and_then(Value::as_str)
+        .unwrap_or("openai");
+    let url = resolve_chat_completions_url(base_url, provider).map_err(StreamFailure::Message)?;
     let body = build_request_body(model, messages, &opts.generate, true);
     let headers = build_request_headers(model, opts.generate.conversation_id.as_deref())
         .map_err(StreamFailure::Message)?;
@@ -582,7 +608,9 @@ async fn stream_inner(
     if !response.status().is_success() {
         let status = response.status().as_u16();
         let text = response.text().await.unwrap_or_default();
-        return Err(StreamFailure::Message(format!("API 调用失败 ({status}): {text}")));
+        return Err(StreamFailure::Message(format!(
+            "API 调用失败 ({status}): {text}"
+        )));
     }
 
     loop {
@@ -640,16 +668,36 @@ mod tests {
     #[test]
     fn resolve_url_matches_baseline_branches_test() {
         let cases = [
-            ("https://api.deepseek.com", "deepseek", "https://api.deepseek.com/v1/chat/completions"),
-            ("https://api.deepseek.com/", "openai", "https://api.deepseek.com/v1/chat/completions"),
-            ("https://host/v1", "openai", "https://host/v1/chat/completions"),
+            (
+                "https://api.deepseek.com",
+                "deepseek",
+                "https://api.deepseek.com/v1/chat/completions",
+            ),
+            (
+                "https://api.deepseek.com/",
+                "openai",
+                "https://api.deepseek.com/v1/chat/completions",
+            ),
+            (
+                "https://host/v1",
+                "openai",
+                "https://host/v1/chat/completions",
+            ),
             (
                 "https://host/v1/chat/completions",
                 "openai",
                 "https://host/v1/chat/completions",
             ),
-            ("https://host/v1/chat", "openai", "https://host/v1/chat/completions"),
-            ("https://host/custom", "novelai", "https://host/custom/v1/chat/completions"),
+            (
+                "https://host/v1/chat",
+                "openai",
+                "https://host/v1/chat/completions",
+            ),
+            (
+                "https://host/custom",
+                "novelai",
+                "https://host/custom/v1/chat/completions",
+            ),
         ];
         for (base_url, provider, expected) in cases {
             assert_eq!(
@@ -676,7 +724,10 @@ mod tests {
     #[test]
     fn normalize_finish_reason_maps_provider_vocabulary_test() {
         assert_eq!(normalize_finish_reason(Some("stop")), LlmFinishReason::Stop);
-        assert_eq!(normalize_finish_reason(Some("length")), LlmFinishReason::Length);
+        assert_eq!(
+            normalize_finish_reason(Some("length")),
+            LlmFinishReason::Length
+        );
         assert_eq!(
             normalize_finish_reason(Some("model_context_window_exceeded")),
             LlmFinishReason::Length
@@ -689,9 +740,15 @@ mod tests {
             normalize_finish_reason(Some("sensitive")),
             LlmFinishReason::ContentFilter
         );
-        assert_eq!(normalize_finish_reason(Some("network_error")), LlmFinishReason::Error);
+        assert_eq!(
+            normalize_finish_reason(Some("network_error")),
+            LlmFinishReason::Error
+        );
         assert_eq!(normalize_finish_reason(None), LlmFinishReason::Unknown);
-        assert_eq!(normalize_finish_reason(Some("tool_calls")), LlmFinishReason::Unknown);
+        assert_eq!(
+            normalize_finish_reason(Some("tool_calls")),
+            LlmFinishReason::Unknown
+        );
     }
 
     #[test]
@@ -718,7 +775,10 @@ mod tests {
             },
             false,
         );
-        assert!(omitted.get("temperature").is_none(), "temperature 必须整键省略");
+        assert!(
+            omitted.get("temperature").is_none(),
+            "temperature 必须整键省略"
+        );
         assert_eq!(omitted.get("max_tokens"), Some(&json!(4096)));
         assert_eq!(omitted.get("stream"), Some(&json!(false)));
         assert!(omitted.get("stream_options").is_none());
@@ -737,7 +797,10 @@ mod tests {
         );
         assert_eq!(explicit.get("temperature"), Some(&json!(0.2)));
         assert_eq!(explicit.get("max_tokens"), Some(&json!(64)));
-        assert_eq!(explicit.get("stream_options"), Some(&json!({"include_usage": true})));
+        assert_eq!(
+            explicit.get("stream_options"),
+            Some(&json!({"include_usage": true}))
+        );
     }
 
     #[test]
@@ -824,7 +887,11 @@ mod tests {
         for piece in bytes.chunks(3) {
             chunks.extend(decoder.push(piece, false));
         }
-        assert!(decoder.fatal_error().is_none(), "{:?}", decoder.fatal_error());
+        assert!(
+            decoder.fatal_error().is_none(),
+            "{:?}",
+            decoder.fatal_error()
+        );
         assert!(decoder.saw_done(), "[DONE] 必须被识别");
         assert_eq!(decoder.finish_reason(), LlmFinishReason::Stop);
         assert_eq!(
@@ -851,7 +918,11 @@ mod tests {
 
         // 非对象载荷
         let mut decoder = OpenAiSseDecoder::default();
-        decoder.push(b"data: [1,2]\n\n", false);        assert_eq!(decoder.fatal_error(), Some("响应流包含无效的 OpenAI 数据对象"));
+        decoder.push(b"data: [1,2]\n\n", false);
+        assert_eq!(
+            decoder.fatal_error(),
+            Some("响应流包含无效的 OpenAI 数据对象")
+        );
 
         // choices 类型错误
         let mut decoder = OpenAiSseDecoder::default();
@@ -865,23 +936,29 @@ mod tests {
 
         // content 类型错误
         let mut decoder = OpenAiSseDecoder::default();
-        decoder.push(b"data: {\"choices\":[{\"delta\":{\"content\":1}}]}\n\n", false);
+        decoder.push(
+            b"data: {\"choices\":[{\"delta\":{\"content\":1}}]}\n\n",
+            false,
+        );
         assert_eq!(decoder.fatal_error(), Some("响应流的 content 类型无效"));
 
         // finish_reason 类型错误
         let mut decoder = OpenAiSseDecoder::default();
         decoder.push(b"data: {\"choices\":[{\"finish_reason\":1}]}\n\n", false);
-        assert_eq!(decoder.fatal_error(), Some("响应流的 finish_reason 类型无效"));
+        assert_eq!(
+            decoder.fatal_error(),
+            Some("响应流的 finish_reason 类型无效")
+        );
     }
 
     #[test]
     fn sse_decoder_reports_provider_error_payload_test() {
         let mut decoder = OpenAiSseDecoder::default();
-        decoder.push("data: {\"error\":{\"message\":\"限流\"}}\n\n".as_bytes(), false);
-        assert_eq!(
-            decoder.fatal_error(),
-            Some("供应商返回流式错误：限流")
+        decoder.push(
+            "data: {\"error\":{\"message\":\"限流\"}}\n\n".as_bytes(),
+            false,
         );
+        assert_eq!(decoder.fatal_error(), Some("供应商返回流式错误：限流"));
 
         // `error` 为非对象时仍进入错误分支（基线的 `Object.hasOwn` 不看值类型），
         // 回退文案又被拼进模板 —— 基线的这种重复措辞是刻意复刻的。
@@ -898,7 +975,10 @@ mod tests {
         let mut decoder = OpenAiSseDecoder::default();
         // 多行 data: 由空行统一派发；`event:` 字段被忽略。
         decoder.push(b"event: message\n", false);
-        decoder.push(b"data: {\"choices\":[{\"delta\":{\"content\":\"A\"}}]}\n", false);
+        decoder.push(
+            b"data: {\"choices\":[{\"delta\":{\"content\":\"A\"}}]}\n",
+            false,
+        );
         decoder.push(b"\n", false);
         assert!(
             decoder.fatal_error().is_none(),
@@ -911,7 +991,11 @@ mod tests {
     #[test]
     fn sse_decoder_closes_unterminated_thinking_test() {
         let mut decoder = OpenAiSseDecoder::default();
-        decoder.push("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"想\"}}]}\n\ndata: [DONE]\n\n".as_bytes(), false);
+        decoder.push(
+            "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"想\"}}]}\n\ndata: [DONE]\n\n"
+                .as_bytes(),
+            false,
+        );
         let close = decoder.close_thinking();
         assert!(close.is_some());
         assert_eq!(decoder.close_thinking(), None, "闭合标签只补发一次");

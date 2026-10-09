@@ -73,7 +73,9 @@ impl ProjectDatabase {
 
 /// 项目库文件绝对路径
 pub fn project_database_path(project_root: &Path) -> PathBuf {
-    project_root.join(PROJECT_DIR_NAME).join(PROJECT_DB_FILE_NAME)
+    project_root
+        .join(PROJECT_DIR_NAME)
+        .join(PROJECT_DB_FILE_NAME)
 }
 
 #[cfg(test)]
@@ -125,9 +127,11 @@ mod tests {
         let db = ProjectDatabase::open(&root).unwrap();
         let name: String = db
             .connection()
-            .query_row("SELECT project_name FROM project_core WHERE id = 'main'", [], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT project_name FROM project_core WHERE id = 'main'",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(name, "复用项目");
 

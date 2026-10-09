@@ -49,7 +49,8 @@ pub struct AppState {
     pub(crate) llm_leases: Mutex<crate::llm::lease::LlmLeaseStore>,
     /// 批次 D2-b：活跃流式生成任务（`requestId` → 取消句柄）。
     /// 进程内存态；重启即失效（对齐基线 `activeStreams`）。
-    pub(crate) llm_streams: Mutex<std::collections::HashMap<String, crate::commands::LlmStreamHandle>>,
+    pub(crate) llm_streams:
+        Mutex<std::collections::HashMap<String, crate::commands::LlmStreamHandle>>,
     /// 批次 F2-3：外部文件授权注册表（进程内存态）。
     /// 知识库选择/导入与批次 H `fs:grant-*` 共用；渲染层只持有不透明 grantId。
     pub(crate) external_grants: Mutex<crate::external_grant::ExternalGrantRegistry>,
@@ -83,7 +84,10 @@ impl AppState {
 
     /// 当前活跃项目快照
     pub(crate) fn active_project_snapshot(&self) -> Option<ActiveProject> {
-        self.active_project.lock().ok().and_then(|guard| guard.clone())
+        self.active_project
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
     }
 
     /// 当前已打开项目根路径（等价基线 `getCurrentProjectPath`）
@@ -173,7 +177,10 @@ impl AppState {
     }
 
     /// 项目数据库状态快照（对齐基线 `databaseStateFor`）
-    pub(crate) fn database_state(&self, expected_project_path: Option<&str>) -> ProjectDatabaseState {
+    pub(crate) fn database_state(
+        &self,
+        expected_project_path: Option<&str>,
+    ) -> ProjectDatabaseState {
         let active_project_path = self.current_project_path();
         let db_open = self
             .project_db
@@ -294,21 +301,28 @@ mod tests {
         };
         state.activate_project(lease.clone()).unwrap();
 
-        assert_eq!(state.current_project_path().as_deref(), Some(lease.root_path.as_str()));
+        assert_eq!(
+            state.current_project_path().as_deref(),
+            Some(lease.root_path.as_str())
+        );
         assert!(state.database_state(Some(&lease.root_path)).db_ready);
-        assert!(!state.database_state(Some("C:\\other")).db_ready, "路径不符时不得视为就绪");
-        state.with_project_db(|conn| {
-            let count: i64 = conn
-                .query_row(
-                    "SELECT COUNT(*) FROM sqlite_master WHERE name = 'project_core'",
-                    [],
-                    |row| row.get(0),
-                )
-                .map_err(|error| error.to_string())?;
-            assert_eq!(count, 1);
-            Ok(())
-        })
-        .unwrap();
+        assert!(
+            !state.database_state(Some("C:\\other")).db_ready,
+            "路径不符时不得视为就绪"
+        );
+        state
+            .with_project_db(|conn| {
+                let count: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM sqlite_master WHERE name = 'project_core'",
+                        [],
+                        |row| row.get(0),
+                    )
+                    .map_err(|error| error.to_string())?;
+                assert_eq!(count, 1);
+                Ok(())
+            })
+            .unwrap();
 
         state.invalidate_current_session();
         assert!(state.current_project_path().is_none());

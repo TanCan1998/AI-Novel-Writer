@@ -152,7 +152,8 @@ fn parse_dependencies(value: Option<&str>) -> ParsedDependencies {
             return invalid_dependencies();
         };
 
-        let Some(draft_id) = safe_positive_integer(object.get("draftId").and_then(|value| value.as_i64()))
+        let Some(draft_id) =
+            safe_positive_integer(object.get("draftId").and_then(|value| value.as_i64()))
         else {
             return invalid_dependencies();
         };
@@ -181,11 +182,11 @@ fn parse_dependencies(value: Option<&str>) -> ParsedDependencies {
 
         let needs_chapter = matches!(
             kind,
-            Some(DraftSourceDependencyKind::Finalized) | Some(DraftSourceDependencyKind::LegacyFinalized)
+            Some(DraftSourceDependencyKind::Finalized)
+                | Some(DraftSourceDependencyKind::LegacyFinalized)
         );
-        let chapter_number = safe_positive_integer(
-            object.get("chapterNumber").and_then(|value| value.as_i64()),
-        );
+        let chapter_number =
+            safe_positive_integer(object.get("chapterNumber").and_then(|value| value.as_i64()));
         if needs_chapter && chapter_number.is_none() {
             return invalid_dependencies();
         }
@@ -297,22 +298,19 @@ fn dependency_states(
             .prepare(&sql)
             .map_err(|error| format!("读取草稿依赖失败：{error}"))?;
         let rows = stmt
-            .query_map(
-                rusqlite::params_from_iter(chunk.iter()),
-                |row| {
-                    Ok((
-                        row.get::<_, i64>(0)?,
-                        row.get::<_, i64>(1)?,
-                        row.get::<_, Option<String>>(2)?,
-                        row.get::<_, String>(3)?,
-                        row.get::<_, String>(4)?,
-                        row.get::<_, Option<String>>(5)?,
-                        row.get::<_, Option<String>>(6)?,
-                        row.get::<_, Option<String>>(7)?,
-                        row.get::<_, i64>(8)?,
-                    ))
-                },
-            )
+            .query_map(rusqlite::params_from_iter(chunk.iter()), |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, Option<String>>(6)?,
+                    row.get::<_, Option<String>>(7)?,
+                    row.get::<_, i64>(8)?,
+                ))
+            })
             .map_err(|error| format!("读取草稿依赖失败：{error}"))?;
 
         for row in rows {
@@ -551,7 +549,11 @@ fn rows_to_meta(conn: &Connection, rows: &[DraftMetaRow]) -> Result<Vec<DraftMet
         .collect();
     let dependency_ids: Vec<i64> = parsed
         .iter()
-        .flat_map(|item| item.dependencies.iter().map(|dependency| dependency.draft_id))
+        .flat_map(|item| {
+            item.dependencies
+                .iter()
+                .map(|dependency| dependency.draft_id)
+        })
         .collect();
     let states = dependency_states(conn, &dependency_ids)?;
     let mut memo: HashMap<i64, bool> = HashMap::new();
@@ -568,7 +570,8 @@ fn rows_to_meta(conn: &Connection, rows: &[DraftMetaRow]) -> Result<Vec<DraftMet
 
 /// 列出章节的所有草稿（不含正文，按版本升序）
 pub fn list_by_chapter(conn: &Connection, chapter_number: i64) -> Result<Vec<DraftMeta>, String> {
-    let sql = format!("{DRAFT_META_SELECT} WHERE drafts.chapter_number = ?1 ORDER BY drafts.version ASC");
+    let sql =
+        format!("{DRAFT_META_SELECT} WHERE drafts.chapter_number = ?1 ORDER BY drafts.version ASC");
     read_meta_rows(conn, &sql, rusqlite::params![chapter_number])
 }
 
@@ -764,7 +767,12 @@ pub fn delete(conn: &Connection, id: i64) -> Result<(), String> {
         .query_row(
             "SELECT status, content_id FROM drafts WHERE id = ?1",
             [id],
-            |row| Ok((row.get::<_, Option<String>>(0)?.unwrap_or_default(), row.get(1)?)),
+            |row| {
+                Ok((
+                    row.get::<_, Option<String>>(0)?.unwrap_or_default(),
+                    row.get(1)?,
+                ))
+            },
         )
         .optional()
         .map_err(|error| format!("读取草稿失败：{error}"))?;
@@ -782,7 +790,8 @@ pub fn delete(conn: &Connection, id: i64) -> Result<(), String> {
     // 此处保留基线的孤立内容兼容策略（忽略失败）。
     let _ = contents::delete(&tx, content_id);
 
-    tx.commit().map_err(|error| format!("提交删除失败：{error}"))
+    tx.commit()
+        .map_err(|error| format!("提交删除失败：{error}"))
 }
 
 fn read_meta_rows<P: rusqlite::Params>(
@@ -970,8 +979,11 @@ mod tests {
         assert_eq!(remaining, 0, "无外键引用时正文应一并清理");
 
         let finalized = create(&conn, &params(2, "定稿正文")).unwrap();
-        conn.execute("UPDATE drafts SET status = 'finalized' WHERE id = ?1", [finalized])
-            .unwrap();
+        conn.execute(
+            "UPDATE drafts SET status = 'finalized' WHERE id = ?1",
+            [finalized],
+        )
+        .unwrap();
         assert_eq!(
             delete(&conn, finalized).unwrap_err(),
             FINALIZED_DELETE_REQUIRED_MESSAGE
@@ -1065,21 +1077,28 @@ mod tests {
         let base = create(&conn, &params(1, "源头")).unwrap();
 
         // middle 依赖 base
-        let mut middle = params(2, "中间") ;
+        let mut middle = params(2, "中间");
         middle.source_dependencies = Some(vec![candidate_dependency(base, &hash_text("源头"))]);
         let middle_id = create(&conn, &middle).unwrap();
 
         // leaf 依赖 middle
         let mut leaf = params(3, "叶");
-        leaf.source_dependencies = Some(vec![candidate_dependency(
-            middle_id,
-            &hash_text("中间"),
-        )]);
+        leaf.source_dependencies = Some(vec![candidate_dependency(middle_id, &hash_text("中间"))]);
         let leaf_id = create(&conn, &leaf).unwrap();
-        assert!(!get_meta(&conn, leaf_id).unwrap().unwrap().dependencies_stale);
+        assert!(
+            !get_meta(&conn, leaf_id)
+                .unwrap()
+                .unwrap()
+                .dependencies_stale
+        );
 
         // 改写源头：叶的传递闭包必须失效
         update_content(&conn, base, "源头改写", 4).unwrap();
-        assert!(get_meta(&conn, leaf_id).unwrap().unwrap().dependencies_stale);
+        assert!(
+            get_meta(&conn, leaf_id)
+                .unwrap()
+                .unwrap()
+                .dependencies_stale
+        );
     }
 }

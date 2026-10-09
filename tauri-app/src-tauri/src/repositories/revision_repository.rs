@@ -10,8 +10,9 @@
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
-use crate::draft_source_guard::{assert_expected_draft_source, ExpectedDraftSource,
-    SOURCE_DRAFT_CHANGED_MESSAGE};
+use crate::draft_source_guard::{
+    assert_expected_draft_source, ExpectedDraftSource, SOURCE_DRAFT_CHANGED_MESSAGE,
+};
 use crate::repositories::content_repository as contents;
 
 /// 可修改草稿状态（合并目标必须是其中之一）
@@ -119,7 +120,9 @@ fn revision_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RevisionRow> {
         revision_type: row.get("revision_type")?,
         status: row.get::<_, Option<String>>("status")?.unwrap_or_default(),
         merged_to_draft_id: row.get("merged_to_draft_id")?,
-        user_prompt: row.get::<_, Option<String>>("user_prompt")?.unwrap_or_default(),
+        user_prompt: row
+            .get::<_, Option<String>>("user_prompt")?
+            .unwrap_or_default(),
         review_source_id: row.get("review_source_id")?,
         source_draft_chapter_number: row.get("source_draft_chapter_number")?,
         source_draft_version: row.get("source_draft_version")?,
@@ -127,8 +130,12 @@ fn revision_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<RevisionRow> {
         source_content: row.get("source_content")?,
         content_id: row.get("content_id")?,
         word_count: row.get::<_, Option<i64>>("word_count")?.unwrap_or_default(),
-        created_at: row.get::<_, Option<String>>("created_at")?.unwrap_or_default(),
-        updated_at: row.get::<_, Option<String>>("updated_at")?.unwrap_or_default(),
+        created_at: row
+            .get::<_, Option<String>>("created_at")?
+            .unwrap_or_default(),
+        updated_at: row
+            .get::<_, Option<String>>("updated_at")?
+            .unwrap_or_default(),
     })
 }
 
@@ -230,10 +237,7 @@ pub fn create(conn: &Connection, params: &RevisionCreateParams) -> Result<Revisi
 
     tx.commit()
         .map_err(|error| format!("提交修稿失败：{error}"))?;
-    Ok(RevisionCreated {
-        id,
-        revision_index,
-    })
+    Ok(RevisionCreated { id, revision_index })
 }
 
 /// 原子替换同一草稿的 pending 修稿：新修稿创建失败时，旧 pending 的状态与内容池分配
@@ -260,10 +264,7 @@ pub fn replace_pending(
 
     tx.commit()
         .map_err(|error| format!("提交修稿失败：{error}"))?;
-    Ok(RevisionCreated {
-        id,
-        revision_index,
-    })
+    Ok(RevisionCreated { id, revision_index })
 }
 
 fn read_metas(conn: &Connection, sql: &str, params: [i64; 1]) -> Result<Vec<RevisionMeta>, String> {
@@ -377,7 +378,15 @@ fn merge_into_draft_inner(
         return Err(format!("草稿不存在：{}", request.target_draft_id));
     };
 
-    let revision: Option<(i64, String, Option<i64>, Option<i64>, Option<i64>, Option<String>, Option<String>)> = tx
+    let revision: Option<(
+        i64,
+        String,
+        Option<i64>,
+        Option<i64>,
+        Option<i64>,
+        Option<String>,
+        Option<String>,
+    )> = tx
         .query_row(
             "SELECT base_draft_id, status, merged_to_draft_id,
                     source_draft_chapter_number, source_draft_version,
@@ -453,9 +462,7 @@ fn merge_into_draft_inner(
         || status != source_status.clone().unwrap()
         || body != source_content.clone().unwrap()
     {
-        return Err(
-            "当前草稿与修订稿的生成时源稿不一致，已拒绝合并；请重新生成修订稿".to_string(),
-        );
+        return Err("当前草稿与修订稿的生成时源稿不一致，已拒绝合并；请重新生成修订稿".to_string());
     }
 
     tx.execute(
@@ -661,7 +668,13 @@ mod tests {
 
         // 旧 pending 被弃用；已 merged 的不受影响
         let all = list_by_draft(&conn, draft_id).unwrap();
-        let status_of = |id: i64| all.iter().find(|meta| meta.id == id).unwrap().status.clone();
+        let status_of = |id: i64| {
+            all.iter()
+                .find(|meta| meta.id == id)
+                .unwrap()
+                .status
+                .clone()
+        };
         assert_eq!(status_of(first.id), "discarded");
         assert_eq!(status_of(merged.id), "merged");
         assert_eq!(status_of(replaced.id), "pending");
@@ -812,8 +825,11 @@ mod tests {
             .unwrap();
 
         // 目标草稿不是可修改状态
-        conn.execute("UPDATE drafts SET status = 'finalized' WHERE id = ?1", [draft_id])
-            .unwrap();
+        conn.execute(
+            "UPDATE drafts SET status = 'finalized' WHERE id = ?1",
+            [draft_id],
+        )
+        .unwrap();
         assert_eq!(
             merge_into_draft(
                 &conn,
@@ -858,7 +874,11 @@ mod tests {
             "旧修订稿缺少生成时源稿，仍可查看但不能合并；请重新生成修订稿"
         );
         // 仍可读取（sourceDraft 为 null）
-        assert!(get_full(&conn, legacy_id).unwrap().unwrap().source_draft.is_none());
+        assert!(get_full(&conn, legacy_id)
+            .unwrap()
+            .unwrap()
+            .source_draft
+            .is_none());
     }
 
     #[test]
@@ -875,7 +895,10 @@ mod tests {
         // 非 pending 不得再次标记
         assert_eq!(
             mark_discarded(&conn, revision.id).unwrap_err(),
-            format!("[RevisionRepository] 无法弃用修稿 #{}：不存在或非 pending 状态", revision.id)
+            format!(
+                "[RevisionRepository] 无法弃用修稿 #{}：不存在或非 pending 状态",
+                revision.id
+            )
         );
         assert_eq!(
             mark_merged(&conn, 9999, draft_id).unwrap_err(),
@@ -922,6 +945,9 @@ mod tests {
         assert_eq!(value["mergedToDraftId"], serde_json::Value::Null);
         assert_eq!(value["reviewSourceId"], serde_json::Value::Null);
         assert_eq!(value["sourceDraft"]["chapterNumber"], serde_json::json!(1));
-        assert_eq!(value["sourceDraft"]["content"], serde_json::json!(BASE_BODY));
+        assert_eq!(
+            value["sourceDraft"]["content"],
+            serde_json::json!(BASE_BODY)
+        );
     }
 }

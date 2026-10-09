@@ -216,7 +216,9 @@ fn provider_directive(
         }
         ReasoningAdapter::DeepSeekV4Thinking => {
             // `off` 只接受文档化的 `disabled` 映射；其余强度要求 provider 取值与强度同名。
-            if effective == ReasoningEffort::Off && value.and_then(PresetValue::as_str) == Some("disabled") {
+            if effective == ReasoningEffort::Off
+                && value.and_then(PresetValue::as_str) == Some("disabled")
+            {
                 return Some(ProviderReasoningDirective::DeepSeekV4Thinking {
                     thinking: ThinkingState::Disabled,
                     reasoning_effort: None,
@@ -225,7 +227,8 @@ fn provider_directive(
             let matches_effort = matches!(
                 effective,
                 ReasoningEffort::Low | ReasoningEffort::High | ReasoningEffort::Max
-            ) && value.and_then(PresetValue::as_str) == Some(effective.as_str());
+            ) && value.and_then(PresetValue::as_str)
+                == Some(effective.as_str());
             if !matches_effort {
                 return None;
             }
@@ -271,10 +274,7 @@ fn closest_effective_effort(
         .copied()
         .filter(|effort| effort.rank() <= requested.rank())
         .collect();
-    let effective = lower_or_equal
-        .last()
-        .copied()
-        .unwrap_or(supported[0]);
+    let effective = lower_or_equal.last().copied().unwrap_or(supported[0]);
     Some((effective, ReasoningResolutionStatus::Capped))
 }
 
@@ -303,9 +303,8 @@ pub fn resolve_reasoning_policy(
     } else {
         ReasoningSource::ProjectStrategy
     };
-    let requested = override_effort.unwrap_or_else(|| {
-        stage_request(strategy, GenerationReasoningStage::parse(stage))
-    });
+    let requested = override_effort
+        .unwrap_or_else(|| stage_request(strategy, GenerationReasoningStage::parse(stage)));
 
     let unsupported = |requested: ReasoningEffort| ReasoningPolicyResolution {
         requested,
@@ -315,7 +314,8 @@ pub fn resolve_reasoning_policy(
         provider_directive: None,
     };
 
-    let Some(mapping) = crate::llm::presets::resolve_model_profile_reasoning_mapping(profile) else {
+    let Some(mapping) = crate::llm::presets::resolve_model_profile_reasoning_mapping(profile)
+    else {
         return unsupported(requested);
     };
     let Some((effective, status)) = closest_effective_effort(requested, &mapping) else {
@@ -369,7 +369,11 @@ mod tests {
             Some("deep-planning"),
             Some("planning"),
         );
-        assert_eq!(result.requested, ReasoningEffort::Max, "阶段表仍须给出请求强度");
+        assert_eq!(
+            result.requested,
+            ReasoningEffort::Max,
+            "阶段表仍须给出请求强度"
+        );
         assert_eq!(result.effective, None);
         assert_eq!(result.status, ReasoningResolutionStatus::Unsupported);
         assert_eq!(result.source, ReasoningSource::ProjectStrategy);
@@ -379,7 +383,8 @@ mod tests {
     #[test]
     fn verified_deepseek_mapping_caps_and_aliases_test() {
         // medium 通过 requestAliases → high（mapped）
-        let mapped = resolve_reasoning_policy(&deepseek_profile(), None, Some("auto"), Some("planning"));
+        let mapped =
+            resolve_reasoning_policy(&deepseek_profile(), None, Some("auto"), Some("planning"));
         assert_eq!(mapped.requested, ReasoningEffort::Medium);
         assert_eq!(mapped.effective, Some(ReasoningEffort::High));
         assert_eq!(mapped.status, ReasoningResolutionStatus::Mapped);
@@ -392,19 +397,26 @@ mod tests {
         );
 
         // auto/review → high（直接支持）
-        let direct = resolve_reasoning_policy(&deepseek_profile(), None, Some("auto"), Some("review"));
+        let direct =
+            resolve_reasoning_policy(&deepseek_profile(), None, Some("auto"), Some("review"));
         assert_eq!(direct.effective, Some(ReasoningEffort::High));
         assert_eq!(direct.status, ReasoningResolutionStatus::Mapped);
 
         // auto/drafting → low（直接支持）
-        let low = resolve_reasoning_policy(&deepseek_profile(), None, Some("auto"), Some("drafting"));
+        let low =
+            resolve_reasoning_policy(&deepseek_profile(), None, Some("auto"), Some("drafting"));
         assert_eq!(low.effective, Some(ReasoningEffort::Low));
         assert_eq!(low.status, ReasoningResolutionStatus::Mapped);
     }
 
     #[test]
     fn model_override_off_maps_to_disabled_thinking_test() {
-        let result = resolve_reasoning_policy(&deepseek_profile(), Some("off"), Some("auto"), Some("review"));
+        let result = resolve_reasoning_policy(
+            &deepseek_profile(),
+            Some("off"),
+            Some("auto"),
+            Some("review"),
+        );
         assert_eq!(result.source, ReasoningSource::ModelOverride);
         assert_eq!(result.requested, ReasoningEffort::Off);
         assert_eq!(result.effective, Some(ReasoningEffort::Off));
@@ -425,7 +437,11 @@ mod tests {
             Some("auto"),
             Some("review"),
         );
-        assert_eq!(result.source, ReasoningSource::ProjectStrategy, "非法覆盖值不得生效");
+        assert_eq!(
+            result.source,
+            ReasoningSource::ProjectStrategy,
+            "非法覆盖值不得生效"
+        );
         assert_eq!(result.requested, ReasoningEffort::High);
     }
 
@@ -445,7 +461,8 @@ mod tests {
         );
 
         // fluent-drafting/drafting 请求 off → 不支持 off → forced 到最低支持值 low
-        let forced = resolve_reasoning_policy(&xai, None, Some("fluent-drafting"), Some("drafting"));
+        let forced =
+            resolve_reasoning_policy(&xai, None, Some("fluent-drafting"), Some("drafting"));
         assert_eq!(forced.requested, ReasoningEffort::Off);
         assert_eq!(forced.effective, Some(ReasoningEffort::Low));
         assert_eq!(forced.status, ReasoningResolutionStatus::Forced);
@@ -471,9 +488,7 @@ mod tests {
         let off = resolve_reasoning_policy(&gemini, Some("off"), None, None);
         assert_eq!(
             off.provider_directive,
-            Some(ProviderReasoningDirective::GeminiThinkingBudget {
-                thinking_budget: 0,
-            })
+            Some(ProviderReasoningDirective::GeminiThinkingBudget { thinking_budget: 0 })
         );
     }
 

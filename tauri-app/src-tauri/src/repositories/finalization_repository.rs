@@ -104,9 +104,19 @@ fn read_export_rows_desc(conn: &Connection) -> Result<Vec<ExportRow>, String> {
 /// 对齐基线 `selectAuthoritativeExportRows`：每章取第一个出现的行（最高版本）
 fn select_authoritative_export_rows(
     rows: Vec<ExportRow>,
-) -> Result<Vec<(FinalizedDraftExportAuthorityItem, FinalizedDraftExportSnapshot)>, String> {
-    let mut selected: Vec<(FinalizedDraftExportAuthorityItem, FinalizedDraftExportSnapshot)> = Vec::new();
-    let mut selected_versions: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
+) -> Result<
+    Vec<(
+        FinalizedDraftExportAuthorityItem,
+        FinalizedDraftExportSnapshot,
+    )>,
+    String,
+> {
+    let mut selected: Vec<(
+        FinalizedDraftExportAuthorityItem,
+        FinalizedDraftExportSnapshot,
+    )> = Vec::new();
+    let mut selected_versions: std::collections::HashMap<i64, i64> =
+        std::collections::HashMap::new();
     for row in rows {
         if let Some(&selected_version) = selected_versions.get(&row.chapter_number) {
             if selected_version == row.version {
@@ -166,12 +176,21 @@ fn select_authoritative_export_rows(
 pub fn list_authoritative_for_export(
     conn: &Connection,
 ) -> Result<Vec<FinalizedDraftExportSnapshot>, String> {
-    Ok(read_authoritative_export_rows(conn)?.into_iter().map(|(_, snapshot)| snapshot).collect())
+    Ok(read_authoritative_export_rows(conn)?
+        .into_iter()
+        .map(|(_, snapshot)| snapshot)
+        .collect())
 }
 
 fn read_authoritative_export_rows(
     conn: &Connection,
-) -> Result<Vec<(FinalizedDraftExportAuthorityItem, FinalizedDraftExportSnapshot)>, String> {
+) -> Result<
+    Vec<(
+        FinalizedDraftExportAuthorityItem,
+        FinalizedDraftExportSnapshot,
+    )>,
+    String,
+> {
     let rows = read_export_rows_desc(conn)?;
     select_authoritative_export_rows(rows)
 }
@@ -199,7 +218,10 @@ const RECORD_COLUMNS: &str = "SELECT finalization_id, draft_id, chapter_number, 
         knowledge_document_id, publication_status, last_error, published_at
  FROM finalization_outbox";
 
-fn get_record_by_draft(conn: &Connection, draft_id: i64) -> Result<Option<FinalizationRecord>, String> {
+fn get_record_by_draft(
+    conn: &Connection,
+    draft_id: i64,
+) -> Result<Option<FinalizationRecord>, String> {
     conn.query_row(
         &format!("{RECORD_COLUMNS} WHERE draft_id = ?1"),
         [draft_id],
@@ -221,7 +243,10 @@ pub fn get(conn: &Connection, finalization_id: &str) -> Result<Option<Finalizati
 }
 
 /// 基线 `FinalizationRepository.getByDraftId`
-pub fn get_by_draft_id(conn: &Connection, draft_id: i64) -> Result<Option<FinalizationRecord>, String> {
+pub fn get_by_draft_id(
+    conn: &Connection,
+    draft_id: i64,
+) -> Result<Option<FinalizationRecord>, String> {
     get_record_by_draft(conn, draft_id)
 }
 
@@ -260,7 +285,10 @@ pub fn matches_authoritative_export_receipt(
         if item.draft_id < 1
             || item.chapter_number < 1
             || item.version < 1
-            || item.finalization_id.as_deref().is_some_and(|s| s.trim().is_empty())
+            || item
+                .finalization_id
+                .as_deref()
+                .is_some_and(|s| s.trim().is_empty())
             || item.content_hash.len() != 64
             || !item
                 .content_hash
@@ -476,7 +504,8 @@ mod tests {
     }
 
     fn finalize_draft(conn: &Connection, chapter: i64, version: i64, body: &str) -> i64 {
-        conn.execute("INSERT INTO contents (body) VALUES (?1)", [body]).unwrap();
+        conn.execute("INSERT INTO contents (body) VALUES (?1)", [body])
+            .unwrap();
         let content_id = conn.last_insert_rowid();
         conn.execute(
             "INSERT INTO drafts (chapter_number, version, status, content_id) VALUES (?1, ?2, 'finalized', ?3)",
@@ -543,7 +572,11 @@ mod tests {
 
         // 同一事务同时冻结三个事实：正文、定稿状态、字数
         let frozen_body: String = conn
-            .query_row("SELECT body FROM contents WHERE id = ?1", [content_id], |row| row.get(0))
+            .query_row(
+                "SELECT body FROM contents WHERE id = ?1",
+                [content_id],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(frozen_body, body);
         let (status, word_count): (String, i64) = conn
@@ -560,7 +593,9 @@ mod tests {
         let again = commit(&conn, &input).unwrap();
         assert_eq!(again.finalization_id, "fin-1");
         let count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM finalization_outbox", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM finalization_outbox", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(count, 1, "同快照重发不得创建第二条提交");
 
@@ -583,10 +618,16 @@ mod tests {
         let (draft_id, _) = seed_draft(&conn, 1, 1, "正文");
         let mut wrong_chapter = commit_input(draft_id, "fin-x", "a");
         wrong_chapter.chapter_number = 2;
-        assert_eq!(commit(&conn, &wrong_chapter).unwrap_err(), "草稿与定稿章节不匹配");
+        assert_eq!(
+            commit(&conn, &wrong_chapter).unwrap_err(),
+            "草稿与定稿章节不匹配"
+        );
 
-        conn.execute("UPDATE drafts SET status = 'finalized' WHERE id = ?1", [draft_id])
-            .unwrap();
+        conn.execute(
+            "UPDATE drafts SET status = 'finalized' WHERE id = ?1",
+            [draft_id],
+        )
+        .unwrap();
         assert_eq!(
             commit(&conn, &commit_input(draft_id, "fin-x", "a")).unwrap_err(),
             "草稿已定稿但缺少可恢复发布记录"
@@ -633,7 +674,8 @@ mod tests {
         let (draft_id, _) = seed_draft(&conn, 1, 1, "正文");
         commit(&conn, &commit_input(draft_id, "fin-9", "正文")).unwrap();
 
-        let pending = mark_publication_pending(&conn, "fin-9", "实体稿目标已存在且内容不匹配").unwrap();
+        let pending =
+            mark_publication_pending(&conn, "fin-9", "实体稿目标已存在且内容不匹配").unwrap();
         assert_eq!(pending.publication_status, "pending");
         assert_eq!(pending.last_error, "实体稿目标已存在且内容不匹配");
 
@@ -642,14 +684,20 @@ mod tests {
         assert_eq!(published.last_error, "");
         assert!(published.published_at.is_some());
 
-        assert_eq!(mark_published(&conn, "nope").unwrap_err(), "定稿提交不存在：nope");
+        assert_eq!(
+            mark_published(&conn, "nope").unwrap_err(),
+            "定稿提交不存在：nope"
+        );
         assert_eq!(
             mark_publication_pending(&conn, "nope", "e").unwrap_err(),
             "定稿提交不存在：nope"
         );
         assert!(get(&conn, "nope").unwrap().is_none());
         assert_eq!(
-            get_by_draft_id(&conn, draft_id).unwrap().unwrap().finalization_id,
+            get_by_draft_id(&conn, draft_id)
+                .unwrap()
+                .unwrap()
+                .finalization_id,
             "fin-9"
         );
     }

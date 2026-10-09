@@ -154,8 +154,7 @@ fn move_generated_files_to_trash(project_path: &Path) -> Result<Vec<MovedFile>, 
         .join(".lore")
         .join("trash")
         .join(format!("clear-{stamp}"));
-    std::fs::create_dir_all(&trash_dir)
-        .map_err(|error| format!("创建回收目录失败：{error}"))?;
+    std::fs::create_dir_all(&trash_dir).map_err(|error| format!("创建回收目录失败：{error}"))?;
 
     let mut moved: Vec<MovedFile> = Vec::new();
     for file in files {
@@ -167,7 +166,10 @@ fn move_generated_files_to_trash(project_path: &Path) -> Result<Vec<MovedFile>, 
             restore_moved_files(&moved);
             return Err(format!("移动生成章节文件失败：{error}"));
         }
-        moved.push(MovedFile { from: file, to: target });
+        moved.push(MovedFile {
+            from: file,
+            to: target,
+        });
     }
     Ok(moved)
 }
@@ -438,7 +440,10 @@ mod tests {
         // 顺序对齐基线：blueprints 先于 creativeFields
         assert_eq!(
             result.cleared,
-            vec![ProjectClearScope::Blueprints, ProjectClearScope::CreativeFields]
+            vec![
+                ProjectClearScope::Blueprints,
+                ProjectClearScope::CreativeFields
+            ]
         );
         assert_eq!(result.physical_files_deleted, 0);
 
@@ -466,7 +471,9 @@ mod tests {
         assert_eq!(operations, 0);
         // 名单元数据与 receipt 被清空（表中无 main 行，待下次读取重新建档）
         let meta_rows: i64 = conn
-            .query_row("SELECT COUNT(*) FROM character_roster_meta", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM character_roster_meta", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(meta_rows, 0);
         let snapshot = crate::repositories::character_roster_repository::read(&conn).unwrap();

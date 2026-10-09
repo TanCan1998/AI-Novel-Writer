@@ -182,11 +182,7 @@ fn js_string_of(value: &Value) -> String {
         Value::Bool(flag) => flag.to_string(),
         Value::Number(number) => number.to_string(),
         Value::String(text) => text.clone(),
-        Value::Array(items) => items
-            .iter()
-            .map(js_string_of)
-            .collect::<Vec<_>>()
-            .join(","),
+        Value::Array(items) => items.iter().map(js_string_of).collect::<Vec<_>>().join(","),
         Value::Object(_) => "[object Object]".to_string(),
     }
 }
@@ -202,17 +198,26 @@ pub fn validate_embedding_vectors(
     for (vector_index, vector) in vectors.iter().enumerate() {
         let position = vector_index + 1;
         let Some(items) = vector.as_array() else {
-            return Err(invalid(provider, format!("第 {position} 个向量为空或不是数组")));
+            return Err(invalid(
+                provider,
+                format!("第 {position} 个向量为空或不是数组"),
+            ));
         };
         if items.is_empty() {
-            return Err(invalid(provider, format!("第 {position} 个向量为空或不是数组")));
+            return Err(invalid(
+                provider,
+                format!("第 {position} 个向量为空或不是数组"),
+            ));
         }
         match expected_dimension {
             None => expected_dimension = Some(items.len()),
             Some(expected) if items.len() != expected => {
                 return Err(invalid(
                     provider,
-                    format!("第 {position} 个向量为 {} 维，期望 {expected} 维", items.len()),
+                    format!(
+                        "第 {position} 个向量为 {} 维，期望 {expected} 维",
+                        items.len()
+                    ),
                 ));
             }
             Some(_) => {}
@@ -252,7 +257,10 @@ pub fn validate_openai_embeddings(
 
     let mut errors: Vec<String> = Vec::new();
     if response_items.len() != batch_length {
-        errors.push(format!("数量 {}，期望 {batch_length}", response_items.len()));
+        errors.push(format!(
+            "数量 {}，期望 {batch_length}",
+            response_items.len()
+        ));
     }
 
     let mut seen_indexes: Vec<usize> = Vec::new();
@@ -330,7 +338,10 @@ pub fn validate_gemini_embeddings(
 
     let mut errors: Vec<String> = Vec::new();
     if response_items.len() != batch_length {
-        errors.push(format!("数量 {}，期望 {batch_length}", response_items.len()));
+        errors.push(format!(
+            "数量 {}，期望 {batch_length}",
+            response_items.len()
+        ));
     }
 
     let mut embeddings: Vec<Value> = Vec::new();
@@ -423,13 +434,11 @@ pub async fn embed_openai(
         client
             .post(&url)
             .header(reqwest::header::CONTENT_TYPE, "application/json")
-            .header(
-                reqwest::header::AUTHORIZATION,
-                format!("Bearer {api_key}"),
-            )
-            .body(serde_json::to_string(&body).map_err(|error| {
-                EmbeddingError::Plain(format!("请求体序列化失败：{error}"))
-            })?),
+            .header(reqwest::header::AUTHORIZATION, format!("Bearer {api_key}"))
+            .body(
+                serde_json::to_string(&body)
+                    .map_err(|error| EmbeddingError::Plain(format!("请求体序列化失败：{error}")))?,
+            ),
     )
     .await?;
 
@@ -474,9 +483,10 @@ pub async fn embed_gemini(
             .post(&url)
             .header(reqwest::header::CONTENT_TYPE, "application/json")
             .header("x-goog-api-key", api_key)
-            .body(serde_json::to_string(&body).map_err(|error| {
-                EmbeddingError::Plain(format!("请求体序列化失败：{error}"))
-            })?),
+            .body(
+                serde_json::to_string(&body)
+                    .map_err(|error| EmbeddingError::Plain(format!("请求体序列化失败：{error}")))?,
+            ),
     )
     .await?;
 
@@ -529,10 +539,7 @@ pub async fn generate_embeddings(
     }
 
     // 基线在末尾对**整体结果**再校验一次（跨批次的维度一致性）。
-    let results_as_values: Vec<Value> = results
-        .iter()
-        .map(|vector| json!(vector))
-        .collect();
+    let results_as_values: Vec<Value> = results.iter().map(|vector| json!(vector)).collect();
     validate_embedding_vectors(provider, &results_as_values)
 }
 
@@ -552,17 +559,21 @@ mod tests {
         );
         // 以下形态都**不**命中（与 JS 严格判定一致）
         for rejected in [
-            "https://localhost:11434/api",      // 非 http
-            "http://localhost:11435/api",       // 端口不同
-            "http://ollama.local:11434/api",    // 非本地白名单主机
-            "http://localhost:11434/api/v1",    // 路径不同
-            "http://localhost:11434/v1",        // 已兼容
+            "https://localhost:11434/api",   // 非 http
+            "http://localhost:11435/api",    // 端口不同
+            "http://ollama.local:11434/api", // 非本地白名单主机
+            "http://localhost:11434/api/v1", // 路径不同
+            "http://localhost:11434/v1",     // 已兼容
             "http://user:pass@localhost:11434/api",
             "http://localhost:11434/api?x=1",
             "http://localhost:11434/api#frag",
             "not-a-url",
         ] {
-            assert_eq!(ollama_openai_embedding_base_url(rejected), None, "{rejected}");
+            assert_eq!(
+                ollama_openai_embedding_base_url(rejected),
+                None,
+                "{rejected}"
+            );
         }
     }
 
@@ -602,7 +613,10 @@ mod tests {
 
     #[test]
     fn gemini_base_url_strips_only_one_trailing_slash_test() {
-        assert_eq!(gemini_base_url("https://host/v1beta/"), "https://host/v1beta");
+        assert_eq!(
+            gemini_base_url("https://host/v1beta/"),
+            "https://host/v1beta"
+        );
         assert_eq!(
             gemini_base_url("https://host/v1beta//"),
             "https://host/v1beta/",
@@ -613,11 +627,8 @@ mod tests {
     #[test]
     fn embedding_vectors_require_dimension_and_finite_numbers_test() {
         let provider = EmbeddingProvider::OpenAi;
-        let ok = validate_embedding_vectors(
-            provider,
-            &[json!([0.1, 0.2]), json!([0.3, -0.4])],
-        )
-        .unwrap();
+        let ok =
+            validate_embedding_vectors(provider, &[json!([0.1, 0.2]), json!([0.3, -0.4])]).unwrap();
         assert_eq!(ok, vec![vec![0.1, 0.2], vec![0.3, -0.4]]);
 
         assert_eq!(
@@ -660,11 +671,18 @@ mod tests {
             2,
         )
         .unwrap();
-        assert_eq!(ok, vec![vec![0.1, 0.2], vec![0.3, 0.4]], "必须按 index 重排");
+        assert_eq!(
+            ok,
+            vec![vec![0.1, 0.2], vec![0.3, 0.4]],
+            "必须按 index 重排"
+        );
 
         assert_eq!(
             validate_openai_embeddings(&json!({"data": []}), 1).unwrap_err(),
-            invalid(provider, "数量 0，期望 1；index 覆盖不完整，缺少 0".to_string())
+            invalid(
+                provider,
+                "数量 0，期望 1；index 覆盖不完整，缺少 0".to_string()
+            )
         );
         assert_eq!(
             validate_openai_embeddings(&json!({"nope": []}), 1).unwrap_err(),
@@ -672,23 +690,35 @@ mod tests {
         );
         assert_eq!(
             validate_openai_embeddings(&json!({"data": [{"index": 0}]}), 1).unwrap_err(),
-            invalid(provider, "data 项缺少 embedding 数组；index 覆盖不完整，缺少 0".to_string()),
+            invalid(
+                provider,
+                "data 项缺少 embedding 数组；index 覆盖不完整，缺少 0".to_string()
+            ),
             "基线在 continue 后仍会汇总缺失 index"
         );
         assert_eq!(
             validate_openai_embeddings(&json!({"data": [{"index": 1.5, "embedding": [1.0]}]}), 1)
                 .unwrap_err(),
-            invalid(provider, "index 1.5 不是整数；index 覆盖不完整，缺少 0".to_string())
+            invalid(
+                provider,
+                "index 1.5 不是整数；index 覆盖不完整，缺少 0".to_string()
+            )
         );
         assert_eq!(
             validate_openai_embeddings(&json!({"data": [{"index": null, "embedding": [1.0]}]}), 1)
                 .unwrap_err(),
-            invalid(provider, "index null 不是整数；index 覆盖不完整，缺少 0".to_string())
+            invalid(
+                provider,
+                "index null 不是整数；index 覆盖不完整，缺少 0".to_string()
+            )
         );
         assert_eq!(
             validate_openai_embeddings(&json!({"data": [{"index": 0, "embedding": [1.0]}]}), 2)
                 .unwrap_err(),
-            invalid(provider, "数量 1，期望 2；index 覆盖不完整，缺少 1".to_string())
+            invalid(
+                provider,
+                "数量 1，期望 2；index 覆盖不完整，缺少 1".to_string()
+            )
         );
         assert_eq!(
             validate_openai_embeddings(
@@ -704,22 +734,31 @@ mod tests {
         assert_eq!(
             validate_openai_embeddings(&json!({"data": [{"index": -1, "embedding": [1.0]}]}), 1)
                 .unwrap_err(),
-            invalid(provider, "index -1 超出范围 0..0；index 覆盖不完整，缺少 0".to_string())
+            invalid(
+                provider,
+                "index -1 超出范围 0..0；index 覆盖不完整，缺少 0".to_string()
+            )
         );
         assert_eq!(
             validate_openai_embeddings(&json!({"data": [{"index": 1, "embedding": [1.0]}]}), 1)
                 .unwrap_err(),
-            invalid(provider, "index 1 超出范围 0..0；index 覆盖不完整，缺少 0".to_string())
+            invalid(
+                provider,
+                "index 1 超出范围 0..0；index 覆盖不完整，缺少 0".to_string()
+            )
         );
     }
 
     #[test]
     fn gemini_embeddings_are_order_based_test() {
         let provider = EmbeddingProvider::Gemini;
-        let ok = validate_gemini_embeddings(&json!({"embeddings": [
-            {"values": [0.1, 0.2]},
-            {"values": [0.3, 0.4]}
-        ]}), 2)
+        let ok = validate_gemini_embeddings(
+            &json!({"embeddings": [
+                {"values": [0.1, 0.2]},
+                {"values": [0.3, 0.4]}
+            ]}),
+            2,
+        )
         .unwrap();
         assert_eq!(ok, vec![vec![0.1, 0.2], vec![0.3, 0.4]]);
 
@@ -771,11 +810,17 @@ mod tests {
         assert_eq!(embedding_batches(50, "openai", None), vec![0..50]);
         assert_eq!(embedding_batches(51, "openai", None), vec![0..50, 50..51]);
         assert_eq!(embedding_batches(100, "gemini", None), vec![0..100]);
-        assert_eq!(embedding_batches(101, "gemini", None), vec![0..100, 100..101]);
+        assert_eq!(
+            embedding_batches(101, "gemini", None),
+            vec![0..100, 100..101]
+        );
         // 显式批量优先，且 0 被抬升为 1（避免空进度死循环）
         assert_eq!(embedding_batches(3, "openai", Some(2)), vec![0..2, 2..3]);
         assert_eq!(embedding_batches(2, "openai", Some(0)), vec![0..1, 1..2]);
         // 非 gemini 协议一律走 OpenAI 默认值
-        assert_eq!(embedding_batches(101, "openai-compatible", None), vec![0..50, 50..100, 100..101]);
+        assert_eq!(
+            embedding_batches(101, "openai-compatible", None),
+            vec![0..50, 50..100, 100..101]
+        );
     }
 }

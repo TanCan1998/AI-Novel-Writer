@@ -51,11 +51,7 @@ pub fn read_json_value_or(path: &Path, fallback: serde_json::Value) -> serde_jso
         JsonFileReadResult::Ok(value) => value,
         JsonFileReadResult::Missing => fallback,
         JsonFileReadResult::Error(error) => {
-            eprintln!(
-                "[Lorekeeper] 读取 {} 失败: {}",
-                path.display(),
-                error
-            );
+            eprintln!("[Lorekeeper] 读取 {} 失败: {}", path.display(), error);
             fallback
         }
     }
@@ -67,21 +63,13 @@ pub fn read_json_file<T: serde::de::DeserializeOwned>(path: &Path, fallback: T) 
         JsonFileReadResult::Ok(value) => match serde_json::from_value(value) {
             Ok(parsed) => parsed,
             Err(error) => {
-                eprintln!(
-                    "[Lorekeeper] 读取 {} 失败: {}",
-                    path.display(),
-                    error
-                );
+                eprintln!("[Lorekeeper] 读取 {} 失败: {}", path.display(), error);
                 fallback
             }
         },
         JsonFileReadResult::Missing => fallback,
         JsonFileReadResult::Error(error) => {
-            eprintln!(
-                "[Lorekeeper] 读取 {} 失败: {}",
-                path.display(),
-                error
-            );
+            eprintln!("[Lorekeeper] 读取 {} 失败: {}", path.display(), error);
             fallback
         }
     }
@@ -256,11 +244,24 @@ mod tests {
         // 对齐 `JSON.stringify(value, null, 2)`：两空格缩进、无尾随换行。
         // 注意键序取决于 serde_json 是否启用 `preserve_order`（当前未启用 → 字典序），
         // 因此这里只断言格式与语义，不锁定键序。
-        assert!(content.starts_with("{\n  \""), "必须为两空格缩进的 pretty JSON：{content}");
-        assert_eq!(content.lines().count(), 4, "每个键占一行（含首尾花括号）：{content}");
+        assert!(
+            content.starts_with("{\n  \""),
+            "必须为两空格缩进的 pretty JSON：{content}"
+        );
+        assert_eq!(
+            content.lines().count(),
+            4,
+            "每个键占一行（含首尾花括号）：{content}"
+        );
         assert!(!content.ends_with('\n'), "不得有尾随换行");
-        assert_eq!(serde_json::from_str::<serde_json::Value>(&content).unwrap(), value);
-        assert!(temp_files(dir.join("nested").as_path()).is_empty(), "临时文件必须清理");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&content).unwrap(),
+            value
+        );
+        assert!(
+            temp_files(dir.join("nested").as_path()).is_empty(),
+            "临时文件必须清理"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

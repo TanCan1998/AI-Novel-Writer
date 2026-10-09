@@ -81,13 +81,8 @@ pub fn ensure_lorekeeper_home() -> Result<(), String> {
 /// 注入数据根版本，便于测试。
 pub fn ensure_lorekeeper_home_at(home: &Path) -> Result<(), String> {
     for directory in [home.to_path_buf(), home.join("prompts"), home.join("logs")] {
-        std::fs::create_dir_all(&directory).map_err(|error| {
-            format!(
-                "无法创建数据目录 {}：{}",
-                directory.display(),
-                error
-            )
-        })?;
+        std::fs::create_dir_all(&directory)
+            .map_err(|error| format!("无法创建数据目录 {}：{}", directory.display(), error))?;
     }
     Ok(())
 }

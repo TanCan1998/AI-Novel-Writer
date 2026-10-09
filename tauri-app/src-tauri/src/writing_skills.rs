@@ -129,7 +129,10 @@ fn suggested_stage(fields: &std::collections::HashMap<String, String>, content: 
     let searchable = format!(
         "{} {} {}",
         fields.get("name").map(String::as_str).unwrap_or_default(),
-        fields.get("description").map(String::as_str).unwrap_or_default(),
+        fields
+            .get("description")
+            .map(String::as_str)
+            .unwrap_or_default(),
         head
     )
     .to_lowercase();
@@ -203,7 +206,10 @@ pub fn inspect_writing_skill_markdown(raw: &str) -> Result<WritingSkillInspectio
     ) {
         reasons.push("hook-dependency".to_string());
     }
-    if matches_any(&body, &[r"\bsub-?agents?\b|\bdelegate\b.{0,30}\bagents?\b|子代理|子智能体"]) {
+    if matches_any(
+        &body,
+        &[r"\bsub-?agents?\b|\bdelegate\b.{0,30}\bagents?\b|子代理|子智能体"],
+    ) {
         reasons.push("subagent-dependency".to_string());
     }
     if matches_any(
@@ -253,8 +259,10 @@ fn percent_decode(value: &str) -> Result<String, String> {
             if index + 2 >= bytes.len() {
                 return Err("Invalid percent escape in GitHub URL".to_string());
             }
-            let hex = std::str::from_utf8(&bytes[index + 1..index + 3]).map_err(|_| "Invalid percent escape in GitHub URL".to_string())?;
-            let decoded = u8::from_str_radix(hex, 16).map_err(|_| "Invalid percent escape in GitHub URL".to_string())?;
+            let hex = std::str::from_utf8(&bytes[index + 1..index + 3])
+                .map_err(|_| "Invalid percent escape in GitHub URL".to_string())?;
+            let decoded = u8::from_str_radix(hex, 16)
+                .map_err(|_| "Invalid percent escape in GitHub URL".to_string())?;
             out.push(decoded);
             index += 3;
         } else {
@@ -310,7 +318,10 @@ pub fn parse_github_writing_skill_url(value: &str) -> Result<GitHubWritingSkillL
             return Err("Incomplete raw GitHub URL".to_string());
         }
         let repo = parts[1].clone();
-        let repo = regex::Regex::new(r"(?i)\.git$").unwrap().replace(&repo, "").to_string();
+        let repo = regex::Regex::new(r"(?i)\.git$")
+            .unwrap()
+            .replace(&repo, "")
+            .to_string();
         return Ok(GitHubWritingSkillLocation {
             owner: safe_part(&parts[0], "owner")?,
             repo: safe_part(&repo, "repository")?,
@@ -324,7 +335,10 @@ pub fn parse_github_writing_skill_url(value: &str) -> Result<GitHubWritingSkillL
     }
 
     let repo = parts[1].clone();
-    let repo = regex::Regex::new(r"(?i)\.git$").unwrap().replace(&repo, "").to_string();
+    let repo = regex::Regex::new(r"(?i)\.git$")
+        .unwrap()
+        .replace(&repo, "")
+        .to_string();
     let owner = safe_part(&parts[0], "owner")?;
     let repo = safe_part(&repo, "repository")?;
     if parts.len() == 2 {
@@ -357,7 +371,8 @@ pub fn parse_github_writing_skill_url(value: &str) -> Result<GitHubWritingSkillL
 
 /// 对齐控制器 `githubRawUrl`
 pub fn github_raw_url(owner: &str, repo: &str, reference: &str, path: &str) -> String {
-    let mut segments: Vec<String> = vec![owner.to_string(), repo.to_string(), reference.to_string()];
+    let mut segments: Vec<String> =
+        vec![owner.to_string(), repo.to_string(), reference.to_string()];
     segments.extend(path.split('/').map(|segment| segment.to_string()));
     let encoded: Vec<String> = segments
         .iter()
@@ -368,7 +383,10 @@ pub fn github_raw_url(owner: &str, repo: &str, reference: &str, path: &str) -> S
                 .map(|byte| {
                     let character = byte as char;
                     if character.is_ascii_alphanumeric()
-                        || matches!(character, '-' | '_' | '.' | '!' | '~' | '*' | '\'' | '(' | ')')
+                        || matches!(
+                            character,
+                            '-' | '_' | '.' | '!' | '~' | '*' | '\'' | '(' | ')'
+                        )
                     {
                         character.to_string()
                     } else {
@@ -420,7 +438,10 @@ mod tests {
         assert_eq!(inspected.metadata.name, "unnamed-writing-skill");
         assert_eq!(inspected.metadata.language, "bilingual");
         assert_eq!(inspected.metadata.stage, None);
-        assert_eq!(inspected.metadata.description, "Writing skill: unnamed-writing-skill");
+        assert_eq!(
+            inspected.metadata.description,
+            "Writing skill: unnamed-writing-skill"
+        );
         assert_eq!(inspected.suggested_stage, "drafting");
         assert_eq!(inspected.content, "纯正文，无 frontmatter");
     }
@@ -437,7 +458,9 @@ mod tests {
         assert!(hook.reasons.contains(&"hook-dependency".to_string()));
 
         let subagent = inspect_writing_skill_markdown("交给子代理处理").unwrap();
-        assert!(subagent.reasons.contains(&"subagent-dependency".to_string()));
+        assert!(subagent
+            .reasons
+            .contains(&"subagent-dependency".to_string()));
 
         let tool = inspect_writing_skill_markdown("请调用 grep 工具").unwrap();
         assert!(tool.reasons.contains(&"tool-dependency".to_string()));
@@ -454,17 +477,25 @@ mod tests {
     #[test]
     fn parse_github_url_accepts_supported_forms_test() {
         let repo = parse_github_writing_skill_url("https://github.com/o/r").unwrap();
-        assert_eq!((repo.owner.as_str(), repo.repo.as_str(), repo.path.as_str()), ("o", "r", "SKILL.md"));
+        assert_eq!(
+            (repo.owner.as_str(), repo.repo.as_str(), repo.path.as_str()),
+            ("o", "r", "SKILL.md")
+        );
         assert_eq!(repo.reference, None);
 
-        let tree = parse_github_writing_skill_url("https://github.com/o/r/tree/main/skills/a").unwrap();
+        let tree =
+            parse_github_writing_skill_url("https://github.com/o/r/tree/main/skills/a").unwrap();
         assert_eq!(tree.reference.as_deref(), Some("main"));
         assert_eq!(tree.path, "skills/a/SKILL.md");
 
-        let blob = parse_github_writing_skill_url("https://github.com/o/r/blob/main/skills/a/SKILL.md").unwrap();
+        let blob =
+            parse_github_writing_skill_url("https://github.com/o/r/blob/main/skills/a/SKILL.md")
+                .unwrap();
         assert_eq!(blob.path, "skills/a/SKILL.md");
 
-        let raw = parse_github_writing_skill_url("https://raw.githubusercontent.com/o/r/v1/SKILL.md").unwrap();
+        let raw =
+            parse_github_writing_skill_url("https://raw.githubusercontent.com/o/r/v1/SKILL.md")
+                .unwrap();
         assert_eq!(raw.reference.as_deref(), Some("v1"));
 
         // .git 后缀归一
@@ -472,7 +503,8 @@ mod tests {
         assert_eq!(dotted.repo, "r");
 
         // 百分号编码段
-        let encoded = parse_github_writing_skill_url("https://github.com/o/r/tree/main/skills%2Da").unwrap();
+        let encoded =
+            parse_github_writing_skill_url("https://github.com/o/r/tree/main/skills%2Da").unwrap();
         assert_eq!(encoded.path, "skills-a/SKILL.md");
     }
 
@@ -496,7 +528,8 @@ mod tests {
             );
         }
         // `tree` 指向目录时自动追加 SKILL.md（对齐基线的宽容行为）
-        let tree_dir = parse_github_writing_skill_url("https://github.com/o/r/tree/main/notes").unwrap();
+        let tree_dir =
+            parse_github_writing_skill_url("https://github.com/o/r/tree/main/notes").unwrap();
         assert_eq!(tree_dir.path, "notes/SKILL.md");
         // https 默认端口被 URL 规范化去除（与 JS `new URL` 一致）
         assert!(parse_github_writing_skill_url("https://github.com:443/o/r").is_ok());

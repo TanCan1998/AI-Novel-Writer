@@ -142,13 +142,14 @@ fn is_js_whitespace(character: char) -> bool {
         | '\u{0020}'    // SP
         | '\u{00A0}'    // NBSP
         | '\u{1680}'    // OGHAM SPACE MARK
-        | '\u{2000}'..='\u{200A}' // EN QUAD … HAIR SPACE
+        | '\u{2000}'
+            ..='\u{200A}' // EN QUAD … HAIR SPACE
         | '\u{2028}'    // LINE SEPARATOR
         | '\u{2029}'    // PARAGRAPH SEPARATOR
         | '\u{202F}'    // NARROW NBSP
         | '\u{205F}'    // MEDIUM MATHEMATICAL SPACE
         | '\u{3000}'    // IDEOGRAPHIC SPACE
-        | '\u{FEFF}'    // ZWNBSP (BOM)
+        | '\u{FEFF}' // ZWNBSP (BOM)
     )
 }
 
@@ -304,7 +305,8 @@ pub fn confirm_event(
                     row.get::<_, i64>("draft_id")?,
                     row.get::<_, i64>("chapter_number")?,
                     row.get::<_, String>("chapter_title")?,
-                    row.get::<_, Option<String>>("content_snapshot")?.unwrap_or_default(),
+                    row.get::<_, Option<String>>("content_snapshot")?
+                        .unwrap_or_default(),
                 ))
             },
         )
@@ -326,7 +328,13 @@ pub fn confirm_event(
         "INSERT INTO narrative_thread_confirmations (
            plan_id, draft_id, event_type, evidence, reason
          ) VALUES (?1, ?2, ?3, ?4, ?5)",
-        rusqlite::params![input.plan_id, input.draft_id, input.event_type, evidence, reason],
+        rusqlite::params![
+            input.plan_id,
+            input.draft_id,
+            input.event_type,
+            evidence,
+            reason
+        ],
     )
     .map_err(|error| format!("写入叙事线索事件失败：{error}"))?;
     let id = conn.last_insert_rowid();
@@ -376,9 +384,7 @@ fn plan_events(conn: &Connection, plan_id: i64) -> Result<Vec<NarrativeThreadEve
                 draft_id: row.get("draftId")?,
                 event_type: row.get("type")?,
                 evidence: row.get("evidence")?,
-                reason: row
-                    .get::<_, Option<String>>("reason")?
-                    .unwrap_or_default(),
+                reason: row.get::<_, Option<String>>("reason")?.unwrap_or_default(),
                 chapter_number: row.get("chapterNumber")?,
                 chapter_title: row.get("chapterTitle")?,
                 created_at: row
@@ -486,7 +492,8 @@ pub fn list_relevant_active(
 }
 
 /// 相关性的「非章号」分支（与章号区间判定分开，便于单测覆盖）
-fn is_relevant_without_range(    thread: &NarrativeThreadView,
+fn is_relevant_without_range(
+    thread: &NarrativeThreadView,
     context_text: &str,
     characters: &[&str],
 ) -> bool {
@@ -565,25 +572,37 @@ mod tests {
             title: "   ".to_string(),
             ..plan_input()
         };
-        assert_eq!(create_plan(&conn, &blank).unwrap_err(), "叙事线索计划参数无效");
+        assert_eq!(
+            create_plan(&conn, &blank).unwrap_err(),
+            "叙事线索计划参数无效"
+        );
 
         let long_title = NarrativeThreadPlanInput {
             title: "字".repeat(121),
             ..plan_input()
         };
-        assert_eq!(create_plan(&conn, &long_title).unwrap_err(), "叙事线索计划参数无效");
+        assert_eq!(
+            create_plan(&conn, &long_title).unwrap_err(),
+            "叙事线索计划参数无效"
+        );
 
         let long_type = NarrativeThreadPlanInput {
             thread_type: "t".repeat(61),
             ..plan_input()
         };
-        assert_eq!(create_plan(&conn, &long_type).unwrap_err(), "叙事线索计划参数无效");
+        assert_eq!(
+            create_plan(&conn, &long_type).unwrap_err(),
+            "叙事线索计划参数无效"
+        );
 
         let long_intent = NarrativeThreadPlanInput {
             author_intent: "字".repeat(1001),
             ..plan_input()
         };
-        assert_eq!(create_plan(&conn, &long_intent).unwrap_err(), "叙事线索计划参数无效");
+        assert_eq!(
+            create_plan(&conn, &long_intent).unwrap_err(),
+            "叙事线索计划参数无效"
+        );
     }
 
     #[test]
@@ -676,13 +695,7 @@ mod tests {
                finalization_id, draft_id, chapter_number, chapter_title, content_hash,
                content_revision, content_snapshot, target_file_name, publication_status
              ) VALUES (?1, ?2, ?3, ?4, 'hash', 1, ?5, 'f.md', 'published')",
-            rusqlite::params![
-                format!("fin-{draft_id}"),
-                draft_id,
-                chapter,
-                title,
-                body
-            ],
+            rusqlite::params![format!("fin-{draft_id}"), draft_id, chapter, title, body],
         )
         .unwrap();
         draft_id
@@ -924,8 +937,11 @@ mod tests {
         )
         .unwrap();
         // 把定稿行改回草稿态：事件应立即从列表投影中消失（status 回落 planned）
-        conn.execute("UPDATE drafts SET status = 'draft' WHERE id = ?1", [draft_id])
-            .unwrap();
+        conn.execute(
+            "UPDATE drafts SET status = 'draft' WHERE id = ?1",
+            [draft_id],
+        )
+        .unwrap();
         let views = list(&conn).unwrap();
         assert_eq!(views[0].status, "planned");
         assert!(views[0].events.is_empty());
@@ -1030,9 +1046,11 @@ mod tests {
         .unwrap();
         delete_plan(&conn, plan.id).unwrap();
         let remaining: i64 = conn
-            .query_row("SELECT COUNT(*) FROM narrative_thread_confirmations", [], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT COUNT(*) FROM narrative_thread_confirmations",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(remaining, 0, "删除计划应级联清除事件");
     }

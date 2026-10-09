@@ -270,7 +270,10 @@ fn request_payload_hash_candidates(
 ) -> std::collections::HashSet<String> {
     let mut candidates = std::collections::HashSet::new();
     candidates.insert(request_payload_hash(request, chapters));
-    for count in [count_legacy_draft_units_v1 as fn(&str) -> i64, |content: &str| content.chars().count() as i64] {
+    for count in [
+        count_legacy_draft_units_v1 as fn(&str) -> i64,
+        |content: &str| content.chars().count() as i64,
+    ] {
         let remapped: Vec<FinalizedDraftImportChapter> = chapters
             .iter()
             .map(|chapter| FinalizedDraftImportChapter {
@@ -395,7 +398,16 @@ fn verify_stored_facts(
             )
             .optional()
             .map_err(|e| e.to_string())?;
-        let Some((chapter_number, status, word_count, body, content_hash, content_snapshot, target_file_name, publication_status)) = fact
+        let Some((
+            chapter_number,
+            status,
+            word_count,
+            body,
+            content_hash,
+            content_snapshot,
+            target_file_name,
+            publication_status,
+        )) = fact
         else {
             return Err("定稿导入已提交事实缺失或漂移，已拒绝重放".to_string());
         };
@@ -446,7 +458,8 @@ pub fn preview(
     let chapters = normalize_chapters(input)?;
     let rows = authority_rows(conn)?;
     let sequence = sequence_from_rows(rows.clone());
-    let mut existing_by_chapter: std::collections::HashMap<i64, &AuthorityRow> = std::collections::HashMap::new();
+    let mut existing_by_chapter: std::collections::HashMap<i64, &AuthorityRow> =
+        std::collections::HashMap::new();
     for row in &rows {
         existing_by_chapter.insert(row.chapter_number, row);
     }
@@ -469,7 +482,8 @@ pub fn preview(
             }
             Some(existing) => {
                 if sha256_hex(&existing.body) == sha256_hex(&chapter.content)
-                    && (existing.title.is_none() || existing.title.as_deref() == Some(chapter.title.as_str()))
+                    && (existing.title.is_none()
+                        || existing.title.as_deref() == Some(chapter.title.as_str()))
                 {
                     duplicate_chapter_numbers.push(chapter.chapter_number);
                     let mut entry = entry.clone();
@@ -502,16 +516,14 @@ pub fn preview(
         }
     }
     let authority_invalid = sequence.status == "invalid";
-    let classification = if authority_invalid
-        || !conflict_chapter_numbers.is_empty()
-        || candidate_gap.is_some()
-    {
-        "conflict"
-    } else if new_chapter_numbers.is_empty() {
-        "exact-duplicate"
-    } else {
-        "ready"
-    };
+    let classification =
+        if authority_invalid || !conflict_chapter_numbers.is_empty() || candidate_gap.is_some() {
+            "conflict"
+        } else if new_chapter_numbers.is_empty() {
+            "exact-duplicate"
+        } else {
+            "ready"
+        };
     let next_chapter_number = if classification == "conflict" {
         None
     } else {
@@ -554,7 +566,10 @@ pub fn commit(
         }
         let receipt = parse_stored_receipt(&existing)?;
         verify_stored_facts(conn, &receipt, &chapters)?;
-        return Ok(FinalizedDraftImportReceipt { idempotent: true, ..receipt });
+        return Ok(FinalizedDraftImportReceipt {
+            idempotent: true,
+            ..receipt
+        });
     }
 
     let expected_commit_manifest_fingerprint = request
@@ -586,8 +601,11 @@ pub fn commit(
                 |row| row.get(0),
             )
             .map_err(|e| e.to_string())?;
-        tx.execute("INSERT INTO contents (body) VALUES (?1)", [&chapter.content])
-            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT INTO contents (body) VALUES (?1)",
+            [&chapter.content],
+        )
+        .map_err(|e| e.to_string())?;
         let content_id = tx.last_insert_rowid();
         tx.execute(
             "INSERT INTO drafts (chapter_number, version, status, source, content_id, word_count)
@@ -671,7 +689,8 @@ mod tests {
     }
 
     fn add_finalized(conn: &Connection, chapter: i64, version: i64, body: &str) {
-        conn.execute("INSERT INTO contents (body) VALUES (?1)", [body]).unwrap();
+        conn.execute("INSERT INTO contents (body) VALUES (?1)", [body])
+            .unwrap();
         let content_id = conn.last_insert_rowid();
         conn.execute(
             "INSERT INTO drafts (chapter_number, version, status, content_id) VALUES (?1, ?2, 'finalized', ?3)",
@@ -734,7 +753,10 @@ mod tests {
         }
     }
 
-    fn import_request(operation: &str, chapters: Vec<FinalizedDraftImportChapter>) -> FinalizedDraftImportRequest {
+    fn import_request(
+        operation: &str,
+        chapters: Vec<FinalizedDraftImportChapter>,
+    ) -> FinalizedDraftImportRequest {
         FinalizedDraftImportRequest {
             operation_id: operation.to_string(),
             expected_authority_fingerprint: None,
@@ -747,13 +769,19 @@ mod tests {
     #[test]
     fn import_commit_creates_finalized_facts_and_replays_idempotently_test() {
         let conn = memory_db();
-        let root = std::env::temp_dir().join(format!("anw-import-{}", crate::project_access::random_uuid_v4()));
+        let root = std::env::temp_dir().join(format!(
+            "anw-import-{}",
+            crate::project_access::random_uuid_v4()
+        ));
         std::fs::create_dir_all(&root).unwrap();
         let root_text = root.to_string_lossy().to_string();
 
         let request = import_request(
             "op-1",
-            vec![import_chapter(1, "第一章", "第一章正文内容"), import_chapter(2, "第二章", "第二章正文内容")],
+            vec![
+                import_chapter(1, "第一章", "第一章正文内容"),
+                import_chapter(2, "第二章", "第二章正文内容"),
+            ],
         );
         let receipt = commit(&conn, &root_text, &request).unwrap();
         assert!(!receipt.idempotent);
@@ -764,7 +792,11 @@ mod tests {
 
         // 数据库事实：finalized 草稿 + outbox 快照 + 幂等日志
         let finalized_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM drafts WHERE status = 'finalized'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM drafts WHERE status = 'finalized'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(finalized_count, 2);
         let outbox_count: i64 = conn
@@ -777,7 +809,11 @@ mod tests {
         assert!(replay.idempotent);
         assert_eq!(replay.drafts.len(), 2);
         let finalized_count: i64 = conn
-            .query_row("SELECT COUNT(*) FROM drafts WHERE status = 'finalized'", [], |r| r.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM drafts WHERE status = 'finalized'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(finalized_count, 2, "重放不得新建草稿");
 
@@ -814,14 +850,25 @@ mod tests {
             commit(
                 &conn,
                 &root,
-                &import_request("op-x", vec![import_chapter(1, "一", "正文甲"), import_chapter(1, "一", "正文乙")])
+                &import_request(
+                    "op-x",
+                    vec![
+                        import_chapter(1, "一", "正文甲"),
+                        import_chapter(1, "一", "正文乙")
+                    ]
+                )
             )
             .unwrap_err(),
             "定稿导入章节号重复：1"
         );
         // 非法 operationId
         assert_eq!(
-            commit(&conn, &root, &import_request("  ", vec![import_chapter(1, "一", "正文")])).unwrap_err(),
+            commit(
+                &conn,
+                &root,
+                &import_request("  ", vec![import_chapter(1, "一", "正文")])
+            )
+            .unwrap_err(),
             "定稿导入 operationId 无效"
         );
     }
@@ -831,7 +878,8 @@ mod tests {
         let conn = memory_db();
         let root = std::env::temp_dir().to_string_lossy().to_string();
         let current = authority_sequence(&conn).unwrap().authority_fingerprint;
-        let mut request = import_request("op-auth", vec![import_chapter(1, "第一章", "第一章正文")]);
+        let mut request =
+            import_request("op-auth", vec![import_chapter(1, "第一章", "第一章正文")]);
         request.expected_authority_fingerprint = Some("deadbeef".to_string());
         assert_eq!(
             commit(&conn, &root, &request).unwrap_err(),

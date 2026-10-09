@@ -93,7 +93,11 @@ pub fn extract_query_terms(query: &str) -> Vec<String> {
         .copied()
         .filter(|term| term.chars().count() >= 2)
         .collect();
-    let source = if meaningful.is_empty() { raw } else { meaningful };
+    let source = if meaningful.is_empty() {
+        raw
+    } else {
+        meaningful
+    };
 
     let mut seen: HashSet<String> = HashSet::new();
     let mut out: Vec<String> = Vec::new();
@@ -431,7 +435,11 @@ mod tests {
 
         activate_generation(&conn, 2).unwrap();
         let spaces = list_spaces(&conn).unwrap();
-        assert_eq!(spaces.iter().filter(|s| s.is_active()).count(), 1, "只能有一个激活代际");
+        assert_eq!(
+            spaces.iter().filter(|s| s.is_active()).count(),
+            1,
+            "只能有一个激活代际"
+        );
         assert_eq!(active_space(&conn).unwrap().unwrap().generation, 2);
         assert_eq!(spaces[0].status, "inactive");
     }
@@ -495,7 +503,10 @@ mod tests {
         }
 
         let live: HashSet<String> = ids(&["c1"]).into_iter().collect();
-        assert_eq!(vectorless_chunk_ids(&conn, &live).unwrap(), vec!["c2", "c3"]);
+        assert_eq!(
+            vectorless_chunk_ids(&conn, &live).unwrap(),
+            vec!["c2", "c3"]
+        );
         // 全覆盖时应为空
         let all: HashSet<String> = ids(&["c1", "c2", "c3"]).into_iter().collect();
         assert!(vectorless_chunk_ids(&conn, &all).unwrap().is_empty());

@@ -166,21 +166,34 @@ mod tests {
         let defaults = default_global_config();
         assert_eq!(defaults["theme"], serde_json::json!("dark"));
         assert_eq!(defaults["defaultModelId"], serde_json::Value::Null);
-        assert_eq!(defaults["autoOpenNextChapterAfterFinalize"], serde_json::json!(false));
+        assert_eq!(
+            defaults["autoOpenNextChapterAfterFinalize"],
+            serde_json::json!(false)
+        );
         assert_eq!(defaults["editorFontSize"], serde_json::json!(16));
-        assert_eq!(defaults["editorFontFamily"], serde_json::json!("Noto Serif SC"));
+        assert_eq!(
+            defaults["editorFontFamily"],
+            serde_json::json!("Noto Serif SC")
+        );
         assert_eq!(defaults["autoSaveInterval"], serde_json::json!(30));
         assert_eq!(
             defaults["proxy"],
             serde_json::json!({ "enabled": false, "type": "http", "host": "", "port": 7890 })
         );
-        assert_eq!(defaults.as_object().unwrap().len(), 7, "默认键集合必须与基线一致");
+        assert_eq!(
+            defaults.as_object().unwrap().len(),
+            7,
+            "默认键集合必须与基线一致"
+        );
     }
 
     #[test]
     fn get_returns_defaults_when_file_missing_test() {
         let dir = temp_dir("get-missing");
-        assert_eq!(read_global_config_at(&config_path(&dir)), default_global_config());
+        assert_eq!(
+            read_global_config_at(&config_path(&dir)),
+            default_global_config()
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -191,7 +204,10 @@ mod tests {
         std::fs::write(&path, br#"{"locale":"zh-CN"}"#).unwrap();
 
         // 对齐基线：文件存在时原样返回，不合并默认值
-        assert_eq!(read_global_config_at(&path), serde_json::json!({ "locale": "zh-CN" }));
+        assert_eq!(
+            read_global_config_at(&path),
+            serde_json::json!({ "locale": "zh-CN" })
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -202,7 +218,11 @@ mod tests {
         std::fs::write(&path, b"{ broken").unwrap();
 
         assert_eq!(read_global_config_at(&path), default_global_config());
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{ broken", "只读路径不得改写文件");
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "{ broken",
+            "只读路径不得改写文件"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -227,8 +247,16 @@ mod tests {
         assert!(result.error.is_none());
 
         let stored = read(&path);
-        assert_eq!(stored["theme"], serde_json::json!("light"), "未指定键必须保留");
-        assert_eq!(stored["locale"], serde_json::json!("zh-CN"), "未知键（locale）必须保留");
+        assert_eq!(
+            stored["theme"],
+            serde_json::json!("light"),
+            "未指定键必须保留"
+        );
+        assert_eq!(
+            stored["locale"],
+            serde_json::json!("zh-CN"),
+            "未知键（locale）必须保留"
+        );
         assert_eq!(stored["editorFontSize"], serde_json::json!(20));
         // 浅合并：嵌套对象整体替换，而不是深合并
         assert_eq!(
@@ -283,7 +311,11 @@ mod tests {
             Some("Error: 全局配置损坏，已拒绝覆盖"),
             "对齐基线 String(new Error(...)) 的形态"
         );
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "{ broken", "拒绝覆盖必须保留原文件");
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap(),
+            "{ broken",
+            "拒绝覆盖必须保留原文件"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

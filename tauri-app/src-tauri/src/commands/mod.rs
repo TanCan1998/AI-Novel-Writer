@@ -12,32 +12,32 @@
 
 use serde::Serialize;
 
-mod config; // 批次 A：配置管理
-mod window; // 批次 A：窗口管理
-mod skin; // 批次 A：皮肤管理
-mod official_homepage; // 批次 A：官方主页
-mod model_provider_resource; // 批次 A：模型资源
-mod fs; // 批次 B：项目文件系统
-pub mod project; // 批次 B：项目生命周期
-mod external_file_grant; // 批次 B：外部文件授权
-mod db; // 批次 C：项目数据库
+pub mod app_data;
 pub mod chapter_lifecycle; // 批次 E 第二部分：章节生命周期（4 频道）
+mod config; // 批次 A：配置管理
+mod db; // 批次 C：项目数据库
+mod external_file_grant; // 批次 B：外部文件授权
 pub mod finalization; // 批次 E（G1）：定稿提交 / 实体稿重试（2 频道）
+mod fs; // 批次 B：项目文件系统
+pub mod kb; // 批次 F2-3：知识库（kb:* 15 频道 + dialog 2）
 mod llm; // 批次 D1：LLM 模型管理（配置读写 7 频道）
 mod llm_execution; // 批次 D2：LLM 生成执行（租约 2 频道）
 mod llm_generation; // 批次 D2-b：LLM 生成 / 流式 / 取消（3 频道 + 3 事件）
 mod llm_management; // 批次 D2-c：连通性探测 + 模型发现（llm:* 收口 2 频道）
-pub mod kb; // 批次 F2-3：知识库（kb:* 15 频道 + dialog 2）
-pub mod app_data; // 批次 H：应用数据域（prompt:* 3 + skills:* 4）
+mod model_provider_resource; // 批次 A：模型资源
+mod official_homepage; // 批次 A：官方主页
+pub mod project; // 批次 B：项目生命周期
+mod skin; // 批次 A：皮肤管理
+mod window; // 批次 A：窗口管理 // 批次 H：应用数据域（prompt:* 3 + skills:* 4）
 
 /// 再导出各批次模块的全部公开项（含 Tauri 命令宏 `__cmd__*`），
 /// 供 `lib.rs` 的 `generate_handler![commands::xxx]` 与 `state.rs` 引用。
 pub use app_data::*;
-pub use config::*;
 pub use chapter_lifecycle::*;
-pub use finalization::*;
+pub use config::*;
 pub use db::*;
 pub use external_file_grant::*;
+pub use finalization::*;
 pub use fs::*;
 pub use kb::*;
 pub use llm::*;

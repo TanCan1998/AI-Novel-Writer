@@ -31,7 +31,9 @@ pub struct CustomSkin {
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum SkinCommand {
     #[serde(rename_all = "camelCase")]
-    Activate { skin_id: String },
+    Activate {
+        skin_id: String,
+    },
     ImportCustom,
     RemoveCustom,
 }
@@ -155,13 +157,18 @@ pub fn skin_get_state(state: State<'_, crate::state::AppState>) -> SkinState {
 
 /// Skin:execute 命令
 #[tauri::command]
-pub fn skin_execute(state: State<'_, crate::state::AppState>, command: SkinCommand) -> SkinExecuteResponse {
+pub fn skin_execute(
+    state: State<'_, crate::state::AppState>,
+    command: SkinCommand,
+) -> SkinExecuteResponse {
     state.skin.lock().unwrap().execute(command)
 }
 
 /// Skin:read-custom-asset 命令（失败走契约判别联合而非 invoke reject）
 #[tauri::command]
-pub fn skin_read_custom_asset(state: State<'_, crate::state::AppState>) -> SkinReadCustomAssetResponse {
+pub fn skin_read_custom_asset(
+    state: State<'_, crate::state::AppState>,
+) -> SkinReadCustomAssetResponse {
     let guard = state.skin.lock().unwrap();
     match guard.read_custom_asset() {
         Ok(asset) => SkinReadCustomAssetResponse::Success {
@@ -194,7 +201,8 @@ mod tests {
         // 前端传 `{ type: 'import-custom' }`（kebab-case tag），Rust 侧必须可反序列化
         let cmd: SkinCommand = serde_json::from_str(r#"{"type":"import-custom"}"#).unwrap();
         assert!(matches!(cmd, SkinCommand::ImportCustom));
-        let cmd: SkinCommand = serde_json::from_str(r#"{"type":"activate","skinId":"anime"}"#).unwrap();
+        let cmd: SkinCommand =
+            serde_json::from_str(r#"{"type":"activate","skinId":"anime"}"#).unwrap();
         assert!(matches!(cmd, SkinCommand::Activate { .. }));
         let cmd: SkinCommand = serde_json::from_str(r#"{"type":"remove-custom"}"#).unwrap();
         assert!(matches!(cmd, SkinCommand::RemoveCustom));
@@ -204,7 +212,10 @@ mod tests {
     fn resolve_close_decision_accepts_lowercase_literals() {
         let d: crate::commands::window::ResolveCloseDecision =
             serde_json::from_str(r#""proceed""#).unwrap();
-        assert!(matches!(d, crate::commands::window::ResolveCloseDecision::Proceed));
+        assert!(matches!(
+            d,
+            crate::commands::window::ResolveCloseDecision::Proceed
+        ));
     }
 
     #[test]
@@ -215,7 +226,11 @@ mod tests {
         };
         let response = store.execute(command);
         match response {
-            SkinExecuteResponse::Success { success: true, state, .. } => {
+            SkinExecuteResponse::Success {
+                success: true,
+                state,
+                ..
+            } => {
                 assert_eq!(state.active_skin, "anime");
             }
             _ => panic!("Expected Success response"),
@@ -234,7 +249,11 @@ mod tests {
         let command = SkinCommand::RemoveCustom;
         let response = store.execute(command);
         match response {
-            SkinExecuteResponse::Success { success: true, state, .. } => {
+            SkinExecuteResponse::Success {
+                success: true,
+                state,
+                ..
+            } => {
                 assert!(state.custom_skin.is_none());
             }
             _ => panic!("Expected Success response"),

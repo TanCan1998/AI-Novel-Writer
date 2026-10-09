@@ -623,9 +623,7 @@ fn normalize_renames(
     Ok(Some(renames))
 }
 
-fn parse_intent(
-    value: Option<&serde_json::Value>,
-) -> Result<CharacterRosterCommitIntent, String> {
+fn parse_intent(value: Option<&serde_json::Value>) -> Result<CharacterRosterCommitIntent, String> {
     match value {
         None => Ok(CharacterRosterCommitIntent::Initialize),
         Some(serde_json::Value::String(intent)) => match intent.as_str() {
@@ -918,7 +916,8 @@ fn merge_existing_entry_manual_wins(
     if !has_manual_text_value(&merged.appearance) && has_manual_text_value(&generated.appearance) {
         merged.appearance = generated.appearance.clone();
     }
-    if !has_manual_text_value(&merged.personality) && has_manual_text_value(&generated.personality) {
+    if !has_manual_text_value(&merged.personality) && has_manual_text_value(&generated.personality)
+    {
         merged.personality = generated.personality.clone();
     }
     if !has_manual_text_value(&merged.background) && has_manual_text_value(&generated.background) {
@@ -974,7 +973,10 @@ fn assert_relationship_closure(entries: &[CharacterRosterEntry]) -> Result<(), S
             {
                 return Err("已有角色关系不完整，已拒绝合并".to_string());
             }
-            if !keys.insert(format!("{}\u{0}{}", relationship.target, relationship.relation)) {
+            if !keys.insert(format!(
+                "{}\u{0}{}",
+                relationship.target, relationship.relation
+            )) {
                 return Err("已有角色关系存在重复，已拒绝合并".to_string());
             }
         }
@@ -1176,9 +1178,10 @@ fn merge_incremental_entries_with_existing(
             continue;
         };
         if intent == CharacterRosterCommitIntent::ChapterProgress {
-            if let (Some(candidate_state), Some(existing_state)) =
-                (candidate.current_state.as_ref(), existing.current_state.as_ref())
-            {
+            if let (Some(candidate_state), Some(existing_state)) = (
+                candidate.current_state.as_ref(),
+                existing.current_state.as_ref(),
+            ) {
                 if candidate_state.updated_at_chapter < existing_state.updated_at_chapter
                     && has_finalized_draft(conn, existing_state.updated_at_chapter)?
                 {
@@ -1312,7 +1315,8 @@ fn resolve_manual_entries(
             .cloned()
             .unwrap_or_else(|| candidate.name.clone());
         let existing = existing_by_name.get(original_name.as_str()).copied();
-        let mut mapped = map_manual_relationship_targets(candidate, &rename_by_original, &final_names);
+        let mut mapped =
+            map_manual_relationship_targets(candidate, &rename_by_original, &final_names);
         if let Some(notes) = existing
             .and_then(|existing| existing.legacy_relationship_notes.as_deref())
             .filter(|notes| !notes.is_empty())
@@ -1446,11 +1450,23 @@ pub fn render_character_roster_markdown(
         let fields: [(&str, &str); 9] = [
             (if english { "Gender" } else { "性别" }, &entry.gender),
             (if english { "Age" } else { "年龄" }, &entry.age),
-            (if english { "Appearance" } else { "外貌" }, &entry.appearance),
-            (if english { "Personality" } else { "性格" }, &entry.personality),
-            (if english { "Background" } else { "背景" }, &entry.background),
+            (
+                if english { "Appearance" } else { "外貌" },
+                &entry.appearance,
+            ),
+            (
+                if english { "Personality" } else { "性格" },
+                &entry.personality,
+            ),
+            (
+                if english { "Background" } else { "背景" },
+                &entry.background,
+            ),
             (if english { "Abilities" } else { "能力" }, &entry.abilities),
-            (if english { "Motivation" } else { "动机" }, &entry.motivation),
+            (
+                if english { "Motivation" } else { "动机" },
+                &entry.motivation,
+            ),
             (if english { "Arc" } else { "弧光" }, &entry.arc),
             (if english { "Notes" } else { "备注" }, &entry.notes),
         ];
@@ -1607,8 +1623,13 @@ fn read_snapshot(conn: &Connection) -> Result<CharacterRosterSnapshot, String> {
         .unwrap_or_else(|| project_core::DEFAULT_WRITING_LANGUAGE.to_string());
     let current_projection = read_current_projection(conn);
     let localized_projection = render_character_roster_markdown(&entries, &writing_language);
-    let previous_language = if writing_language == "en-US" { "zh-CN" } else { "en-US" };
-    let previous_language_projection = render_character_roster_markdown(&entries, previous_language);
+    let previous_language = if writing_language == "en-US" {
+        "zh-CN"
+    } else {
+        "en-US"
+    };
+    let previous_language_projection =
+        render_character_roster_markdown(&entries, previous_language);
     // 项目可能在 ready 名单提交后变更写作语言。既有的历史投影必须保持可读；
     // 下一次 roster 提交会在当前项目语言下重写它，而不改变任何事实。
     let rendered_markdown = if meta.migration_state == CharacterRosterMigrationState::Ready
@@ -1696,7 +1717,9 @@ pub fn commit(
     let request = normalize_request(payload)?;
     let request_payload_hash = payload_hash(&request)?;
 
-    let tx = conn.unchecked_transaction().map_err(|error| error.to_string())?;
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
 
     let existing_operation: Option<String> = tx
         .query_row(
@@ -2078,7 +2101,10 @@ mod tests {
         );
 
         let empty_entries = initialize_payload("op", 0, vec![]);
-        assert_eq!(commit(&conn, &empty_entries).unwrap_err(), "角色名单不能为空");
+        assert_eq!(
+            commit(&conn, &empty_entries).unwrap_err(),
+            "角色名单不能为空"
+        );
 
         let bad_intent = json!({
             "operationId": "op",
@@ -2371,7 +2397,11 @@ mod tests {
         let entry = &receipt.snapshot.entries[0];
         assert_eq!(entry.gender, "男", "非空旧字段必须保留");
         assert_eq!(entry.appearance, "青衫", "空字段可由新候选补齐");
-        assert_eq!(entry.role, CharacterRole::Protagonist, "定位永不被重生成改写");
+        assert_eq!(
+            entry.role,
+            CharacterRole::Protagonist,
+            "定位永不被重生成改写"
+        );
     }
 
     #[test]

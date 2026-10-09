@@ -701,9 +701,11 @@ pub fn migrate_character_roster_schema(conn: &Connection) -> SqlResult<()> {
     }
 
     let has_meta: Option<i64> = conn
-        .query_row("SELECT 1 FROM character_roster_meta WHERE id = 'main'", [], |row| {
-            row.get(0)
-        })
+        .query_row(
+            "SELECT 1 FROM character_roster_meta WHERE id = 'main'",
+            [],
+            |row| row.get(0),
+        )
         .optional()?;
     if has_meta.is_some() {
         return Ok(());
@@ -1051,8 +1053,12 @@ mod tests {
 
         create_tables(&conn).unwrap();
 
-        assert!(table_columns(&conn, "characters").unwrap().contains("cs_provenance"));
-        assert!(table_columns(&conn, "character_roster_meta").unwrap().contains("fact_hash"));
+        assert!(table_columns(&conn, "characters")
+            .unwrap()
+            .contains("cs_provenance"));
+        assert!(table_columns(&conn, "character_roster_meta")
+            .unwrap()
+            .contains("fact_hash"));
         let (revision, state, fact_hash): (i64, String, String) = conn
             .query_row(
                 "SELECT revision, migration_state, fact_hash FROM character_roster_meta WHERE id = 'main'",

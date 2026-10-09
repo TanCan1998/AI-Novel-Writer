@@ -78,7 +78,9 @@ fn review_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ReviewRow> {
         source_draft_status: row.get("source_draft_status")?,
         source_content: row.get("source_content")?,
         content_id: row.get("content_id")?,
-        created_at: row.get::<_, Option<String>>("created_at")?.unwrap_or_default(),
+        created_at: row
+            .get::<_, Option<String>>("created_at")?
+            .unwrap_or_default(),
     })
 }
 
@@ -348,7 +350,10 @@ mod tests {
         assert_eq!(value["content"], serde_json::json!("审稿报告"));
         // 冻结源稿字段名为 camelCase
         assert_eq!(value["sourceDraft"]["chapterNumber"], serde_json::json!(1));
-        assert_eq!(value["sourceDraft"]["content"], serde_json::json!(BASE_BODY));
+        assert_eq!(
+            value["sourceDraft"]["content"],
+            serde_json::json!(BASE_BODY)
+        );
 
         // 旧审稿无冻结源稿时序列化为 null
         conn.execute(

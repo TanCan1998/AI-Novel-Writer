@@ -243,7 +243,8 @@ fn record_provider_outcome(
         "success": outcome.success,
         "errorMessage": outcome.error,
     });
-    let _ = state.with_project_db(|conn| crate::repositories::llm_repository::log_call(conn, &call));
+    let _ =
+        state.with_project_db(|conn| crate::repositories::llm_repository::log_call(conn, &call));
 }
 
 /// 解析 `request.projectSession`（对齐 `isProjectSessionContext` 的三字段判别）。
@@ -299,10 +300,15 @@ fn resolve_model_for_request(state: &AppState, request: &Value) -> Result<Option
             .map_err(|_| "模型执行租约注册表不可用".to_string())?;
         return leases.resolve_model_at(lease_id, now_ms()).map(Some);
     }
-    let model_id = request.get("modelId").and_then(Value::as_str).unwrap_or_default();
-    Ok(crate::commands::read_models_at(&crate::app_paths::models_config_path())
-        .into_iter()
-        .find(|model| model.get("id").and_then(Value::as_str) == Some(model_id)))
+    let model_id = request
+        .get("modelId")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    Ok(
+        crate::commands::read_models_at(&crate::app_paths::models_config_path())
+            .into_iter()
+            .find(|model| model.get("id").and_then(Value::as_str) == Some(model_id)),
+    )
 }
 
 /// 同步准备阶段：模型 / 参数 / 消息 / 客户端 / 统计上下文。
@@ -312,20 +318,24 @@ fn prepare_request(state: &AppState, request: &Value) -> Result<PreparedRequest,
         Ok(Some(model)) => model,
         Ok(None) => return Err(PrepareFailure::ModelNotFound),
         // 租约解析失败发生在模型快照确定之前：基线此时 `model` 为 null，不记统计。
-        Err(message) => {
-            return Err(PrepareFailure::Error {
-                message,
-                log: None,
-            })
-        }
+        Err(message) => return Err(PrepareFailure::Error { message, log: None }),
     };
 
-    let model_id = model.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
+    let model_id = model
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
     let model_name = model
         .get("name")
         .and_then(Value::as_str)
         .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| model.get("modelName").and_then(Value::as_str).unwrap_or_default())
+        .unwrap_or_else(|| {
+            model
+                .get("modelName")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+        })
         .to_string();
     let purpose = request
         .get("purpose")
@@ -611,39 +621,40 @@ async fn run_stream(
     let done_snapshot = snapshot.clone();
     let done_log = log.clone();
     let done_app = app.clone();
-    let on_done = move |full_text: String, usage: Option<TokenUsage>, finish_reason: LlmFinishReason| {
-        let success = finish_reason == LlmFinishReason::Stop;
-        done_snapshot.set_usage(&usage);
-        // 取消已抢先交付终态事件时，任务侧不得重复推送，也不必重复记账。
-        if !done_emitted.swap(true, Ordering::SeqCst) {
-            if !done_recorded.swap(true, Ordering::SeqCst) {
-                let state = done_app.state::<AppState>();
-                record_provider_outcome(
-                    &state,
-                    done_log.as_ref(),
-                    &ProviderOutcome {
-                        success,
-                        usage: usage.clone(),
-                        error: if success {
-                            None
-                        } else {
-                            Some(format!("finish:{}", finish_reason.as_str()))
+    let on_done =
+        move |full_text: String, usage: Option<TokenUsage>, finish_reason: LlmFinishReason| {
+            let success = finish_reason == LlmFinishReason::Stop;
+            done_snapshot.set_usage(&usage);
+            // 取消已抢先交付终态事件时，任务侧不得重复推送，也不必重复记账。
+            if !done_emitted.swap(true, Ordering::SeqCst) {
+                if !done_recorded.swap(true, Ordering::SeqCst) {
+                    let state = done_app.state::<AppState>();
+                    record_provider_outcome(
+                        &state,
+                        done_log.as_ref(),
+                        &ProviderOutcome {
+                            success,
+                            usage: usage.clone(),
+                            error: if success {
+                                None
+                            } else {
+                                Some(format!("finish:{}", finish_reason.as_str()))
+                            },
                         },
+                    );
+                }
+                let _ = done_webview.emit(
+                    LLM_STREAM_DONE_EVENT,
+                    LlmStreamDoneEvent {
+                        request_id: done_id.clone(),
+                        full_text,
+                        usage,
+                        finish_reason,
                     },
                 );
             }
-            let _ = done_webview.emit(
-                LLM_STREAM_DONE_EVENT,
-                LlmStreamDoneEvent {
-                    request_id: done_id.clone(),
-                    full_text,
-                    usage,
-                    finish_reason,
-                },
-            );
-        }
-        remove_stream(&done_app, &done_id);
-    };
+            remove_stream(&done_app, &done_id);
+        };
 
     let error_id = request_id.clone();
     let error_webview = webview.clone();
@@ -748,9 +759,7 @@ pub fn llm_generate_stream(
                 return LlmGenerateStreamStart {
                     request_id,
                     started: false,
-                    error: Some(provider_error_text(
-                        "流式任务注册表不可用".to_string(),
-                    )),
+                    error: Some(provider_error_text("流式任务注册表不可用".to_string())),
                 }
             }
         };
@@ -872,11 +881,14 @@ mod tests {
     fn project_session_requires_three_string_fields_test() {
         assert!(parse_project_session(None).is_none());
         assert!(parse_project_session(Some(&json!({}))).is_none());
-        assert!(parse_project_session(Some(&json!({
-            "projectId": "p",
-            "leaseId": "l"
-        })))
-        .is_none(), "缺 projectPath 必须判为非法会话");
+        assert!(
+            parse_project_session(Some(&json!({
+                "projectId": "p",
+                "leaseId": "l"
+            })))
+            .is_none(),
+            "缺 projectPath 必须判为非法会话"
+        );
         assert!(parse_project_session(Some(&json!({
             "projectId": 1,
             "leaseId": "l",
@@ -996,7 +1008,10 @@ mod tests {
             log: None,
         };
         assert!(lease_failure.log().is_none());
-        assert_eq!(lease_failure.statistics_error().as_deref(), Some("Error: 租约无效"));
+        assert_eq!(
+            lease_failure.statistics_error().as_deref(),
+            Some("Error: 租约无效")
+        );
 
         // 模型快照已解析后的失败带上统计上下文，且文案与信封一致。
         let log = ProviderCallLog {
@@ -1047,7 +1062,10 @@ mod tests {
             finish_reason: LlmFinishReason::Stop,
         })
         .unwrap();
-        assert_eq!(done, json!({"requestId": "r", "fullText": "t", "finishReason": "stop"}));
+        assert_eq!(
+            done,
+            json!({"requestId": "r", "fullText": "t", "finishReason": "stop"})
+        );
 
         let with_usage = serde_json::to_value(LlmStreamDoneEvent {
             request_id: "r".to_string(),
@@ -1060,7 +1078,10 @@ mod tests {
             finish_reason: LlmFinishReason::Length,
         })
         .unwrap();
-        assert_eq!(with_usage["usage"], json!({"promptTokens": 1, "completionTokens": null, "totalTokens": null}));
+        assert_eq!(
+            with_usage["usage"],
+            json!({"promptTokens": 1, "completionTokens": null, "totalTokens": null})
+        );
         assert_eq!(with_usage["finishReason"], json!("length"));
     }
 
@@ -1106,6 +1127,8 @@ mod tests {
         // 取消事件文案与统计文案刻意不同：基线统计记 `cancelled`，事件文案为
         // `已取消生成`（且**不带** `Error: ` 前缀 —— 它不经 `String(error)`）。
         assert_eq!(StreamFailure::Cancelled.into_message(), "已取消生成");
-        assert!(!StreamFailure::Cancelled.into_message().starts_with("Error: "));
+        assert!(!StreamFailure::Cancelled
+            .into_message()
+            .starts_with("Error: "));
     }
 }
