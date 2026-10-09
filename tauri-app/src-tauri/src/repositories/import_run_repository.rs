@@ -28,11 +28,14 @@ use std::collections::{BTreeMap, HashSet};
 use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
+use crate::draft_units::count_draft_units;
 use crate::import::batch_checkpoint::{
     parse_import_run_chapter_batch_checkpoint_id, IMPORT_RUN_BLUEPRINT_BATCH_SIZE,
     IMPORT_RUN_KNOWLEDGE_BATCH_SIZE,
 };
-use crate::import::limits::MAX_IMPORT_CHAPTER_BYTES;
+use crate::import::limits::{
+    MAX_IMPORT_CHAPTERS, MAX_IMPORT_CHAPTER_BYTES, MAX_IMPORT_SOURCE_FILES, MAX_IMPORT_TOTAL_BYTES,
+};
 use crate::import::parsing::sha256_hex;
 use crate::import::{ImportPurpose, ImportRunLocale};
 
@@ -702,6 +705,711 @@ pub fn list_chapter_batch(
     rows.iter().map(chapter_row_to_snapshot).collect()
 }
 
+// ==================== 批次 G2b：解析写入面 ====================
+
+/// sha256 小写 hex（64 位）——与 `inspection_store` / `identity` 同口径
+fn is_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+/// 不透明来源 id（对齐基线 `OPAQUE_SOURCE_ID`：UUID v4，大小写不敏感）
+fn is_opaque_source_id(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() != 36 {
+        return false;
+    }
+    let mut index = 0usize;
+    for byte in bytes {
+        let expected_dash = matches!(index, 8 | 13 | 18 | 23);
+        if expected_dash {
+            if *byte != b'-' {
+                return false;
+            }
+        } else if !byte.is_ascii_hexdigit() {
+            return false;
+        }
+        index += 1;
+    }
+    // 版本位 1..=5，变体位 8/9/a/b
+    matches!(bytes[14].to_ascii_lowercase(), b'1'..=b'5')
+        && matches!(bytes[19].to_ascii_lowercase(), b'8' | b'9' | b'a' | b'b')
+}
+
+/// 对齐契约 `ImportRunChapterInput`（主进程冻结快照，跨进程入参）
+#[derive(Debug, Clone, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRunChapterInput {
+    pub number: i64,
+    #[serde(default)]
+    pub source_index: Option<i64>,
+    #[serde(default)]
+    pub source_chapter_number: Option<i64>,
+    pub title: String,
+    pub content_fingerprint: String,
+    pub content_size: i64,
+    pub content: String,
+}
+
+/// 对齐基线 `NormalizedImportRunChapter`（补齐来源归属后的章节）
+#[derive(Debug, Clone)]
+pub struct NormalizedImportRunChapter {
+    pub number: i64,
+    pub source_index: i64,
+    pub source_id: String,
+    pub source_chapter_number: i64,
+    pub title: String,
+    pub content_fingerprint: String,
+    pub content_size: i64,
+    pub content: String,
+}
+
+/// 对齐基线 `ImportRunBeginParsingRequest`（主进程内部构造，不跨 IPC）
+#[derive(Debug, Clone)]
+pub struct ImportRunBeginParsingRequest {
+    pub run_id: String,
+    pub purpose: ImportPurpose,
+    pub source_fingerprint: String,
+    pub source_ids: Option<Vec<String>>,
+    pub source_fingerprints: Option<Vec<String>>,
+    pub legacy_source_fingerprints: Option<Vec<String>>,
+    pub legacy_collection_fingerprint: Option<String>,
+    pub source_display: Vec<ImportSourceDisplayMetadata>,
+    pub locale: ImportRunLocale,
+}
+
+/// manifest 单章（**字段声明序 = 基线 `JSON.stringify` 的键序**，勿调整）
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CanonicalManifestChapter<'a> {
+    number: i64,
+    source_id: &'a str,
+    source_chapter_number: i64,
+    title: &'a str,
+    content_fingerprint: &'a str,
+    content_size: i64,
+}
+
+/// manifest 根（键序 purpose → chapters）
+#[derive(Debug, serde::Serialize)]
+struct CanonicalManifest<'a> {
+    purpose: ImportPurpose,
+    chapters: Vec<CanonicalManifestChapter<'a>>,
+}
+
+/// 平移自 `canonicalManifest`：serde 按字段声明序输出，故与基线 `JSON.stringify` 逐字节一致
+pub fn canonical_manifest(
+    purpose: ImportPurpose,
+    chapters: &[NormalizedImportRunChapter],
+) -> String {
+    let manifest = CanonicalManifest {
+        purpose,
+        chapters: chapters
+            .iter()
+            .map(|chapter| CanonicalManifestChapter {
+                number: chapter.number,
+                source_id: &chapter.source_id,
+                source_chapter_number: chapter.source_chapter_number,
+                title: &chapter.title,
+                content_fingerprint: &chapter.content_fingerprint,
+                content_size: chapter.content_size,
+            })
+            .collect(),
+    };
+    serde_json::to_string(&manifest).unwrap_or_default()
+}
+
+/// 平移自 `hashManifest`
+pub fn hash_manifest(purpose: ImportPurpose, chapters: &[NormalizedImportRunChapter]) -> String {
+    sha256_hex(&canonical_manifest(purpose, chapters))
+}
+
+/// 平移自 `normalizeDisplay`
+pub fn normalize_display(
+    items: &[ImportSourceDisplayMetadata],
+) -> Result<Vec<ImportSourceDisplayMetadata>, String> {
+    if items.is_empty() || items.len() > MAX_IMPORT_SOURCE_FILES {
+        return Err("导入来源展示信息无效".to_string());
+    }
+    items
+        .iter()
+        .map(|item| {
+            let display_name = item.display_name.trim();
+            let media_type = item.media_type.trim();
+            if display_name.is_empty()
+                || display_name.encode_utf16().count() > 255
+                || display_name.contains('/')
+                || display_name.contains('\\')
+            {
+                return Err("导入来源展示名无效".to_string());
+            }
+            if media_type.is_empty() || media_type.encode_utf16().count() > 100 || item.size < 0 {
+                return Err("导入来源展示信息无效".to_string());
+            }
+            Ok(ImportSourceDisplayMetadata {
+                display_name: display_name.to_string(),
+                media_type: media_type.to_string(),
+                size: item.size,
+            })
+        })
+        .collect()
+}
+
+/// 平移自 `normalizeSourceIds`（`source_ids == None` 退化为 legacy 单来源身份）
+pub fn normalize_source_ids(
+    items: Option<&[String]>,
+    source_display: &[ImportSourceDisplayMetadata],
+    source_fingerprint: &str,
+) -> Result<Vec<String>, String> {
+    let Some(items) = items else {
+        return Ok(vec![format!("legacy:{source_fingerprint}")]);
+    };
+    if items.is_empty() || items.len() != source_display.len() {
+        return Err("导入来源身份与展示信息不匹配".to_string());
+    }
+    let normalized: Vec<String> = items.iter().map(|item| item.trim().to_string()).collect();
+    let mut seen = HashSet::new();
+    if normalized.iter().any(|item| !is_opaque_source_id(item))
+        || normalized.iter().any(|item| !seen.insert(item.clone()))
+    {
+        return Err("导入来源身份无效或重复".to_string());
+    }
+    Ok(normalized)
+}
+
+/// 平移自 `normalizeSourceFingerprints`（`None` → 空表，由调用方做长度校验）
+pub fn normalize_source_fingerprints(
+    items: Option<&[String]>,
+    source_ids: &[String],
+) -> Result<Vec<String>, String> {
+    let Some(items) = items else {
+        return Ok(Vec::new());
+    };
+    if items.len() != source_ids.len() || items.iter().any(|item| !is_sha256(item)) {
+        return Err("导入来源单文件指纹无效".to_string());
+    }
+    Ok(items.to_vec())
+}
+
+/// 平移自 `normalizeChapters`
+pub fn normalize_chapters(
+    items: &[ImportRunChapterInput],
+    source_ids: &[String],
+) -> Result<Vec<NormalizedImportRunChapter>, String> {
+    if items.is_empty() || items.len() > MAX_IMPORT_CHAPTERS {
+        return Err("导入章节清单无效".to_string());
+    }
+    let mut affiliations: HashSet<(String, i64)> = HashSet::new();
+    let mut aggregate_bytes: i64 = 0;
+    let mut normalized = Vec::with_capacity(items.len());
+    for item in items {
+        let source_index = item.source_index.unwrap_or(0);
+        let source_chapter_number = item.source_chapter_number.unwrap_or(item.number);
+        if item.number < 1
+            || source_index < 0
+            || source_index as usize >= source_ids.len()
+            || source_chapter_number < 1
+        {
+            return Err("导入章节归属无效".to_string());
+        }
+        let source_id = source_ids[source_index as usize].clone();
+        if !affiliations.insert((source_id.clone(), source_chapter_number)) {
+            return Err("导入章节来源归属重复".to_string());
+        }
+        let bytes = item.content.len() as i64;
+        if item.title.encode_utf16().count() > 500
+            || !is_sha256(&item.content_fingerprint)
+            || item.content_size != bytes
+            || bytes == 0
+            || bytes > MAX_IMPORT_CHAPTER_BYTES as i64
+        {
+            return Err(format!("导入章节 {} 快照无效", item.number));
+        }
+        aggregate_bytes += bytes;
+        if aggregate_bytes > MAX_IMPORT_TOTAL_BYTES as i64 {
+            return Err("导入正文总字节数超过安全上限".to_string());
+        }
+        normalized.push(NormalizedImportRunChapter {
+            number: item.number,
+            source_index,
+            source_id,
+            source_chapter_number,
+            title: item.title.trim().to_string(),
+            content_fingerprint: item.content_fingerprint.clone(),
+            content_size: item.content_size,
+            content: item.content.clone(),
+        });
+    }
+    Ok(normalized)
+}
+
+/// 平移自 `parsedSourceStatus`
+pub fn parsed_source_status(
+    conn: &Connection,
+    run_id: &str,
+    source_id: &str,
+) -> Result<Option<String>, String> {
+    conn.query_row(
+        "SELECT status FROM import_run_sources WHERE run_id = ? AND source_id = ?",
+        rusqlite::params![run_id, source_id],
+        |row| row.get::<_, String>(0),
+    )
+    .optional()
+    .map_err(|error| error.to_string())
+}
+
+fn read_source_row(
+    conn: &Connection,
+    run_id: &str,
+    source_id: &str,
+) -> Result<Option<ImportRunSourceRow>, String> {
+    conn.query_row(
+        "SELECT run_id, source_index, source_id, source_fingerprint, legacy_source_fingerprint,
+                display_json, status, manifest_fingerprint, chapter_count, content_size,
+                word_count, last_error, updated_at
+         FROM import_run_sources WHERE run_id = ? AND source_id = ?",
+        rusqlite::params![run_id, source_id],
+        |row| {
+            Ok(ImportRunSourceRow {
+                run_id: row.get(0)?,
+                source_index: row.get(1)?,
+                source_id: row.get(2)?,
+                source_fingerprint: row.get(3)?,
+                legacy_source_fingerprint: row.get(4)?,
+                display_json: row.get(5)?,
+                status: row.get(6)?,
+                manifest_fingerprint: row.get(7)?,
+                chapter_count: row.get(8)?,
+                content_size: row.get(9)?,
+                word_count: row.get(10)?,
+                last_error: row.get(11)?,
+                updated_at: row.get(12)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|error| error.to_string())
+}
+
+/// 平移自 `beginParsing`（仅 `reference`；作者原稿走 [`crate-]` 的 `prepare`，G2b-2 落地）
+pub fn begin_parsing(
+    conn: &Connection,
+    candidate: &ImportRunBeginParsingRequest,
+) -> Result<ImportRunSnapshot, String> {
+    let run_id = candidate.run_id.trim();
+    if run_id.is_empty()
+        || run_id.encode_utf16().count() > 160
+        || !is_sha256(&candidate.source_fingerprint)
+    {
+        return Err("导入运行身份无效".to_string());
+    }
+    if candidate.purpose != ImportPurpose::Reference {
+        return Err("当前版本不支持作者手稿导入".to_string());
+    }
+    let source_display = normalize_display(&candidate.source_display)?;
+    let source_ids = normalize_source_ids(
+        candidate.source_ids.as_deref(),
+        &source_display,
+        &candidate.source_fingerprint,
+    )?;
+    let source_fingerprints =
+        normalize_source_fingerprints(candidate.source_fingerprints.as_deref(), &source_ids)?;
+    if source_fingerprints.len() != source_ids.len() {
+        return Err("导入来源单文件指纹无效".to_string());
+    }
+    let legacy_source_fingerprints = candidate
+        .legacy_source_fingerprints
+        .clone()
+        .unwrap_or_else(|| source_ids.iter().map(|_| String::new()).collect());
+    if legacy_source_fingerprints.len() != source_ids.len()
+        || legacy_source_fingerprints
+            .iter()
+            .any(|value| !value.is_empty() && !is_sha256(value))
+    {
+        return Err("旧导入来源单文件指纹无效".to_string());
+    }
+    if candidate
+        .legacy_collection_fingerprint
+        .as_deref()
+        .is_some_and(|value| !value.is_empty() && !is_sha256(value))
+    {
+        return Err("旧导入来源集合指纹无效".to_string());
+    }
+
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    // 分支 1：显式 runId 已存在 → 「重新授权未完成来源」
+    if let Some(explicit_run) = read_run_row(&tx, run_id)? {
+        let persisted = read_sources_in_order(&tx, &explicit_run.id)?;
+        if explicit_run.purpose != candidate.purpose.as_str()
+            || explicit_run.stage != "parsing"
+            || explicit_run.resumable != 1
+            || explicit_run.locale != candidate.locale.as_str()
+        {
+            return Err("指定的导入运行当前不可重新授权未完成来源".to_string());
+        }
+        let by_id: std::collections::HashMap<&str, &ImportRunSourceRow> = persisted
+            .iter()
+            .map(|source| (source.source_id.as_str(), source))
+            .collect();
+        for (index, source_id) in source_ids.iter().enumerate() {
+            let Some(persisted_source) = by_id.get(source_id.as_str()) else {
+                return Err("未完成导入的来源清单与本次重新授权不一致".to_string());
+            };
+            if persisted_source.status == "completed"
+                || persisted_source.source_fingerprint != source_fingerprints[index]
+            {
+                return Err("未完成导入的来源清单与本次重新授权不一致".to_string());
+            }
+        }
+        for (index, source_id) in source_ids.iter().enumerate() {
+            let changed = tx
+                .execute(
+                    "UPDATE import_run_sources
+                     SET legacy_source_fingerprint = ?, display_json = ?, updated_at = datetime('now')
+                     WHERE run_id = ? AND source_id = ? AND source_fingerprint = ? AND status <> 'completed'",
+                    rusqlite::params![
+                        legacy_source_fingerprints[index],
+                        serde_json::to_string(&source_display[index]).unwrap_or_default(),
+                        explicit_run.id,
+                        source_id,
+                        source_fingerprints[index],
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+            if changed != 1 {
+                return Err("未完成导入的来源清单与本次重新授权不一致".to_string());
+            }
+        }
+        // 回写整批展示信息（按 source_index 顺序）
+        let full_display: Vec<ImportSourceDisplayMetadata> = persisted
+            .iter()
+            .map(|source| parse_json(&source.display_json, ImportSourceDisplayMetadata::default()))
+            .collect();
+        tx.execute(
+            "UPDATE import_runs SET source_display_json = ?, updated_at = datetime('now') WHERE id = ?",
+            rusqlite::params![
+                serde_json::to_string(&full_display).unwrap_or_default(),
+                explicit_run.id
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+        tx.commit().map_err(|error| error.to_string())?;
+        return get(conn, &explicit_run.id)?.ok_or_else(|| "导入运行读取失败".to_string());
+    }
+
+    // 分支 2：命中同指纹的既有 parsing run → 重建来源清单
+    let existing = tx
+        .query_row(
+            &format!(
+                "SELECT {RUN_COLUMNS} FROM import_runs
+                 WHERE purpose = ? AND source_fingerprint = ? AND stage = 'parsing' AND resumable = 1
+                 ORDER BY updated_at DESC, rowid DESC LIMIT 1"
+            ),
+            rusqlite::params![candidate.purpose.as_str(), candidate.source_fingerprint],
+            map_run_row,
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    if let Some(existing) = existing {
+        let sources = read_sources_in_order(&tx, &existing.id)?;
+        let by_id: std::collections::HashMap<&str, &ImportRunSourceRow> = sources
+            .iter()
+            .map(|source| (source.source_id.as_str(), source))
+            .collect();
+        if sources.len() != source_ids.len()
+            || source_ids.iter().enumerate().any(|(index, source_id)| {
+                by_id
+                    .get(source_id.as_str())
+                    .map(|source| source.source_fingerprint.as_str())
+                    != Some(source_fingerprints[index].as_str())
+            })
+        {
+            return Err("未完成导入的来源清单与本次重新授权不一致".to_string());
+        }
+        // UNIQUE(run_id, source_index) 避让：先整体顶到 MAX_IMPORT_SOURCE_FILES 之后，再逐条写回真实 index
+        tx.execute(
+            "UPDATE import_run_sources SET source_index = source_index + ? WHERE run_id = ?",
+            rusqlite::params![MAX_IMPORT_SOURCE_FILES as i64, existing.id],
+        )
+        .map_err(|error| error.to_string())?;
+        for (index, source_id) in source_ids.iter().enumerate() {
+            let changed = tx
+                .execute(
+                    "UPDATE import_run_sources
+                     SET source_index = ?, legacy_source_fingerprint = ?, display_json = ?, updated_at = datetime('now')
+                     WHERE run_id = ? AND source_id = ? AND source_fingerprint = ?",
+                    rusqlite::params![
+                        index as i64,
+                        legacy_source_fingerprints[index],
+                        serde_json::to_string(&source_display[index]).unwrap_or_default(),
+                        existing.id,
+                        source_id,
+                        source_fingerprints[index],
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+            if changed != 1 {
+                return Err("未完成导入的来源清单与本次重新授权不一致".to_string());
+            }
+        }
+        tx.execute(
+            "UPDATE import_runs SET source_display_json = ?, updated_at = datetime('now') WHERE id = ?",
+            rusqlite::params![
+                serde_json::to_string(&source_display).unwrap_or_default(),
+                existing.id
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+        tx.commit().map_err(|error| error.to_string())?;
+        return get(conn, &existing.id)?.ok_or_else(|| "导入运行读取失败".to_string());
+    }
+
+    // 分支 3：新建 parsing run
+    if read_run_row(&tx, run_id)?.is_some() {
+        return Err("导入运行 ID 已存在".to_string());
+    }
+    tx.execute(
+        "INSERT INTO import_runs (
+            id, purpose, root_run_id, effect_namespace, source_fingerprint, manifest_fingerprint,
+            legacy_source_fingerprint, source_display_json, locale, stage, status,
+            total_chapters, total_content_size, manifest_chapter_count, manifest_content_size,
+            manifest_word_count, completed_chapters
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'parsing', 'ready', 0, 0, 0, 0, 0, 0)",
+        rusqlite::params![
+            run_id,
+            candidate.purpose.as_str(),
+            run_id,
+            format!("import:{}:{run_id}", candidate.purpose.as_str()),
+            candidate.source_fingerprint,
+            "0".repeat(64),
+            candidate
+                .legacy_collection_fingerprint
+                .clone()
+                .unwrap_or_default(),
+            serde_json::to_string(&source_display).unwrap_or_default(),
+            candidate.locale.as_str(),
+        ],
+    )
+    .map_err(|error| error.to_string())?;
+    for (index, source_id) in source_ids.iter().enumerate() {
+        tx.execute(
+            "INSERT INTO import_run_sources (
+                run_id, source_index, source_id, source_fingerprint, legacy_source_fingerprint, display_json
+             ) VALUES (?, ?, ?, ?, ?, ?)",
+            rusqlite::params![
+                run_id,
+                index as i64,
+                source_id,
+                source_fingerprints[index],
+                legacy_source_fingerprints[index],
+                serde_json::to_string(&source_display[index]).unwrap_or_default(),
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    tx.commit().map_err(|error| error.to_string())?;
+    get(conn, run_id)?.ok_or_else(|| "导入运行读取失败".to_string())
+}
+
+fn read_sources_in_order(
+    conn: &Connection,
+    run_id: &str,
+) -> Result<Vec<ImportRunSourceRow>, String> {
+    let mut statement = conn
+        .prepare(
+            "SELECT run_id, source_index, source_id, source_fingerprint, legacy_source_fingerprint,
+                    display_json, status, manifest_fingerprint, chapter_count, content_size,
+                    word_count, last_error, updated_at
+             FROM import_run_sources WHERE run_id = ? ORDER BY source_index",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(rusqlite::params![run_id], |row| {
+            Ok(ImportRunSourceRow {
+                run_id: row.get(0)?,
+                source_index: row.get(1)?,
+                source_id: row.get(2)?,
+                source_fingerprint: row.get(3)?,
+                legacy_source_fingerprint: row.get(4)?,
+                display_json: row.get(5)?,
+                status: row.get(6)?,
+                manifest_fingerprint: row.get(7)?,
+                chapter_count: row.get(8)?,
+                content_size: row.get(9)?,
+                word_count: row.get(10)?,
+                last_error: row.get(11)?,
+                updated_at: row.get(12)?,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    Ok(rows)
+}
+
+/// 平移自 `commitParsedSource`
+pub fn commit_parsed_source(
+    conn: &Connection,
+    run_id: &str,
+    source_id: &str,
+    chapters: &[ImportRunChapterInput],
+) -> Result<ImportRunSnapshot, String> {
+    if !is_opaque_source_id(source_id) {
+        return Err("导入解析来源身份无效".to_string());
+    }
+    if chapters.is_empty() {
+        return Err("导入解析来源没有可导入的正文".to_string());
+    }
+    if chapters
+        .iter()
+        .any(|chapter| sha256_hex(&chapter.content) != chapter.content_fingerprint)
+    {
+        return Err("导入解析来源内容指纹与冻结快照不一致".to_string());
+    }
+    let source_ids = vec![source_id.to_string()];
+    let normalized = normalize_chapters(chapters, &source_ids)?;
+    let renumbered: Vec<NormalizedImportRunChapter> = normalized
+        .iter()
+        .enumerate()
+        .map(|(index, chapter)| NormalizedImportRunChapter {
+            number: index as i64 + 1,
+            ..chapter.clone()
+        })
+        .collect();
+    let manifest_fingerprint = hash_manifest(ImportPurpose::Reference, &renumbered);
+
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    let Some(run) = read_run_row(&tx, run_id)? else {
+        return Err("导入解析运行当前不可写入来源".to_string());
+    };
+    if run.purpose != "reference"
+        || run.stage != "parsing"
+        || !matches!(run.status.as_str(), "ready" | "failed")
+    {
+        return Err("导入解析运行当前不可写入来源".to_string());
+    }
+    let Some(source) = read_source_row(&tx, run_id, source_id)? else {
+        return Err("导入解析来源不存在".to_string());
+    };
+    if source.status == "completed" {
+        if source.manifest_fingerprint != manifest_fingerprint {
+            return Err("已完成来源与本次重新授权内容不一致".to_string());
+        }
+        tx.commit().map_err(|error| error.to_string())?;
+        return get(conn, run_id)?.ok_or_else(|| "导入运行读取失败".to_string());
+    }
+    tx.execute(
+        "DELETE FROM import_run_source_chapters WHERE run_id = ? AND source_id = ?",
+        rusqlite::params![run_id, source_id],
+    )
+    .map_err(|error| error.to_string())?;
+    let mut content_size: i64 = 0;
+    let mut word_count: i64 = 0;
+    for chapter in &normalized {
+        let chapter_words = count_draft_units(&chapter.content);
+        tx.execute(
+            "INSERT INTO import_run_source_chapters (
+                run_id, source_id, source_chapter_number, title, content_fingerprint,
+                content_size, word_count, content_snapshot
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            rusqlite::params![
+                run_id,
+                source_id,
+                chapter.source_chapter_number,
+                chapter.title,
+                chapter.content_fingerprint,
+                chapter.content_size,
+                chapter_words,
+                chapter.content,
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+        content_size += chapter.content_size;
+        word_count += chapter_words;
+    }
+    tx.execute(
+        "UPDATE import_run_sources
+         SET status = 'completed', manifest_fingerprint = ?, chapter_count = ?,
+             content_size = ?, word_count = ?, last_error = '', updated_at = datetime('now')
+         WHERE run_id = ? AND source_id = ?",
+        rusqlite::params![
+            manifest_fingerprint,
+            normalized.len() as i64,
+            content_size,
+            word_count,
+            run_id,
+            source_id
+        ],
+    )
+    .map_err(|error| error.to_string())?;
+    tx.execute(
+        "UPDATE import_runs
+         SET status = 'ready', last_error = '',
+             total_chapters = (SELECT COALESCE(SUM(chapter_count), 0) FROM import_run_sources WHERE run_id = ? AND status = 'completed'),
+             total_content_size = (SELECT COALESCE(SUM(content_size), 0) FROM import_run_sources WHERE run_id = ? AND status = 'completed'),
+             updated_at = datetime('now')
+         WHERE id = ?",
+        rusqlite::params![run_id, run_id, run_id],
+    )
+    .map_err(|error| error.to_string())?;
+    tx.commit().map_err(|error| error.to_string())?;
+    get(conn, run_id)?.ok_or_else(|| "导入运行读取失败".to_string())
+}
+
+/// 平移自 `failParsedSource`（`error` 截断到 2000 个 UTF-16 单元）
+pub fn fail_parsed_source(
+    conn: &Connection,
+    run_id: &str,
+    source_id: &str,
+    error: &str,
+) -> Result<ImportRunSnapshot, String> {
+    if error.trim().is_empty() {
+        return Err("导入解析失败原因无效".to_string());
+    }
+    let message = {
+        let mut buffer = String::new();
+        for unit in error.encode_utf16().take(2_000) {
+            if let Some(character) = char::from_u32(unit as u32) {
+                buffer.push(character);
+            }
+        }
+        buffer
+    };
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    let Some(run) = read_run_row(&tx, run_id)? else {
+        return Err("导入解析运行当前不可标记失败".to_string());
+    };
+    if run.stage != "parsing" || !matches!(run.status.as_str(), "ready" | "failed") {
+        return Err("导入解析运行当前不可标记失败".to_string());
+    }
+    let changed = tx
+        .execute(
+            "UPDATE import_run_sources SET status = 'failed', last_error = ?, updated_at = datetime('now')
+             WHERE run_id = ? AND source_id = ? AND status <> 'completed'",
+            rusqlite::params![message, run_id, source_id],
+        )
+        .map_err(|error| error.to_string())?;
+    if changed != 1 {
+        return Err("导入解析来源当前不可标记失败".to_string());
+    }
+    tx.execute(
+        "UPDATE import_runs SET status = 'failed', last_error = ?, resumable = 1,
+           updated_at = datetime('now') WHERE id = ?",
+        rusqlite::params![message, run_id],
+    )
+    .map_err(|error| error.to_string())?;
+    tx.commit().map_err(|error| error.to_string())?;
+    get(conn, run_id)?.ok_or_else(|| "导入运行读取失败".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1000,5 +1708,227 @@ mod tests {
     fn get_returns_none_for_unknown_run_test() {
         let conn = memory_conn();
         assert!(get(&conn, "missing").unwrap().is_none());
+    }
+
+    // ==================== G2b：解析写入面 ====================
+
+    fn chapter_input(number: i64, content: &str) -> ImportRunChapterInput {
+        ImportRunChapterInput {
+            number,
+            source_index: Some(0),
+            source_chapter_number: Some(number),
+            title: format!("第{number}章"),
+            content_fingerprint: sha256_hex(content),
+            content_size: content.len() as i64,
+            content: content.to_string(),
+        }
+    }
+
+    fn begin_request(run_id: &str, source_id: &str) -> ImportRunBeginParsingRequest {
+        ImportRunBeginParsingRequest {
+            run_id: run_id.to_string(),
+            purpose: ImportPurpose::Reference,
+            source_fingerprint: "a".repeat(64),
+            source_ids: Some(vec![source_id.to_string()]),
+            source_fingerprints: Some(vec!["b".repeat(64)]),
+            legacy_source_fingerprints: None,
+            legacy_collection_fingerprint: None,
+            source_display: vec![ImportSourceDisplayMetadata {
+                display_name: "第1章.txt".to_string(),
+                media_type: "text/plain".to_string(),
+                size: 10,
+            }],
+            locale: ImportRunLocale::ZhCn,
+        }
+    }
+
+    const SOURCE_ID: &str = "11111111-1111-4111-8111-111111111111";
+
+    #[test]
+    fn begin_parsing_creates_and_reuses_run_test() {
+        let conn = memory_conn();
+        let snapshot = begin_parsing(&conn, &begin_request("run-g2b", SOURCE_ID)).unwrap();
+        assert_eq!(snapshot.id, "run-g2b");
+        assert_eq!(snapshot.stage, "parsing");
+        assert_eq!(snapshot.status, "ready");
+        assert_eq!(snapshot.effect_namespace, "import:reference:run-g2b");
+        assert_eq!(snapshot.total_sources, 1);
+        assert_eq!(snapshot.source_display[0].display_name, "第1章.txt");
+        assert_eq!(
+            parsed_source_status(&conn, "run-g2b", SOURCE_ID)
+                .unwrap()
+                .as_deref(),
+            Some("pending")
+        );
+
+        // 同指纹 + 不同 runId → 命中既有 parsing run（重建来源清单）
+        let reused = begin_parsing(&conn, &begin_request("run-other", SOURCE_ID)).unwrap();
+        assert_eq!(reused.id, "run-g2b");
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM import_runs", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 1, "不应新建第二个 run");
+    }
+
+    #[test]
+    fn begin_parsing_rejects_invalid_identity_test() {
+        let conn = memory_conn();
+        let mut request = begin_request("run-bad", SOURCE_ID);
+        request.source_fingerprint = "not-a-digest".to_string();
+        assert_eq!(
+            begin_parsing(&conn, &request).unwrap_err(),
+            "导入运行身份无效"
+        );
+
+        // author-manuscript 不支持（走 prepare）
+        let mut author = begin_request("run-author", SOURCE_ID);
+        author.purpose = ImportPurpose::AuthorManuscript;
+        assert_eq!(
+            begin_parsing(&conn, &author).unwrap_err(),
+            "当前版本不支持作者手稿导入"
+        );
+
+        // sourceId 非 UUID v4
+        let mut bad_id = begin_request("run-bad-id", SOURCE_ID);
+        bad_id.source_ids = Some(vec!["not-a-uuid".to_string()]);
+        assert_eq!(
+            begin_parsing(&conn, &bad_id).unwrap_err(),
+            "导入来源身份无效或重复"
+        );
+    }
+
+    #[test]
+    fn manifest_canonical_json_matches_baseline_key_order_test() {
+        let chapters = vec![NormalizedImportRunChapter {
+            number: 1,
+            source_index: 0,
+            source_id: SOURCE_ID.to_string(),
+            source_chapter_number: 3,
+            title: "开端".to_string(),
+            content_fingerprint: "c".repeat(64),
+            content_size: 9,
+            content: String::new(),
+        }];
+        let json = canonical_manifest(ImportPurpose::Reference, &chapters);
+        // 键序 = 基线 JSON.stringify（purpose → chapters → number/sourceId/sourceChapterNumber/title/contentFingerprint/contentSize）
+        assert_eq!(
+            json,
+            format!(
+                "{{\"purpose\":\"reference\",\"chapters\":[{{\"number\":1,\"sourceId\":\"{SOURCE_ID}\",\"sourceChapterNumber\":3,\"title\":\"开端\",\"contentFingerprint\":\"{}\",\"contentSize\":9}}]}}",
+                "c".repeat(64)
+            )
+        );
+        assert_eq!(
+            hash_manifest(ImportPurpose::Reference, &chapters),
+            sha256_hex(&json)
+        );
+        // purpose 参与指纹
+        assert_ne!(
+            hash_manifest(ImportPurpose::AuthorManuscript, &chapters),
+            hash_manifest(ImportPurpose::Reference, &chapters)
+        );
+    }
+
+    #[test]
+    fn commit_and_fail_parsed_source_roundtrip_test() {
+        let conn = memory_conn();
+        begin_parsing(&conn, &begin_request("run-commit", SOURCE_ID)).unwrap();
+
+        // 指纹被篡改 → 拒绝
+        let mut tampered = chapter_input(1, "正文甲");
+        tampered.content_fingerprint = "0".repeat(64);
+        assert_eq!(
+            commit_parsed_source(&conn, "run-commit", SOURCE_ID, &[tampered]).unwrap_err(),
+            "导入解析来源内容指纹与冻结快照不一致"
+        );
+
+        // 正常提交：来源 completed，run 汇总回填
+        let chapters = vec![chapter_input(1, "正文甲"), chapter_input(2, "正文乙")];
+        let snapshot = commit_parsed_source(&conn, "run-commit", SOURCE_ID, &chapters).unwrap();
+        assert_eq!(snapshot.status, "ready");
+        assert_eq!(snapshot.total_chapters, 2);
+        assert_eq!(snapshot.total_content_size, 18);
+        assert_eq!(
+            parsed_source_status(&conn, "run-commit", SOURCE_ID)
+                .unwrap()
+                .as_deref(),
+            Some("completed")
+        );
+        let rows: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM import_run_source_chapters WHERE run_id = 'run-commit'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(rows, 2);
+
+        // 幂等：同内容重授权 → 直接返回；内容变了 → 报冲突
+        commit_parsed_source(&conn, "run-commit", SOURCE_ID, &chapters).unwrap();
+        assert_eq!(
+            commit_parsed_source(
+                &conn,
+                "run-commit",
+                SOURCE_ID,
+                &[chapter_input(1, "正文丙")]
+            )
+            .unwrap_err(),
+            "已完成来源与本次重新授权内容不一致"
+        );
+    }
+
+    #[test]
+    fn fail_parsed_source_marks_run_and_source_test() {
+        let conn = memory_conn();
+        begin_parsing(&conn, &begin_request("run-fail", SOURCE_ID)).unwrap();
+        let snapshot = fail_parsed_source(&conn, "run-fail", SOURCE_ID, "读取失败").unwrap();
+        assert_eq!(snapshot.status, "failed");
+        assert_eq!(snapshot.last_error, "读取失败");
+        assert!(snapshot.resumable);
+        assert_eq!(
+            parsed_source_status(&conn, "run-fail", SOURCE_ID)
+                .unwrap()
+                .as_deref(),
+            Some("failed")
+        );
+        // 空原因拒绝
+        assert_eq!(
+            fail_parsed_source(&conn, "run-fail", SOURCE_ID, "   ").unwrap_err(),
+            "导入解析失败原因无效"
+        );
+    }
+
+    #[test]
+    fn normalize_chapters_rejects_bounds_and_duplicates_test() {
+        let source_ids = vec![SOURCE_ID.to_string()];
+        assert_eq!(
+            normalize_chapters(&[], &source_ids).unwrap_err(),
+            "导入章节清单无效"
+        );
+        // sourceIndex 越界
+        let mut out_of_range = chapter_input(1, "正文");
+        out_of_range.source_index = Some(3);
+        assert_eq!(
+            normalize_chapters(&[out_of_range], &source_ids).unwrap_err(),
+            "导入章节归属无效"
+        );
+        // 同一来源内 (sourceId, sourceChapterNumber) 重复
+        let mut first = chapter_input(1, "正文甲");
+        let mut second = chapter_input(2, "正文乙");
+        second.source_chapter_number = first.source_chapter_number;
+        first.source_index = Some(0);
+        second.source_index = Some(0);
+        assert_eq!(
+            normalize_chapters(&[first, second], &source_ids).unwrap_err(),
+            "导入章节来源归属重复"
+        );
+        // 空正文
+        let mut empty = chapter_input(1, "");
+        empty.content_size = 0;
+        empty.content_fingerprint = sha256_hex("");
+        assert_eq!(
+            normalize_chapters(&[empty], &source_ids).unwrap_err(),
+            "导入章节 1 快照无效"
+        );
     }
 }

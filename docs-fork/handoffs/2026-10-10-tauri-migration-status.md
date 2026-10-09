@@ -351,6 +351,40 @@ Radix 弹窗仍居中且尺寸正常 ✅。
 
 ---
 
+## 本次更新（第三十九次：B25 收口 + G2b 解析写入面）
+
+### 1. B25 ✅ `ClearProjectDataDialog` 纳入统一动画
+
+该弹窗是手写全屏弹层，**此前零动画**（硬切）。不改各处调用点，而在组件内把
+`onClose` 收口为带延迟卸载的包装（`onCloseProp` → `isExiting` → 200ms 后调真 onClose，
+`exitTimerRef` 幂等），因此 ESC / 遮罩点击 / 清除成功后 / 取消按钮 四处入口共同获得动画。
+**至此五类弹窗进出场实现完全一致**（Radix Dialog / Confirm / AlertDialog /
+SettingsModal / ClearProjectDataDialog）。GUI 已验：淡入 + 淡出 ✅。
+
+### 2. G2b 推进
+
+| 步 | 内容 | 提交 |
+|---|---|---|
+| G2b-1 | `src/import/identity.rs`：无密钥版 `resolveEncodedSources`（D1′ / D3′），含 5 条测试 | `215b4520` |
+| G2b-2 | `import_run_repository.rs` 解析写入面：`canonical_manifest` / `hash_manifest`（键序对齐 `JSON.stringify`）、`normalize_display/source_ids/source_fingerprints/chapters`、`parsed_source_status`、`begin_parsing`（三分支）、`commit_parsed_source`、`fail_parsed_source`，含 6 条测试 | 本次 |
+
+**顺带**：`lib.rs` 的 `mod repositories;` → `pub mod repositories;`（与 `pub mod db` 一致）——
+否则尚未被命令层消费的新仓储 API 会持续触发 `dead_code` 告警（之前靠逐项 `#[allow]` 缓解）。
+
+**尚未做的 G2b 剩余**：`finalize_parsing`、`prepare`（author/reference 两分支）、
+`matching_resumable_run` / `latest_completed_run` / `overlapping_resumable_source_run` /
+`discard_provisional_parsing_run` / `fence_uncommitted_author_run` / `assign_stable_chapter_numbers` /
+`completed_chapter_manifest` / `create_preparation_inspection`（均已在清单 §4 标注行号）
++ `db:import-run-prepare-inspection` / `-finalize-parsing` 两频道 + 前端登记 + 复活 `reference` 分支。
+
+### 3. 自检（本轮）
+
+`cargo test --lib` **597/597**（+6）· `cargo check --all-targets` **0 告警** ·
+`cargo fmt --check` 干净 · `pnpm typecheck` / `lint` exit 0（B25 改动时实测）·
+`check:channels` 193/170/169/24（无频道变化）。
+
+---
+
 ## 交接给下次会话（**从这里接**）
 
 ### 1. 当前工作区状态

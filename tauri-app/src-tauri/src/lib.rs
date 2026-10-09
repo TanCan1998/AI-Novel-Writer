@@ -30,7 +30,10 @@ pub mod import;
 // 批次 E（G1）：实体稿发布 / 清理投影（`electron/services/manuscript-publisher.ts` 的平移）。
 mod manuscript_publisher;
 mod project_access;
-mod repositories;
+// 批次 G2a/G2b：仓储层公开（与 `pub mod db` 一致）——
+// 各仓储的 `pub fn` 是 crate 的公开 API，命令层在后续批次逐步接入；
+// 若保持私有，尚未被命令层消费的新 API 会触发 dead_code 告警。
+pub mod repositories;
 mod security;
 mod state;
 // 批次 H：Writing Skill 检查与 GitHub 地址解析（`src/shared/writing-skills.ts` 的 Rust 单源）。
