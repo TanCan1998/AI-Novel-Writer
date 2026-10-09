@@ -32,7 +32,7 @@
 | 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅（本次）** |
 | 当前阶段 | **批次 G1 完成**（作者原稿导入完整链路）。下一步 **G2（状态机主体 + `reference` 路径，5 频道）→ G3（租约与批次推进，11）→ G4（收口）**（未迁移 27 → 9）。其它待办：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项 |
 | 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、`tauri-plugin-opener 2.7.0`。**本轮新增**：`windows-sys 0.61`（`[target.'cfg(windows)'.dependencies]`，仅在 lock 中提级为直接依赖，**0 新下载**；Ask first 已批准 2026-10-10）。向量层 `hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio`；FTS5 由 `libsqlite3-sys` bundled 提供 |
-| GUI 冒烟 | ⚠️ **本轮未做**（验收剩余项）：需 `pnpm tauri dev` 手验 `ImportNovelDialog` → 选 2 个 `.txt` → 作者原稿预览；再选 `.md` 作「参考语料」应看到 G2 依赖的诚实错误。历史：自 2026-10-07 起九轮（最近为 2026-10-09 批次 H 前三项 + B12，全部通过） |
+| GUI 冒烟 | ✅ 自 2026-10-07 起 **十轮**。**第十轮（2026-10-10，批次 G1）**：vite `441 ms` + cargo `47.50s` → `lorekeeper.exe`（90 MB）；用户人工验证 3 项全部通过 —— 作者原稿（2 个 `.txt`）显示拆章/预览、参考语料（`.md`）显示指向 G2 的诚实错误、`.epub` 显示「导出尚未迁移」诚实错误；dev 日志**无 error/panic/失败**输出（仅两条已知 `setZoomFactor` 占位提示 + Windows EBUSY 文件监视器噪声）。近两轮：第九轮（2026-10-09，批次 H 前三项 + B12）；**第八轮（2026-10-09，批次 E G1）** |
 | 双栈隔离 | **L0/L1/L2/L3 全部独立**：安装标识 / `~/.lorekeeper` / `<root>/.lore/`（库 `.lore/lorekeeper.db`、KB 向量 `.lore/kb/`）。基线为 `~/.vela` / `<root>/.vela/`。**两栈项目目录刻意不互通**（`ee40aaab`） |
 | Rust 工具链 | rustc/cargo **1.99.0 stable-msvc** @ `D:\Environment\rust\`（脚本内须显式设 `RUSTUP_HOME` / `CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
 
@@ -103,12 +103,33 @@
 
 ### 4. 行为对照（Electron ↔ Tauri）
 
-⚠️ **未做**（本轮只做源码级逐字平移 + Rust 单测，未跑双栈 A/B 对照；对照边界为「基线源码字符串 → Rust 实现」，
-未覆盖真机行为）。GUI 冒烟见上方活表格「未做」。
+⚠️ **未做双栈 A/B 对照**（本轮只做源码级逐字平移 + Rust 单测；对照边界为「基线源码字符串 → Rust 实现」，
+未覆盖真机行为）。真机行为由下方第十轮 GUI 冒烟覆盖。
 
-### 5. 收尾
+### 5. GUI 冒烟（第十轮，2026-10-10）—— ✅ 通过
 
-- 提交清单：本轮改动尚未提交（工作区状态见「交接给下次会话 §1」）。
+`pnpm tauri dev`：VITE v8.3.2 `ready in 441 ms` → cargo `Finished dev profile ... in 47.50s` → `Running target\debug\lorekeeper.exe`（工作集 90 MB）。
+用户人工逐项验证（夹具 `%TEMP%\g1-smoke\`）：
+
+| # | 步骤 | 结果 |
+|---|---|---|
+| 1 | 打开项目 → 导入小说 → 用途「作者原稿」→ 选中 `第1章 开端.txt` + `第2章 发展.txt` | ✅ 显示拆章/作者原稿预览（走 `db:import-run-author-preview`） |
+| 2 | 用途切「参考语料」→ 选 `参考语料.md` | ✅ 显示指向批次 G2 的诚实错误（非通用失败、非静默） |
+| 3 | 用途切回「作者原稿」→ 选 `样本.epub` | ✅ 显示 EPUB 未迁移的诚实错误（D4） |
+
+证据：dev 日志**无 error / panic / 失败**输出，仅两条已知 `setZoomFactor`（阶段 3 迁移项）占位提示与
+Windows `EBUSY` 文件监视器噪声（目标产物被占用，属正常）。渲染层 `console.log` 不经 Vite 转发，
+故 `[ipc-client.invoke]` 日志未入 dev 终端；结论以用户逐项确认为准。
+
+### 6. 收尾
+
+- 提交清单：
+
+| Commit | 说明 |
+|---|---|
+| `fbb88307` | `feat(tauri): 批次 G1 作者原稿导入（dialog:select-novel-files + db:import-run-author-preview）`（14 文件，+2120/‑2） |
+| `75379748` | `docs(tauri): 第三十五次快照与频道盘点更新（批次 G1 收口）` |
+| 本文件冒烟追加 | `docs(tauri): 记录第十轮 GUI 冒烟（批次 G1 验收通过）` |
 - 规则变更：无。
 
 ---
@@ -117,24 +138,15 @@
 
 ### 1. 当前工作区状态
 
-**工作区不干净**（本轮改动未提交）：
+**工作区干净**（本轮的 2 个提交已完成；本文件因追加第十轮冒烟记录产生第 3 个提交）：
 
-```
- M docs-fork/plans/tauri-migration-channel-inventory.md
- M tauri-app/src-tauri/Cargo.lock
- M tauri-app/src-tauri/Cargo.toml
- M tauri-app/src-tauri/src/commands/db.rs
- M tauri-app/src-tauri/src/commands/mod.rs
- M tauri-app/src-tauri/src/lib.rs
- M tauri-app/src-tauri/src/state.rs
- M tauri-app/src/services/ipc-client.ts
- M tauri-app/src/shared/migrated-channels.ts
- M tauri-app/test/channel-migration-coverage.test.ts
-?? tauri-app/src-tauri/src/commands/import.rs
-?? tauri-app/src-tauri/src/import/
-```
+| Commit | 说明 |
+|---|---|
+| `fbb88307` | `feat(tauri): 批次 G1 作者原稿导入（dialog:select-novel-files + db:import-run-author-preview）` |
+| `75379748` | `docs(tauri): 第三十五次快照与频道盘点更新（批次 G1 收口）` |
+| 待生成 | `docs(tauri): 记录第十轮 GUI 冒烟（批次 G1 验收通过）`（即本文件的追加） |
 
-- HEAD：`22e9e0f1 docs(tauri): G1 开工清单（修订分批）与决策归档`
+- HEAD（写入本表时）：`75379748 docs(tauri): 第三十五次快照与频道盘点更新（批次 G1 收口）`
 - ⚠️ 上一份快照（2026-10-09）中**已过期的交接描述**（防照旧操作）：
   1. 「未迁移 29（`db=19 mcp=9 dialog=1`）」「已注册命令 165」「`cargo test — 542/542`」→ 均已变为 **27 / 167 / 572**；
   2. 「下一步 1：批次 G 从 G1 开始」→ **G1 已完成**，下一步是 G2；
@@ -143,9 +155,7 @@
 
 ### 2. 下一步（1-2-3）
 
-1. **GUI 冒烟（G1 验收剩余项，需 dev 环境）**：`pnpm tauri dev` →
-   `ImportNovelDialog` 选 2 个 `.txt`（如「第1章/第2章」）→ 应显示作者原稿预览（走 `db:import-run-author-preview`）；
-   再选 1 个 `.md` 作用「参考语料」→ 应显示指向 G2 的诚实错误；选 `.epub` → 应显示 D4 诚实错误。
+1. ~~GUI 冒烟（G1 验收剩余项）~~ ✅ **已完成**（第十轮，2026-10-10，3 项全部通过 —— 见「本次更新 §5」）。
 2. **批次 G2（状态机主体 + `reference` 路径，5 频道）**：`db:import-run-prepare-inspection` /
    `-finalize-parsing` / `-get` / `-list-resumable` / `-list-chapters`。核心是 `ImportRunRepository` 的
    `beginParsing`（基线 2551 行状态机，**新模块，需先读 `electron/repositories/import-run-repository.ts`**）+
@@ -154,6 +164,7 @@
    ⚠️ **开工前仍需按老规矩先出开工清单**（读剩余规范 → 分批 → 决策入档）。
 3. **G3 / G4**：执行租约与批次推进 + effect receipts + `db:import-global-facts-commit`；
    `kb:import-reference-text` 去占位 + 前端登记。
+4. **其它待办**：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项。
 
 ### 3. 阻塞项与待授权项（**不得删除，须逐条确认后更新**）
 
@@ -179,7 +190,7 @@
 | **B18** | **`.epub` 导入依赖** | ⚠️ **新增（本次）**：需 `zip` 类 crate 解包，属 Ask first；G1 返回 D4 诚实错误，对话框仍列出 epub |
 | **B19** | **`reference`（参考语料）路径** | ⚠️ **新增（本次）**：依赖 G2 状态机；G1 返回诚实错误并登记为临时缺口 |
 | **B20** | **D7 zh-CN 排序不等价** | ⚠️ **新增（本次）**：无 ICU 依赖，来源文件名排序用数字感知自然序近似；如需逐字对齐须 Ask first 引 ICU |
-| **B21** | **G1 GUI 冒烟未做** | ⚠️ **新增（本次）**：验收剩余项，见「下一步 1」 |
+| **B21** | **G1 GUI 冒烟** | ✅ **已解除（本次）**：第十轮冒烟 3 项全部通过（作者原稿预览 / reference 诚实错误 / epub 诚实错误），dev 日志无 error/panic |
 
 ### 4. 红线提醒（每次接手都要过一遍）
 
@@ -208,8 +219,9 @@
 | `cargo fmt --check` | `tauri-app/src-tauri/` | 输出 **0 行**（干净） |
 | `pnpm typecheck` / `pnpm run lint` | `tauri-app/` | exit 0 / exit 0 |
 | `npx vitest run test/channel-migration-coverage.test.ts test/ipc-arg-struct-contract.test.ts` | `tauri-app/` | `Test Files 2 passed`，`Tests 7 passed` |
-| `git status --porcelain` | 仓库根 | 10 项 `M` + 2 项 `??`（见「交接 §1」） |
-| `git log -1` | 仓库根 | `22e9e0f1 docs(tauri): G1 开工清单（修订分批）与决策归档` |
+| `git status --porcelain` | 仓库根 | **空**（提交 `fbb88307` + `75379748` 后；本文件的冒烟追加为第 3 个提交） |
+| `git log -1` | 仓库根 | `75379748 docs(tauri): 第三十五次快照与频道盘点更新（批次 G1 收口）` |
+| `pnpm tauri dev`（第十轮冒烟） | `tauri-app/` | VITE `ready in 441 ms` · cargo `Finished dev profile in 47.50s` · `lorekeeper.exe` 工作集 **90 MB** · 3 项人工验证全部 ✅ |
 
 ---
 
