@@ -166,6 +166,27 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   // 注：`llm:test-connection` 的 `creativeStrategy` 是可选尾参（Rust 侧 `Option<String>`）。
   'llm:test-connection': ['model', 'creativeStrategy'],
   'llm:discover-models': ['request'],
+
+  // 批次 E 第二部分：章节生命周期（chapter-lifecycle，4 频道）
+  'chapter:delete-finalized': ['request', 'expectedProjectPath'],
+  'chapter:retry-deletion': ['operationId', 'expectedProjectPath'],
+  'chapter:confirm-legacy-knowledge-absent': ['operationId', 'expectedProjectPath'],
+  'chapter:list-incomplete-deletions': ['expectedProjectPath'],
+
+  // 批次 E 第一部分补登记（E 收尾时补齐，测试 channel-migration-coverage 断言）
+  'db:recovery-candidate-record': ['request', 'expectedProjectPath'],
+  'db:recovery-candidate-list': ['expectedProjectPath'],
+  'db:recovery-candidate-update': ['candidateId', 'visibleText', 'expectedProjectPath'],
+  'db:recovery-candidate-resolve': ['candidateId', 'status', 'expectedProjectPath'],
+  'db:continuity-save-finalized': ['request', 'expectedProjectPath'],
+  'db:continuity-save-character-state-candidates': ['request', 'expectedProjectPath'],
+  'db:continuity-list-before': ['chapterNumber', 'expectedProjectPath'],
+  'db:continuity-read-source': ['draftId', 'expectedProjectPath'],
+  'db:finalization-link-knowledge-document': ['draftId', 'documentId', 'expectedProjectPath'],
+  'db:draft-authority-sequence': ['expectedProjectPath'],
+  'db:draft-export-snapshot': ['expectedProjectPath'],
+  'db:draft-export-authority-current': ['receipt', 'expectedProjectPath'],
+  'db:draft-import-finalized-batch': ['request', 'expectedProjectPath'],
 }
 
 /** 频道 → Tauri 命令名（`channel:seg-name` → `channel_seg_name`）。 */
