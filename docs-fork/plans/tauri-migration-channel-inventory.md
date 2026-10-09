@@ -71,7 +71,11 @@
 `window:minimize`、`window:toggle-maximize`、`window:close`、`window:resolve-close(requestId, decision)`★G4。
 事件：`window:close-requested { requestId }`★G4。
 
-### 4.5 OfficialHomepage / ModelProviderResource（1+1）— 批次 A
+### 4.5 OfficialHomepage / ModelProviderResource（1+1）— 批次 A ✅
+
+> ✅ **2026-10-09（第三十三次 B12）**：两频道曾是**假成功占位**（返回 `success:true` 却不打开 URL，
+> 且未登记为骨架），已由 `tauri-plugin-opener` + `external_link.rs` 真实化。
+> ⚠️ 基线还有「拒绝渲染层导航替换主框架」（`preventRendererNavigation`）的等价防护尚未接入（B13）。
 `official-homepage:open`、`model-provider-resource:open(resourceId)`（主进程映射固定 HTTPS URL，不接受任意 URL）。
 
 ### 4.6 ProjectChannels（10 + dialog 1）— controller: `project-controller.ts` — 批次 B
@@ -79,15 +83,23 @@
 核心语义：requestToken / rendererProjectPath 防陈旧窗口写入；`sessionLease` 由主进程签发冻结。
 **契约要点**：`dialog:select-folder` 迁移后仍**不接收 `projectSession` 尾参**（属能力域，见 §2），返回路径仅作父目录输入，随后由 `project:create` / `project:open` 做项目根校验。
 
-### 4.7 FileChannels（7 + grant 3 + dialog 1）— controller: `fs-controller.ts` + `external-file-grant-controller.ts` — 批次 B / H
+### 4.7 FileChannels（7 + grant 3 + dialog 1）— controller: `fs-controller.ts` + `external-file-grant-controller.ts` — 批次 B / H ✅
+
+> ✅ **2026-10-09（第三十三次 H1）**：`fs:grant-read-file` / `write-file` / `mkdir` 与
+> `dialog:select-export-directory` 已从占位真实化（B10/B3 解除）；
+> 授权用尽语义已对齐基线（归零保留记录 + 后续消费报已用尽）。
 基础（全部带 `expectedProjectPath`★）：`fs:read-file`、`fs:write-file`（返回 `commitState`）、`fs:list-dir`、`fs:mkdir`、`fs:check-exists`、`fs:read-json`、`fs:write-json`。
 授权域（ADR 0002，只带 `grantId`+相对路径，不暴露绝对路径）：`fs:grant-read-file`、`fs:grant-write-file`、`fs:grant-mkdir`；`dialog:select-export-directory` 返回 `ExternalDirectoryGrant`。
 Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不得绕过**。
 **依赖结论（对契约有影响）**：`tauri-plugin-dialog 2.8.1` 的硬依赖 **`tauri-plugin-fs 2.6.0` 已随之连带引入** —— 将来落地 `fs:grant-*` 与 `dialog:select-export-directory` 时**直接复用，勿重复添加**（保持版本一致）。
 **批次结论**：`dialog:select-export-directory` 必须回传 `ExternalDirectoryGrant`（`grantId` + 受限相对路径，**绝不暴露绝对路径**，ADR 0002），而 grant 注册表尚未迁移，故该频道**随 `fs:grant-*` 三命令一并归入批次 H**。
 
-### 4.8 AppDataChannels（7）— controller: `app-data-controller.ts` — 批次 H
+### 4.8 AppDataChannels（7）— controller: `app-data-controller.ts` — 批次 H ✅
 `prompt:load-global`（返回 `AppPromptLoadReceipt` 含 diagnostics）、`prompt:save-global`、`prompt:delete-global`；`skills:list-user`、`skills:inspect-github`、`skills:install-github`、`skills:uninstall-user`。固定 app-data 位置，渲染进程不决定路径。
+
+> ✅ **2026-10-09（第三十三次 H2）**：7 频道已迁移（`commands/app_data.rs` + `writing_skills.rs`）。
+> GitHub 抓取复用全局配置的代理（`proxy_from_config` + `build_client_with_timeout`，10s 超时、禁止重定向）；
+> 路径与限额对齐基线（SKILL.md ≤ 64 KiB、URL ≤ 2048 字符、路径段须 percent-decode 后为安全段）。
 
 ### 4.9 LLMChannels（14 + 事件 3）— controller: `llm-controller.ts` — 批次 D（拆 D1/D2）
 租约：`llm:begin-execution-lease(modelId)`（返回 `ModelExecutionLeaseReceipt` 能力证据）、`llm:close-execution-lease(leaseId)`。
@@ -179,6 +191,6 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 | **E** | finalization(G1 ✅ 已完成)、chapter-lifecycle、continuity、recovery-candidate、draft-import-finalized-batch | C, D | 定稿不可逆 + 删除生命周期（ADR 0003/0011）等量测试。物理清理依赖：删实体稿文件（✅ **G1 已真实化**）、删 KB 文档（✅ 已随 F2-3 真实化） |
 | **F** | kb 全部、plot-tree、narrative-thread、consistency-exemption | C | AppResult 错误码对齐。拆 **F1**（plot-tree 3 / narrative-thread 6 / consistency-exemption 3 = 12 频道，零新依赖，纯 SQLite 平移；剧情树 `sourceRevision` 有**黄金哈希测试**锁定与 `JSON.stringify` 逐字节一致）/ **F2**（`kb:*` 15 + `dialog:select-knowledge-*` 2）。**F2 向量路线见 §4.11**；隔离红线**已解决**（L3 后项目目录 `.lore/`，向量快照 `.lore/kb/`）。进度：**F2-1 ✅ / F2-2 ✅ / F2-3 ✅（F2 全部完成）** |
 | **G** | import-run 全套（18 频道状态机）、dialog:select-novel-files、import-global-facts | C | 执行租约 `ImportRunExecutionLease`；断点恢复语义。**已知依赖**：`kb:import-reference-text` 待本批收口（当前为显式占位失败） |
-| **H** | update（updater 插件，G3）、mcp、prompt/skills、**fs:grant-\* 三命令 + `dialog:select-export-directory`** | 任意 | macOS 更新 = 仅打开 Release 页；`tauri-plugin-fs 2.6.0` **已随 dialog 插件连带引入**，勿重复添加；grant 签发只回传 `grantId`（ADR 0002）。**注**：外部 grant 注册表（`external_grant.rs`）已随 F2-3 落地，本批 `fs:grant-*` 只需接入同一注册表。⚠️ **2026-10-09 GUI 冒烟确认（B10）**：`fs:grant-*` 目前仍是占位（`commands/external_file_grant.rs:65`），已导致 **KB 界面导入**（`selectPlanningMaterials()`）、**导出成稿**、**角色卡导入** 三条前端路径不可用；而 `kb:import-document` / `kb:import-folder` 目前**无任何 UI 调用点** |
+| **H** | update（零依赖 GitHub-Release 后端，见 H3 评估；真正 Windows 自更新需 updater 插件 + 签名密钥，另立专项）、mcp（**暂缓**，仅 stdio）、prompt/skills ✅、**fs:grant-\* 三命令 ✅ + `dialog:select-export-directory` ✅** + official-homepage/model-provider-resource 打开链接 ✅ | 任意 | ✅ **进度（2026-10-09 第三十三次）**：H1（fs:grant-* + 导出目录）✅、H2（prompt/skills 7 频道）✅、B12（`tauri-plugin-opener`，修好两处假成功）✅；**H3（update 6 频道）待做**；H4（mcp 9 频道）暂缓。macOS 更新 = 仅打开 Release 页；`tauri-plugin-fs 2.6.0` 已随 dialog 插件连带引入，勿重复添加；grant 签发只回传 `grantId`（ADR 0002） |
 
 每批次验收：Rust 单元测试 + `cargo test` + 前端 `pnpm typecheck`/相关 `pnpm test` + 与 Electron 版行为对照。**验收数字见 [`docs/handoffs/`](../handoffs/) 最新快照。**
