@@ -38,6 +38,8 @@ use crate::import::limits::{
 };
 use crate::import::parsing::sha256_hex;
 use crate::import::{ImportPurpose, ImportRunLocale};
+// G2b-4：author 分支复用 E 批次已迁移的原稿导入预览
+use crate::repositories::finalized_draft_import_repository as draft_import;
 
 /// 单页最大章节数（对齐 `MAX_PAGE_SIZE`）
 pub const MAX_PAGE_SIZE: i64 = 100;
@@ -2010,6 +2012,561 @@ pub fn finalize_parsing(
     })
 }
 
+// ==================== 批次 G2b-4：prepare（author / reference 两分支） ====================
+
+/// 对齐基线 `ImportRunPrepareRequest`（主进程内部构造，不跨 IPC）
+#[derive(Debug, Clone)]
+pub struct ImportRunPrepareRequest {
+    pub run_id: String,
+    pub purpose: ImportPurpose,
+    pub source_fingerprint: String,
+    pub source_ids: Option<Vec<String>>,
+    pub source_fingerprints: Option<Vec<String>>,
+    pub source_display: Vec<ImportSourceDisplayMetadata>,
+    pub locale: ImportRunLocale,
+    /// 作者原稿必填（来自只读项目预览）
+    pub authority_fingerprint: Option<String>,
+    /// 作者原稿必填（绑定已确认的章节清单）
+    pub expected_manifest_fingerprint: Option<String>,
+    pub chapters: Vec<ImportRunChapterInput>,
+}
+
+/// `prepare` 的错误：`AuthorPreviewStale` 需由命令层映射为
+/// `{ success:false, errorCode:'AUTHOR_IMPORT_PREVIEW_STALE' }` 信封（D10）。
+#[derive(Debug, Clone)]
+pub enum PrepareError {
+    /// 业务失败（文案即基线 `Error.message`）
+    Message(String),
+    /// 作者原稿预览已过期（契约 `AUTHOR_IMPORT_PREVIEW_STALE`）
+    AuthorPreviewStale(String),
+}
+
+impl PrepareError {
+    pub fn message(&self) -> &str {
+        match self {
+            Self::Message(message) | Self::AuthorPreviewStale(message) => message,
+        }
+    }
+}
+
+impl std::fmt::Display for PrepareError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(self.message())
+    }
+}
+
+impl From<String> for PrepareError {
+    fn from(message: String) -> Self {
+        Self::Message(message)
+    }
+}
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// 平移自 `hasCommittedAuthorFinalizationReceipt`。
+///
+/// ⚠️ **G3 待补**：基线在返回前还会调 `rowToEffectReceipt(receipt, run)` 做收据结构/绑定校验
+/// （损坏时抛错并拒绝继续）；本批只做**存在性判定**（`prepare` 实际只依赖该语义）。
+fn has_committed_author_finalization_receipt(
+    conn: &Connection,
+    run: &ImportRunRow,
+) -> Result<bool, String> {
+    let exists: Option<i64> = conn
+        .query_row(
+            "SELECT 1 FROM import_run_receipts
+             WHERE run_id = ? AND kind = 'author-finalized-batch' AND state = 'committed'
+             ORDER BY updated_at DESC, rowid DESC LIMIT 1",
+            rusqlite::params![run.id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    Ok(exists.is_some())
+}
+
+/// 平移自 `fenceUncommittedAuthorRun`：把无法继续的作者运行「栅栏化」（resumable=0 + 换代）。
+fn fence_uncommitted_author_run(
+    conn: &Connection,
+    run: &ImportRunRow,
+    now: i64,
+) -> Result<(), String> {
+    if run.status == "running" && !run.execution_owner.is_empty() && run.lease_expires_at > now {
+        return Err(if run.locale == "en-US" {
+            "The previous author import is still running. Wait for it to stop, then confirm the latest preview again."
+        } else {
+            "之前的作者原稿导入仍在运行，请等待其停止后重新确认最新预览"
+        }
+        .to_string());
+    }
+    let guidance = if run.locale == "en-US" {
+        "Author manuscript authority changed. Confirm the latest preview to create a new import run."
+    } else {
+        "作者原稿权威状态已变化，请根据最新预览重新确认导入"
+    };
+    let changed = conn
+        .execute(
+            "UPDATE import_runs
+             SET resumable = 0, cancel_requested = 0, last_error = ?,
+                 execution_owner = '', execution_epoch = execution_epoch + 1, lease_expires_at = 0,
+                 updated_at = datetime('now')
+             WHERE id = ? AND purpose = 'author-manuscript' AND resumable = 1
+               AND status IN ('ready', 'running', 'failed', 'cancelled')
+               AND (status <> 'running' OR execution_owner = '' OR lease_expires_at <= ?)
+               AND NOT EXISTS (
+                 SELECT 1 FROM import_run_receipts
+                 WHERE run_id = import_runs.id
+                   AND kind = 'author-finalized-batch' AND state = 'committed'
+               )",
+            rusqlite::params![guidance, run.id, now],
+        )
+        .map_err(|error| error.to_string())?;
+    if changed != 1 {
+        return Err(if run.locale == "en-US" {
+            "The author import state changed. Confirm the latest preview again."
+        } else {
+            "作者原稿导入状态已变化，请重新确认最新预览"
+        }
+        .to_string());
+    }
+    Ok(())
+}
+
+/// 作者原稿预览→运行创建（对齐 `prepare` 的 author 分支）。
+/// 不返回 `inspection`——与基线一致（author 分支的分类信息全在 `preview` 里）。
+fn prepare_author_manuscript(
+    conn: &Connection,
+    candidate: &ImportRunPrepareRequest,
+    run_id: &str,
+    source_display: &[ImportSourceDisplayMetadata],
+    normalized_chapters: &[NormalizedImportRunChapter],
+) -> Result<ImportRunPreparationResult, PrepareError> {
+    let authority_fingerprint = candidate
+        .authority_fingerprint
+        .as_deref()
+        .unwrap_or_default();
+    let expected_manifest_fingerprint = candidate
+        .expected_manifest_fingerprint
+        .as_deref()
+        .unwrap_or_default();
+    if !is_sha256(authority_fingerprint) || !is_sha256(expected_manifest_fingerprint) {
+        return Err(PrepareError::Message(
+            "作者原稿缺少已确认的权威预览".to_string(),
+        ));
+    }
+
+    let mut author_chapters: Vec<draft_import::FinalizedDraftImportChapter> = normalized_chapters
+        .iter()
+        .map(|chapter| draft_import::FinalizedDraftImportChapter {
+            chapter_number: chapter.number,
+            title: chapter.title.clone(),
+            content: chapter.content.clone(),
+            word_count: count_draft_units(&chapter.content),
+        })
+        .collect();
+    author_chapters.sort_by_key(|chapter| chapter.chapter_number);
+
+    let preview = draft_import::preview(conn, &author_chapters).map_err(PrepareError::Message)?;
+    if preview.manifest_fingerprint != expected_manifest_fingerprint {
+        return Err(PrepareError::Message(
+            "作者原稿清单与已确认预览不一致".to_string(),
+        ));
+    }
+    let resumable = matching_resumable_run(
+        conn,
+        candidate.purpose,
+        &candidate.source_fingerprint,
+        &preview.manifest_fingerprint,
+    )
+    .map_err(PrepareError::Message)?;
+    if preview.authority_fingerprint != authority_fingerprint {
+        return Err(PrepareError::AuthorPreviewStale(
+            "项目权威章节已变化，作者原稿预览已过期".to_string(),
+        ));
+    }
+    let duplicate_numbers: Vec<i64> = author_chapters
+        .iter()
+        .map(|chapter| chapter.chapter_number)
+        .collect();
+    if let Some(resumable) = resumable {
+        let committed_receipt = has_committed_author_finalization_receipt(conn, &resumable)
+            .map_err(PrepareError::Message)?;
+        if committed_receipt || resumable.authority_fingerprint == preview.authority_fingerprint {
+            return Ok(ImportRunPreparationResult {
+                classification: "resumable".to_string(),
+                run: Some(row_to_snapshot(conn, &resumable).map_err(PrepareError::Message)?),
+                new_chapter_numbers: Vec::new(),
+                conflict_chapter_numbers: Vec::new(),
+                duplicate_chapter_numbers: duplicate_numbers,
+                inspection: None,
+            });
+        }
+        fence_uncommitted_author_run(conn, &resumable, now_ms()).map_err(PrepareError::Message)?;
+    }
+
+    if preview.classification == "conflict" {
+        let message = if preview.authority_invalid {
+            format!(
+                "现有权威正文章节不连续；请先修复第 {} 章附近的数据",
+                preview
+                    .first_gap_chapter_number
+                    .map(|number| number.to_string())
+                    .unwrap_or_else(|| "?".to_string())
+            )
+        } else if !preview.conflict_chapter_numbers.is_empty() {
+            format!(
+                "作者原稿与现有正文冲突：第 {} 章",
+                preview
+                    .conflict_chapter_numbers
+                    .iter()
+                    .map(|number| number.to_string())
+                    .collect::<Vec<_>>()
+                    .join("、")
+            )
+        } else {
+            format!(
+                "作者原稿存在缺章；请从第 {} 章连续导入",
+                preview
+                    .first_gap_chapter_number
+                    .map(|number| number.to_string())
+                    .unwrap_or_else(|| "?".to_string())
+            )
+        };
+        return Err(PrepareError::Message(message));
+    }
+    if preview.classification == "exact-duplicate" {
+        return Ok(ImportRunPreparationResult {
+            classification: "exact-duplicate".to_string(),
+            run: None,
+            new_chapter_numbers: Vec::new(),
+            conflict_chapter_numbers: Vec::new(),
+            duplicate_chapter_numbers: preview.duplicate_chapter_numbers.clone(),
+            inspection: None,
+        });
+    }
+    if read_run_row(conn, run_id)
+        .map_err(PrepareError::Message)?
+        .is_some()
+    {
+        return Err(PrepareError::Message("导入运行 ID 已存在".to_string()));
+    }
+
+    let new_chapter_set: HashSet<i64> = preview.new_chapter_numbers.iter().copied().collect();
+    let mut chapters_to_persist: Vec<&NormalizedImportRunChapter> = normalized_chapters
+        .iter()
+        .filter(|chapter| new_chapter_set.contains(&chapter.number))
+        .collect();
+    chapters_to_persist.sort_by_key(|chapter| chapter.number);
+    let manifest_content_size: i64 = normalized_chapters
+        .iter()
+        .map(|chapter| chapter.content_size)
+        .sum();
+    let manifest_word_count: i64 = normalized_chapters
+        .iter()
+        .map(|chapter| count_draft_units(&chapter.content))
+        .sum();
+    let persisted_content_size: i64 = chapters_to_persist
+        .iter()
+        .map(|chapter| chapter.content_size)
+        .sum();
+
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    tx.execute(
+        "INSERT INTO import_runs (
+            id, purpose, root_run_id, effect_namespace, source_fingerprint, manifest_fingerprint,
+            authority_fingerprint, source_display_json, locale, stage, status,
+            total_chapters, total_content_size, completed_chapters, base_run_id,
+            manifest_chapter_count, manifest_content_size, manifest_word_count
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'author-commit', 'ready', ?, ?, 0, NULL, ?, ?, ?)",
+        rusqlite::params![
+            run_id,
+            candidate.purpose.as_str(),
+            run_id,
+            format!("import:{}:{run_id}", candidate.purpose.as_str()),
+            candidate.source_fingerprint,
+            preview.manifest_fingerprint,
+            authority_fingerprint,
+            serde_json::to_string(source_display).unwrap_or_default(),
+            candidate.locale.as_str(),
+            chapters_to_persist.len() as i64,
+            persisted_content_size,
+            normalized_chapters.len() as i64,
+            manifest_content_size,
+            manifest_word_count,
+        ],
+    )
+    .map_err(|error| error.to_string())?;
+    for chapter in &chapters_to_persist {
+        tx.execute(
+            "INSERT INTO import_run_chapters (
+                run_id, chapter_number, source_id, source_chapter_number,
+                title, content_fingerprint, content_size, content_snapshot
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            rusqlite::params![
+                run_id,
+                chapter.number,
+                chapter.source_id,
+                chapter.source_chapter_number,
+                chapter.title,
+                chapter.content_fingerprint,
+                chapter.content_size,
+                chapter.content
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    tx.commit().map_err(|error| error.to_string())?;
+    let Some(created) = read_run_row(conn, run_id).map_err(PrepareError::Message)? else {
+        return Err(PrepareError::Message(
+            "作者原稿导入运行创建失败".to_string(),
+        ));
+    };
+    Ok(ImportRunPreparationResult {
+        classification: "new".to_string(),
+        run: Some(row_to_snapshot(conn, &created).map_err(PrepareError::Message)?),
+        new_chapter_numbers: preview.new_chapter_numbers.clone(),
+        conflict_chapter_numbers: Vec::new(),
+        duplicate_chapter_numbers: preview.duplicate_chapter_numbers.clone(),
+        inspection: None,
+    })
+}
+
+/// 平移自 `prepare`（author 分支见 [`prepare_author_manuscript`]）。
+///
+/// **D3′**：基线的两处 `adoptLegacyCompletedRun` 在 Tauri 侧恒不可达（legacy 指纹恒空），不移植。
+pub fn prepare(
+    conn: &Connection,
+    candidate: &ImportRunPrepareRequest,
+) -> Result<ImportRunPreparationResult, PrepareError> {
+    let run_id = candidate.run_id.trim();
+    if run_id.is_empty()
+        || run_id.encode_utf16().count() > 160
+        || !is_sha256(&candidate.source_fingerprint)
+    {
+        return Err(PrepareError::Message("导入运行身份无效".to_string()));
+    }
+    let source_display = normalize_display(&candidate.source_display)?;
+    let source_ids = normalize_source_ids(
+        candidate.source_ids.as_deref(),
+        &source_display,
+        &candidate.source_fingerprint,
+    )?;
+    // 基线的 prepare **只校验、不比长度**（与 `begin_parsing` 不同）；返回值仅服务于 legacy 迁移（D3′）
+    normalize_source_fingerprints(candidate.source_fingerprints.as_deref(), &source_ids)?;
+    let normalized_chapters = normalize_chapters(&candidate.chapters, &source_ids)?;
+
+    if candidate.purpose == ImportPurpose::AuthorManuscript {
+        return prepare_author_manuscript(
+            conn,
+            candidate,
+            run_id,
+            &source_display,
+            &normalized_chapters,
+        );
+    }
+
+    // ===== reference 分支：直接写冻结章（不经 parsing 阶段）=====
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    let (chapters, new_mappings) =
+        assign_stable_chapter_numbers(&tx, candidate.purpose, &normalized_chapters)?;
+    let manifest_fingerprint = hash_manifest(candidate.purpose, &chapters);
+    let manifest_content_size: i64 = chapters.iter().map(|chapter| chapter.content_size).sum();
+    let manifest_word_count: i64 = chapters
+        .iter()
+        .map(|chapter| count_draft_units(&chapter.content))
+        .sum();
+    let preview_chapters: Vec<PreparationChapter> = chapters
+        .iter()
+        .map(|chapter| PreparationChapter {
+            number: chapter.number,
+            title: chapter.title.clone(),
+            word_count: count_draft_units(&chapter.content),
+            content_size: chapter.content_size,
+        })
+        .collect();
+    let inspection_for =
+        |new_numbers: &[i64], conflict_numbers: &[i64], duplicate_numbers: &[i64]| {
+            create_preparation_inspection(
+                run_id,
+                candidate.purpose,
+                &source_display,
+                &preview_chapters,
+                new_numbers,
+                conflict_numbers,
+                duplicate_numbers,
+            )
+        };
+
+    if let Some(resumable) = matching_resumable_run(
+        &tx,
+        candidate.purpose,
+        &candidate.source_fingerprint,
+        &manifest_fingerprint,
+    )? {
+        // 注意：与 `finalize_parsing` 不同，此处**不做** id 比对、也不丢弃本次运行
+        let duplicate_numbers: Vec<i64> = chapters.iter().map(|chapter| chapter.number).collect();
+        let inspection = inspection_for(&[], &[], &duplicate_numbers);
+        tx.commit().map_err(|error| error.to_string())?;
+        return Ok(ImportRunPreparationResult {
+            classification: "resumable".to_string(),
+            run: Some(row_to_snapshot(conn, &resumable)?),
+            new_chapter_numbers: Vec::new(),
+            conflict_chapter_numbers: Vec::new(),
+            duplicate_chapter_numbers: duplicate_numbers,
+            inspection: Some(inspection),
+        });
+    }
+
+    let completed = latest_completed_run(&tx, candidate.purpose, &candidate.source_fingerprint)?;
+    let completed_manifest = completed_chapter_manifest(&tx, candidate.purpose, &source_ids)?;
+    let previous_for = |chapter: &NormalizedImportRunChapter| {
+        completed_manifest.get(&source_chapter_key(
+            &chapter.source_id,
+            chapter.source_chapter_number,
+        ))
+    };
+    let conflict_numbers: Vec<i64> = chapters
+        .iter()
+        .filter(|chapter| {
+            previous_for(chapter).is_some_and(|previous| {
+                previous.title != chapter.title
+                    || previous.content_fingerprint != chapter.content_fingerprint
+                    || previous.content_size != chapter.content_size
+            })
+        })
+        .map(|chapter| chapter.number)
+        .collect();
+    let duplicate_numbers: Vec<i64> = chapters
+        .iter()
+        .filter(|chapter| {
+            previous_for(chapter).is_some_and(|previous| {
+                previous.title == chapter.title
+                    && previous.content_fingerprint == chapter.content_fingerprint
+                    && previous.content_size == chapter.content_size
+            })
+        })
+        .map(|chapter| chapter.number)
+        .collect();
+    let new_chapters: Vec<&NormalizedImportRunChapter> = chapters
+        .iter()
+        .filter(|chapter| previous_for(chapter).is_none())
+        .collect();
+
+    if !conflict_numbers.is_empty() {
+        let new_numbers: Vec<i64> = new_chapters.iter().map(|chapter| chapter.number).collect();
+        let inspection = inspection_for(&new_numbers, &conflict_numbers, &duplicate_numbers);
+        tx.commit().map_err(|error| error.to_string())?;
+        return Ok(ImportRunPreparationResult {
+            classification: "conflict".to_string(),
+            run: None,
+            new_chapter_numbers: new_numbers,
+            conflict_chapter_numbers: conflict_numbers,
+            duplicate_chapter_numbers: duplicate_numbers,
+            inspection: Some(inspection),
+        });
+    }
+    if new_chapters.is_empty() {
+        let inspection = inspection_for(&[], &[], &duplicate_numbers);
+        tx.commit().map_err(|error| error.to_string())?;
+        return Ok(ImportRunPreparationResult {
+            classification: "exact-duplicate".to_string(),
+            run: None,
+            new_chapter_numbers: Vec::new(),
+            conflict_chapter_numbers: Vec::new(),
+            duplicate_chapter_numbers: duplicate_numbers,
+            inspection: Some(inspection),
+        });
+    }
+    if read_run_row(&tx, run_id)?.is_some() {
+        return Err(PrepareError::Message("导入运行 ID 已存在".to_string()));
+    }
+
+    let persisted_content_size: i64 = new_chapters
+        .iter()
+        .map(|chapter| chapter.content_size)
+        .sum();
+    for mapping in &new_mappings {
+        tx.execute(
+            "INSERT INTO import_source_chapter_map (purpose, source_id, source_chapter_number, chapter_number)
+             VALUES (?, ?, ?, ?)",
+            rusqlite::params![
+                candidate.purpose.as_str(),
+                mapping.source_id,
+                mapping.source_chapter_number,
+                mapping.chapter_number
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    tx.execute(
+        "INSERT INTO import_runs (
+            id, purpose, root_run_id, effect_namespace, source_fingerprint, manifest_fingerprint,
+            source_display_json, locale, stage, status, total_chapters, total_content_size,
+            completed_chapters, base_run_id, manifest_chapter_count, manifest_content_size,
+            manifest_word_count
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'knowledge', 'ready', ?, ?, 0, ?, ?, ?, ?)",
+        rusqlite::params![
+            run_id,
+            candidate.purpose.as_str(),
+            run_id,
+            format!("import:{}:{run_id}", candidate.purpose.as_str()),
+            candidate.source_fingerprint,
+            manifest_fingerprint,
+            serde_json::to_string(&source_display).unwrap_or_default(),
+            candidate.locale.as_str(),
+            new_chapters.len() as i64,
+            persisted_content_size,
+            completed.as_ref().map(|row| row.id.clone()),
+            chapters.len() as i64,
+            manifest_content_size,
+            manifest_word_count,
+        ],
+    )
+    .map_err(|error| error.to_string())?;
+    // 基线按 INSERT_BATCH_SIZE=50 分批复用同一条语句；本地 SQLite 无 RPC 成本，语义等价，故不分批
+    for chapter in &new_chapters {
+        tx.execute(
+            "INSERT INTO import_run_chapters (
+                run_id, chapter_number, source_id, source_chapter_number,
+                title, content_fingerprint, content_size, content_snapshot
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            rusqlite::params![
+                run_id,
+                chapter.number,
+                chapter.source_id,
+                chapter.source_chapter_number,
+                chapter.title,
+                chapter.content_fingerprint,
+                chapter.content_size,
+                chapter.content
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    let new_numbers: Vec<i64> = new_chapters.iter().map(|chapter| chapter.number).collect();
+    let inspection = inspection_for(&new_numbers, &[], &duplicate_numbers);
+    tx.commit().map_err(|error| error.to_string())?;
+    let Some(created) = read_run_row(conn, run_id)? else {
+        return Err(PrepareError::Message("导入运行创建失败".to_string()));
+    };
+    Ok(ImportRunPreparationResult {
+        classification: "new".to_string(),
+        run: Some(row_to_snapshot(conn, &created)?),
+        new_chapter_numbers: new_numbers,
+        conflict_chapter_numbers: Vec::new(),
+        duplicate_chapter_numbers: duplicate_numbers,
+        inspection: Some(inspection),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2730,6 +3287,187 @@ mod tests {
         );
         assert_eq!(resumable.duplicate_chapter_numbers, vec![1, 2]);
         assert!(resumable.new_chapter_numbers.is_empty());
+        assert_eq!(run_count(&conn), 1);
+    }
+
+    // ==================== G2b-4：prepare 两分支 ====================
+
+    fn prepare_request(
+        run_id: &str,
+        purpose: ImportPurpose,
+        chapters: Vec<ImportRunChapterInput>,
+    ) -> ImportRunPrepareRequest {
+        ImportRunPrepareRequest {
+            run_id: run_id.to_string(),
+            purpose,
+            source_fingerprint: "a".repeat(64),
+            source_ids: Some(vec![SOURCE_ID.to_string()]),
+            source_fingerprints: Some(vec!["b".repeat(64)]),
+            source_display: vec![ImportSourceDisplayMetadata {
+                display_name: "第1章.txt".to_string(),
+                media_type: "text/plain".to_string(),
+                size: 10,
+            }],
+            locale: ImportRunLocale::ZhCn,
+            authority_fingerprint: None,
+            expected_manifest_fingerprint: None,
+            chapters,
+        }
+    }
+
+    #[test]
+    fn prepare_reference_creates_knowledge_run_then_resumes_test() {
+        let conn = memory_conn();
+        let request = prepare_request(
+            "run-prep",
+            ImportPurpose::Reference,
+            vec![chapter_input(1, "正文甲"), chapter_input(2, "正文乙")],
+        );
+        let prepared = prepare(&conn, &request).unwrap();
+        assert_eq!(prepared.classification, "new");
+        let run = prepared.run.clone().unwrap();
+        assert_eq!(run.stage, "knowledge");
+        assert_eq!(run.status, "ready");
+        assert_eq!(run.total_chapters, 2);
+        assert_eq!(run.total_content_size, 18);
+        assert_eq!(run.manifest_chapter_count, 2);
+        assert_eq!(run.manifest_content_size, 18);
+        assert_eq!(prepared.new_chapter_numbers, vec![1, 2]);
+        assert_eq!(
+            prepared.inspection.as_ref().map(|i| i.preview_remaining),
+            Some(0)
+        );
+        // 冻结章直接落库（reference 分支不经 parsing）
+        let frozen: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM import_run_chapters WHERE run_id = 'run-prep'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(frozen, 2);
+        let mapped: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM import_source_chapter_map",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(mapped, 2);
+
+        // 同来源同清单再次 prepare → 命中既有可恢复运行
+        let again = prepare(
+            &conn,
+            &prepare_request(
+                "run-prep-2",
+                ImportPurpose::Reference,
+                request.chapters.clone(),
+            ),
+        )
+        .unwrap();
+        assert_eq!(again.classification, "resumable");
+        assert_eq!(
+            again.run.as_ref().map(|run| run.id.as_str()),
+            Some("run-prep")
+        );
+        assert_eq!(again.duplicate_chapter_numbers, vec![1, 2]);
+        assert_eq!(run_count(&conn), 1, "resumable 不应新建运行");
+
+        // runId 重复（同清单但命中 exact-duplicate 之前：先改内容使之非重复）→ '导入运行 ID 已存在'
+        let mut conflict_request = prepare_request(
+            "run-prep",
+            ImportPurpose::Reference,
+            vec![chapter_input(1, "全新正文")],
+        );
+        conflict_request.source_fingerprint = "c".repeat(64);
+        assert_eq!(
+            prepare(&conn, &conflict_request).unwrap_err().message(),
+            "导入运行 ID 已存在"
+        );
+    }
+
+    #[test]
+    fn prepare_author_manuscript_guards_and_happy_path_test() {
+        let conn = memory_conn();
+        let chapters = vec![chapter_input(1, "正文甲"), chapter_input(2, "正文乙")];
+        let author_chapters: Vec<draft_import::FinalizedDraftImportChapter> = chapters
+            .iter()
+            .map(|chapter| draft_import::FinalizedDraftImportChapter {
+                chapter_number: chapter.number,
+                title: chapter.title.clone(),
+                content: chapter.content.clone(),
+                word_count: count_draft_units(&chapter.content),
+            })
+            .collect();
+        let preview = draft_import::preview(&conn, &author_chapters).unwrap();
+
+        // 缺权威预览 → 拒绝
+        let bare = prepare_request(
+            "run-author",
+            ImportPurpose::AuthorManuscript,
+            chapters.clone(),
+        );
+        assert_eq!(
+            prepare(&conn, &bare).unwrap_err().message(),
+            "作者原稿缺少已确认的权威预览"
+        );
+
+        // 权威指纹过期 → AuthorPreviewStale（命令层映射为 errorCode）
+        let mut stale = prepare_request(
+            "run-author",
+            ImportPurpose::AuthorManuscript,
+            chapters.clone(),
+        );
+        stale.authority_fingerprint = Some("f".repeat(64));
+        stale.expected_manifest_fingerprint = Some(preview.manifest_fingerprint.clone());
+        match prepare(&conn, &stale) {
+            Err(PrepareError::AuthorPreviewStale(message)) => {
+                assert_eq!(message, "项目权威章节已变化，作者原稿预览已过期")
+            }
+            other => panic!("应为 AuthorPreviewStale，实际 {other:?}"),
+        }
+
+        // 正常创建 → stage=author-commit，带 authority_fingerprint
+        let mut request = prepare_request(
+            "run-author",
+            ImportPurpose::AuthorManuscript,
+            chapters.clone(),
+        );
+        request.authority_fingerprint = Some(preview.authority_fingerprint.clone());
+        request.expected_manifest_fingerprint = Some(preview.manifest_fingerprint.clone());
+        let prepared = prepare(&conn, &request).unwrap();
+        assert_eq!(prepared.classification, "new");
+        assert!(
+            prepared.inspection.is_none(),
+            "author 分支不下发 inspection"
+        );
+        let run = prepared.run.clone().unwrap();
+        assert_eq!(run.stage, "author-commit");
+        assert_eq!(
+            run.manifest_fingerprint.as_deref(),
+            Some(preview.manifest_fingerprint.as_str())
+        );
+        assert_eq!(
+            run.authority_fingerprint.as_deref(),
+            Some(preview.authority_fingerprint.as_str())
+        );
+        assert_eq!(run.total_chapters, preview.new_chapter_numbers.len() as i64);
+        assert_eq!(run.manifest_chapter_count, 2);
+
+        // 同一权威再确认 → 命中既有运行（authority 相等即 resumable）
+        let mut again = prepare_request(
+            "run-author-2",
+            ImportPurpose::AuthorManuscript,
+            chapters.clone(),
+        );
+        again.authority_fingerprint = Some(preview.authority_fingerprint.clone());
+        again.expected_manifest_fingerprint = Some(preview.manifest_fingerprint.clone());
+        let resumed = prepare(&conn, &again).unwrap();
+        assert_eq!(resumed.classification, "resumable");
+        assert_eq!(
+            resumed.run.as_ref().map(|run| run.id.as_str()),
+            Some("run-author")
+        );
         assert_eq!(run_count(&conn), 1);
     }
 }
