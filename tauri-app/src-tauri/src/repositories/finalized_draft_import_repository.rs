@@ -12,6 +12,8 @@ use rusqlite::{Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::manuscript_publisher::resolve_manuscript_target;
+
 pub(crate) fn sha256_hex(value: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(value.as_bytes());
@@ -412,72 +414,9 @@ fn verify_stored_facts(
     Ok(())
 }
 
-// ===== 实体稿目标（平移自 electron/services/manuscript-publisher.ts） =====
-
-fn sanitize_windows_file_name_part(value: &str) -> String {
-    let illegal = regex::Regex::new(r#"[<>:"/\\|?*]"#).unwrap();
-    let reserved = regex::Regex::new(r#"(?i)^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$"#).unwrap();
-    let replaced: String = value
-        .chars()
-        .map(|c| if (c as u32) <= 0x1f || illegal.is_match(&c.to_string()) { '_' } else { c })
-        .collect();
-    let trimmed = replaced.trim().trim_end_matches(['.', ' ']).to_string();
-    let trimmed = trimmed.trim_end_matches(['.', ' ']).to_string();
-    if trimmed.is_empty() {
-        return String::new();
-    }
-    if reserved.is_match(&trimmed) {
-        format!("{trimmed}_")
-    } else {
-        trimmed
-    }
-}
-
-fn manuscript_file_name(chapter_number: i64, chapter_title: &str) -> String {
-    let title = sanitize_windows_file_name_part(chapter_title);
-    if title.is_empty() {
-        format!("第{chapter_number}章.txt")
-    } else {
-        format!("第{chapter_number}章 {title}.txt")
-    }
-}
-
-/// 对齐基线 `resolveManuscriptTarget`：项目根直下取空闲文件名（碰撞加后缀）
-fn resolve_manuscript_target(
-    project_root: &str,
-    chapter_number: i64,
-    chapter_title: &str,
-    finalization_id: &str,
-) -> Result<String, String> {
-    if chapter_number < 1 {
-        return Err("章节号无效，无法生成实体稿目标".to_string());
-    }
-    let preferred = manuscript_file_name(chapter_number, chapter_title);
-    let root = std::path::Path::new(project_root);
-    let first = root.join(&preferred);
-    if !first.exists() {
-        return Ok(preferred);
-    }
-    let (stem, ext) = match preferred.rsplit_once('.') {
-        Some((stem, ext)) => (stem, format!(".{ext}")),
-        None => (preferred.as_str(), String::new()),
-    };
-    let marker_raw = sanitize_windows_file_name_part(finalization_id);
-    let collision_marker: String = marker_raw.chars().take(12).collect();
-    let collision_marker = if collision_marker.is_empty() { "finalized".to_string() } else { collision_marker };
-    for index in 1..1000 {
-        let suffix = if index == 1 {
-            format!(" ({collision_marker})")
-        } else {
-            format!(" ({collision_marker}-{index})")
-        };
-        let candidate = format!("{stem}{suffix}{ext}");
-        if !root.join(&candidate).exists() {
-            return Ok(candidate);
-        }
-    }
-    Err("实体稿文件名碰撞过多，拒绝覆盖现有文件".to_string())
-}
+// ===== 实体稿目标 =====
+// 目标文件名解析已统一到 `crate::manuscript_publisher`（G1 定稿发布同源），
+// 避免两份 `resolveManuscriptTarget` 漂移。
 
 /// 对齐契约 `AuthorManuscriptImportPreview`（commit 内部消费，非 IPC 频道）
 #[derive(Debug, Clone, Serialize)]
@@ -669,7 +608,8 @@ pub fn commit(
             chapter.chapter_number,
             &chapter.title,
             &frozen_finalization_id,
-        )?;
+        )?
+        .file_name;
         tx.execute(
             "INSERT INTO finalization_outbox (
                 finalization_id, draft_id, chapter_number, chapter_title,

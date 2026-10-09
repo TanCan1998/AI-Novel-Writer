@@ -3,13 +3,14 @@
 //! 平移自 `electron/controllers/chapter-lifecycle-controller.ts` +
 //! `electron/services/chapter-deletion-service.ts`（操作状态机 + 断点恢复）。
 //!
-//! 物理清理投影状态（2026-10-10 更新，批次 F2-3 收口）：
-//! - `removePublishedManuscript`（删实体稿文件）→ **仍为诚实化占位**（依赖批次 H 的 fs 授权域）；
+//! 物理清理投影状态（2026-10-09 更新，G1 收口）：
+//! - 删实体稿文件（`removePublishedManuscript`）→ **已真实化**：删除项目根内 outbox
+//!   冻结的实体稿文件（缺失视为幂等成功），与基线 cleaner 同源；
 //! - 知识库文档清理 → **已真实化**：调用 `db/kb/store::remove_document` 删除 SQLite 事实
 //!   并同步清除 HNSW 向量（与 `kb:remove-document` 同一路径）。
 //!
 //! SQLite 事实删除（`begin` 事务内 `deleteChapterFacts`）已真实提交（`committed: true`），
-//! 渲染层可经 `chapter:retry-deletion` 断点恢复；批次 H 落地后替换实体稿 cleaner 即恢复完整语义。
+//! 渲染层可经 `chapter:retry-deletion` 断点恢复；两个物理投影现均真实执行。
 
 use rusqlite::Connection;
 use serde::Serialize;
@@ -87,9 +88,9 @@ fn legacy_authorization_receipt(
     }
 }
 
-/// 实体稿物理清理占位（诚实化）：批次 H 前一律显式失败
-fn manuscript_cleanup_unavailable() -> Result<(), String> {
-    Err("实体稿文件清理尚未迁移（依赖批次 H 的外部文件授权），已保留实体稿".to_string())
+/// 实体稿物理清理：删除 outbox 冻结的实体稿文件（项目根内，缺失视为幂等成功）
+fn manuscript_cleanup(project_root: &str, target_file_name: &str) -> Result<(), String> {
+    crate::manuscript_publisher::remove_published_manuscript(project_root, target_file_name)
 }
 
 /// 知识库文档真实清理：删除 `kb_documents` / `kb_chunks` / `kb_fts` 事实并清除向量。
@@ -118,7 +119,7 @@ async fn knowledge_cleanup(
 
 /// 基线 `ChapterDeletionService.resume`：断点恢复。
 ///
-/// 实体稿投影为诚实化占位（显式 failed）；知识库投影为真实清理。
+/// 实体稿与知识库投影均为真实清理。
 async fn resume(
     state: &AppState,
     project_root: &str,
@@ -144,9 +145,9 @@ async fn resume(
 
     state.with_project_db(|conn| repo::start_attempt(conn, operation_id))?;
 
-    // 投影一：实体稿文件清理（占位：批次 H 前 always failed）
+    // 投影一：实体稿文件清理（真实：项目根内 outbox 冻结目标）
     if operation.manuscript_status == "pending" || operation.manuscript_status == "failed" {
-        match manuscript_cleanup_unavailable() {
+        match manuscript_cleanup(project_root, &operation.target_file_name) {
             Ok(()) => state.with_project_db(|conn| {
                 repo::mark_projection(conn, operation_id, "manuscript", "completed", "")
             })?,
@@ -396,8 +397,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn manuscript_placeholder_fails_explicitly() {
-        assert!(manuscript_cleanup_unavailable().is_err());
+    fn manuscript_cleanup_is_idempotent_inside_project_root() {
+        let root = std::env::temp_dir().join(format!(
+            "lorekeeper-chapter-cleanup-{}",
+            crate::project_access::random_uuid_v4()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let root_text = root.to_string_lossy().to_string();
+        std::fs::write(root.join("第1章 起点.txt"), "正文").unwrap();
+
+        manuscript_cleanup(&root_text, "第1章 起点.txt").unwrap();
+        assert!(!root.join("第1章 起点.txt").exists(), "应删除实体稿文件");
+        // 缺失文件视为幂等成功
+        manuscript_cleanup(&root_text, "第1章 起点.txt").unwrap();
+        // 冻结目标必须为裸文件名（越界拒绝）
+        assert!(manuscript_cleanup(&root_text, "../escape.txt").is_err());
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -405,7 +420,7 @@ mod tests {
         let mut operation = sample_operation();
         assert!(operation_error(&operation).is_none());
         operation.manuscript_status = "failed".into();
-        operation.manuscript_error = "实体稿文件清理尚未迁移".into();
+        operation.manuscript_error = "实体稿目标无效".into();
         assert!(operation_error(&operation).unwrap().starts_with("实体稿清理失败："));
         operation.knowledge_status = "failed".into();
         operation.knowledge_error = "知识库文档清理失败".into();

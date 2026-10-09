@@ -176,32 +176,53 @@ fn read_authoritative_export_rows(
     select_authoritative_export_rows(rows)
 }
 
+/// outbox 记录投影（列顺序与基线 `FinalizationRow` 一致）
+fn map_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<FinalizationRecord> {
+    Ok(FinalizationRecord {
+        finalization_id: row.get(0)?,
+        draft_id: row.get(1)?,
+        chapter_number: row.get(2)?,
+        chapter_title: row.get(3)?,
+        content_snapshot: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
+        content_hash: row.get(5)?,
+        content_revision: row.get(6)?,
+        target_file_name: row.get(7)?,
+        knowledge_document_id: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
+        publication_status: row.get(9)?,
+        last_error: row.get::<_, Option<String>>(10)?.unwrap_or_default(),
+        published_at: row.get(11)?,
+    })
+}
+
+const RECORD_COLUMNS: &str = "SELECT finalization_id, draft_id, chapter_number, chapter_title,
+        content_snapshot, content_hash, content_revision, target_file_name,
+        knowledge_document_id, publication_status, last_error, published_at
+ FROM finalization_outbox";
+
 fn get_record_by_draft(conn: &Connection, draft_id: i64) -> Result<Option<FinalizationRecord>, String> {
     conn.query_row(
-        "SELECT finalization_id, draft_id, chapter_number, chapter_title,
-                content_snapshot, content_hash, content_revision, target_file_name,
-                knowledge_document_id, publication_status, last_error, published_at
-         FROM finalization_outbox WHERE draft_id = ?1",
+        &format!("{RECORD_COLUMNS} WHERE draft_id = ?1"),
         [draft_id],
-        |row| {
-            Ok(FinalizationRecord {
-                finalization_id: row.get(0)?,
-                draft_id: row.get(1)?,
-                chapter_number: row.get(2)?,
-                chapter_title: row.get(3)?,
-                content_snapshot: row.get::<_, Option<String>>(4)?.unwrap_or_default(),
-                content_hash: row.get(5)?,
-                content_revision: row.get(6)?,
-                target_file_name: row.get(7)?,
-                knowledge_document_id: row.get::<_, Option<String>>(8)?.unwrap_or_default(),
-                publication_status: row.get(9)?,
-                last_error: row.get::<_, Option<String>>(10)?.unwrap_or_default(),
-                published_at: row.get(11)?,
-            })
-        },
+        map_record,
     )
     .optional()
     .map_err(|e| e.to_string())
+}
+
+/// 基线 `FinalizationRepository.get`
+pub fn get(conn: &Connection, finalization_id: &str) -> Result<Option<FinalizationRecord>, String> {
+    conn.query_row(
+        &format!("{RECORD_COLUMNS} WHERE finalization_id = ?1"),
+        [finalization_id],
+        map_record,
+    )
+    .optional()
+    .map_err(|e| e.to_string())
+}
+
+/// 基线 `FinalizationRepository.getByDraftId`
+pub fn get_by_draft_id(conn: &Connection, draft_id: i64) -> Result<Option<FinalizationRecord>, String> {
+    get_record_by_draft(conn, draft_id)
 }
 
 /// 基线 `FinalizationRepository.linkKnowledgeDocument`
@@ -263,6 +284,186 @@ pub fn matches_authoritative_export_receipt(
         })
 }
 
+// ===== G1：定稿提交事务（`finalization:commit` / `finalization:retry`） =====
+
+/// 基线 `FinalizationCommitInput`
+#[derive(Debug, Clone)]
+pub struct FinalizationCommitInput {
+    pub finalization_id: String,
+    pub draft_id: i64,
+    pub chapter_number: i64,
+    pub chapter_title: String,
+    pub content: String,
+    pub content_hash: String,
+    pub content_revision: i64,
+    pub target_file_name: String,
+}
+
+/// 基线 `hasSameFinalizationInput`：同草稿重复提交必须逐字段一致才幂等
+fn has_same_finalization_input(
+    existing: &FinalizationRecord,
+    input: &FinalizationCommitInput,
+) -> bool {
+    existing.draft_id == input.draft_id
+        && existing.chapter_number == input.chapter_number
+        && existing.chapter_title == input.chapter_title
+        && existing.content_hash == input.content_hash
+        && existing.content_revision == input.content_revision
+        && existing.content_snapshot == input.content
+}
+
+/// 基线 `FinalizationRepository.commit`：正文、字数、定稿状态与发布 outbox 必须由
+/// **同一个 SQLite transaction** 共同提交；任一 statement 失败都会回滚其余变化。
+pub fn commit(
+    conn: &Connection,
+    input: &FinalizationCommitInput,
+) -> Result<FinalizationRecord, String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+
+    if let Some(existing) = get_record_by_draft(&tx, input.draft_id)? {
+        // renderer 可能在主进程已提交而响应丢失后重发同一冻结快照。此时新生成的
+        // finalizationId/碰撞候选文件名都不能破坏幂等性，必须返回原提交。
+        if has_same_finalization_input(&existing, input) {
+            return Ok(existing);
+        }
+        return Err("该草稿已有不可替换的定稿提交".to_string());
+    }
+
+    let draft = tx
+        .query_row(
+            "SELECT id, chapter_number, status, content_id FROM drafts WHERE id = ?1",
+            [input.draft_id],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    let Some((_id, draft_chapter, draft_status, content_id)) = draft else {
+        return Err(format!("草稿不存在：{}", input.draft_id));
+    };
+    if draft_chapter != input.chapter_number {
+        return Err("草稿与定稿章节不匹配".to_string());
+    }
+    if draft_status == "finalized" {
+        return Err("草稿已定稿但缺少可恢复发布记录".to_string());
+    }
+
+    let replaces_finalized: Option<i64> = tx
+        .query_row(
+            "SELECT 1 FROM drafts
+             WHERE chapter_number = ?1 AND status = 'finalized' AND id <> ?2
+             LIMIT 1",
+            rusqlite::params![input.chapter_number, input.draft_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| e.to_string())?;
+    if replaces_finalized.is_some() {
+        crate::repositories::finalized_continuity_repository::invalidate_continuity_projection_from(
+            &tx,
+            input.chapter_number,
+        )?;
+    }
+
+    tx.execute(
+        "UPDATE contents SET body = ?1 WHERE id = ?2",
+        rusqlite::params![input.content, content_id],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "UPDATE drafts
+         SET status = 'finalized', word_count = ?1, updated_at = datetime('now')
+         WHERE id = ?2",
+        rusqlite::params![
+            crate::draft_units::count_draft_units(&input.content),
+            input.draft_id
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+    tx.execute(
+        "INSERT INTO finalization_outbox (
+            finalization_id, draft_id, chapter_number, chapter_title,
+            content_hash, content_revision, content_snapshot, target_file_name,
+            publication_status, last_error
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 'pending', '')",
+        rusqlite::params![
+            input.finalization_id,
+            input.draft_id,
+            input.chapter_number,
+            input.chapter_title,
+            input.content_hash,
+            input.content_revision,
+            input.content,
+            input.target_file_name,
+        ],
+    )
+    .map_err(|e| e.to_string())?;
+
+    tx.commit().map_err(|e| e.to_string())?;
+
+    // 与基线一致：事务内构造返回记录（不重新回读）
+    Ok(FinalizationRecord {
+        finalization_id: input.finalization_id.clone(),
+        draft_id: input.draft_id,
+        chapter_number: input.chapter_number,
+        chapter_title: input.chapter_title.clone(),
+        content_snapshot: input.content.clone(),
+        content_hash: input.content_hash.clone(),
+        content_revision: input.content_revision,
+        target_file_name: input.target_file_name.clone(),
+        knowledge_document_id: String::new(),
+        publication_status: "pending".to_string(),
+        last_error: String::new(),
+        published_at: None,
+    })
+}
+
+/// 基线 `FinalizationRepository.markPublicationPending`
+pub fn mark_publication_pending(
+    conn: &Connection,
+    finalization_id: &str,
+    error: &str,
+) -> Result<FinalizationRecord, String> {
+    let changed = conn
+        .execute(
+            "UPDATE finalization_outbox
+             SET publication_status = 'pending', last_error = ?1, updated_at = datetime('now')
+             WHERE finalization_id = ?2",
+            rusqlite::params![error, finalization_id],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed != 1 {
+        return Err(format!("定稿提交不存在：{finalization_id}"));
+    }
+    get(conn, finalization_id)?.ok_or(format!("定稿提交不存在：{finalization_id}"))
+}
+
+/// 基线 `FinalizationRepository.markPublished`
+pub fn mark_published(
+    conn: &Connection,
+    finalization_id: &str,
+) -> Result<FinalizationRecord, String> {
+    let changed = conn
+        .execute(
+            "UPDATE finalization_outbox
+             SET publication_status = 'published', last_error = '',
+                 published_at = datetime('now'), updated_at = datetime('now')
+             WHERE finalization_id = ?1",
+            [finalization_id],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed != 1 {
+        return Err(format!("定稿提交不存在：{finalization_id}"));
+    }
+    get(conn, finalization_id)?.ok_or(format!("定稿提交不存在：{finalization_id}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -300,6 +501,157 @@ mod tests {
         )
         .unwrap();
         draft_id
+    }
+
+    /// 造一个可定稿的草稿（status='draft'），返回 (draft_id, content_id)
+    fn seed_draft(conn: &Connection, chapter: i64, version: i64, body: &str) -> (i64, i64) {
+        conn.execute("INSERT INTO contents (body) VALUES (?1)", [body])
+            .unwrap();
+        let content_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO drafts (chapter_number, version, status, content_id) VALUES (?1, ?2, 'draft', ?3)",
+            rusqlite::params![chapter, version, content_id],
+        )
+        .unwrap();
+        (conn.last_insert_rowid(), content_id)
+    }
+
+    fn commit_input(draft_id: i64, finalization_id: &str, body: &str) -> FinalizationCommitInput {
+        FinalizationCommitInput {
+            finalization_id: finalization_id.to_string(),
+            draft_id,
+            chapter_number: 1,
+            chapter_title: "初遇".to_string(),
+            content: body.to_string(),
+            content_hash: sha256_hex(body),
+            content_revision: 1,
+            target_file_name: "第1章 初遇.txt".to_string(),
+        }
+    }
+
+    #[test]
+    fn commit_freezes_facts_and_is_idempotent_test() {
+        let conn = memory_db();
+        let (draft_id, content_id) = seed_draft(&conn, 1, 1, "旧正文");
+        let body = "# 标题\n\n正文";
+        let input = commit_input(draft_id, "fin-1", body);
+
+        let record = commit(&conn, &input).unwrap();
+        assert_eq!(record.finalization_id, "fin-1");
+        assert_eq!(record.publication_status, "pending");
+        assert_eq!(record.knowledge_document_id, "");
+
+        // 同一事务同时冻结三个事实：正文、定稿状态、字数
+        let frozen_body: String = conn
+            .query_row("SELECT body FROM contents WHERE id = ?1", [content_id], |row| row.get(0))
+            .unwrap();
+        assert_eq!(frozen_body, body);
+        let (status, word_count): (String, i64) = conn
+            .query_row(
+                "SELECT status, word_count FROM drafts WHERE id = ?1",
+                [draft_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(status, "finalized");
+        assert_eq!(word_count, crate::draft_units::count_draft_units(body));
+
+        // 幂等：同输入重发返回原提交，不新增 outbox 行
+        let again = commit(&conn, &input).unwrap();
+        assert_eq!(again.finalization_id, "fin-1");
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM finalization_outbox", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 1, "同快照重发不得创建第二条提交");
+
+        // 内容漂移 → 拒绝覆盖
+        let mut drifted = input.clone();
+        drifted.content = "改过的正文".to_string();
+        drifted.content_hash = sha256_hex(&drifted.content);
+        assert_eq!(
+            commit(&conn, &drifted).unwrap_err(),
+            "该草稿已有不可替换的定稿提交"
+        );
+    }
+
+    #[test]
+    fn commit_rejects_invalid_draft_states_test() {
+        let conn = memory_db();
+        let missing = commit_input(999, "fin-x", "a");
+        assert_eq!(commit(&conn, &missing).unwrap_err(), "草稿不存在：999");
+
+        let (draft_id, _) = seed_draft(&conn, 1, 1, "正文");
+        let mut wrong_chapter = commit_input(draft_id, "fin-x", "a");
+        wrong_chapter.chapter_number = 2;
+        assert_eq!(commit(&conn, &wrong_chapter).unwrap_err(), "草稿与定稿章节不匹配");
+
+        conn.execute("UPDATE drafts SET status = 'finalized' WHERE id = ?1", [draft_id])
+            .unwrap();
+        assert_eq!(
+            commit(&conn, &commit_input(draft_id, "fin-x", "a")).unwrap_err(),
+            "草稿已定稿但缺少可恢复发布记录"
+        );
+    }
+
+    #[test]
+    fn commit_replacing_finalized_advances_continuity_watermark_test() {
+        let conn = memory_db();
+        // 第 3 章已有 v1 定稿
+        let (first_draft, _) = seed_draft(&conn, 3, 1, "v1 正文");
+        let mut first = commit_input(first_draft, "fin-3-1", "v1 正文");
+        first.chapter_number = 3;
+        commit(&conn, &first).unwrap();
+
+        let before: Option<i64> = conn
+            .query_row(
+                "SELECT stale_from_chapter FROM continuity_projection_meta WHERE id = 'main'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        // 同章 v2 定稿 → 触发连续性失效水位推进
+        let (second_draft, _) = seed_draft(&conn, 3, 2, "v2 正文");
+        let mut second = commit_input(second_draft, "fin-3-2", "v2 正文");
+        second.chapter_number = 3;
+        commit(&conn, &second).unwrap();
+
+        let after: Option<i64> = conn
+            .query_row(
+                "SELECT stale_from_chapter FROM continuity_projection_meta WHERE id = 'main'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(before, None, "初始无失效水位");
+        assert_eq!(after, Some(3), "同章重定稿应把失效水位推进到该章");
+    }
+
+    #[test]
+    fn publication_marks_roundtrip_and_reject_unknown_id_test() {
+        let conn = memory_db();
+        let (draft_id, _) = seed_draft(&conn, 1, 1, "正文");
+        commit(&conn, &commit_input(draft_id, "fin-9", "正文")).unwrap();
+
+        let pending = mark_publication_pending(&conn, "fin-9", "实体稿目标已存在且内容不匹配").unwrap();
+        assert_eq!(pending.publication_status, "pending");
+        assert_eq!(pending.last_error, "实体稿目标已存在且内容不匹配");
+
+        let published = mark_published(&conn, "fin-9").unwrap();
+        assert_eq!(published.publication_status, "published");
+        assert_eq!(published.last_error, "");
+        assert!(published.published_at.is_some());
+
+        assert_eq!(mark_published(&conn, "nope").unwrap_err(), "定稿提交不存在：nope");
+        assert_eq!(
+            mark_publication_pending(&conn, "nope", "e").unwrap_err(),
+            "定稿提交不存在：nope"
+        );
+        assert!(get(&conn, "nope").unwrap().is_none());
+        assert_eq!(
+            get_by_draft_id(&conn, draft_id).unwrap().unwrap().finalization_id,
+            "fin-9"
+        );
     }
 
     #[test]

@@ -100,6 +100,8 @@ export const MIGRATED_CHANNELS: ReadonlySet<string> = new Set([
   'dialog:select-folder',
   'dialog:select-knowledge-files',
   'dialog:select-knowledge-folder',
+  'finalization:commit',
+  'finalization:retry',
   'fs:check-exists',
   'fs:grant-mkdir',
   'fs:grant-read-file',

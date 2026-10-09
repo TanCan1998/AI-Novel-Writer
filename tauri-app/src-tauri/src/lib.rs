@@ -23,6 +23,8 @@ mod plot_tree;
 // 批次 D2：LLM 生成执行域（预设目录 / 推理策略 / 生成参数 / 执行租约 / HTTP 生成链
 // + 模型发现 / 远程 Embedding）。
 mod llm;
+// 批次 E（G1）：实体稿发布 / 清理投影（`electron/services/manuscript-publisher.ts` 的平移）。
+mod manuscript_publisher;
 mod project_access;
 mod repositories;
 mod security;
@@ -192,6 +194,9 @@ pub fn run() {
             commands::chapter_retry_deletion,
             commands::chapter_confirm_legacy_knowledge_absent,
             commands::chapter_list_incomplete_deletions,
+            // 批次 E（G1）：定稿提交 / 实体稿重试（finalization:* 2 频道）
+            commands::finalization_commit,
+            commands::finalization_retry,
             // 批次 D1：LLM 模型管理（7 频道）
             commands::llm_list_models,
             commands::llm_save_model,

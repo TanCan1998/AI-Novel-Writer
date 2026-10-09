@@ -24,7 +24,9 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const appRoot = path.resolve(here, '..')
 const repoRoot = path.resolve(appRoot, '..')
 
-const channelsFile = path.join(repoRoot, 'src/shared/ipc-channels.ts')
+// 契约事实源 = tauri-app 副本：G1 的 `finalization:*` 只在 Tauri 侧声明
+// （上游 `src/` 未声明且保持不动，以保证上游可合并）。
+const channelsFile = path.join(appRoot, 'src/shared/ipc-channels.ts')
 const libFile = path.join(appRoot, 'src-tauri/src/lib.rs')
 const migratedFile = path.join(appRoot, 'src/shared/migrated-channels.ts')
 

@@ -407,3 +407,130 @@ fn real_project_clear_moves_physical_files_and_keeps_library_test() {
 
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// G1 + B2 磁盘级回归：**定稿事务 → 实体稿落盘 → 章节删除真实移除实体稿**。
+///
+/// 对应 GUI 冒烟里「点定稿得到 `.txt`」与「删除章节后 `.txt` 消失」两条断言。
+/// 命令层只做门禁与信封转换，故在此直接驱动仓储 + `manuscript_publisher`。
+#[test]
+fn real_project_finalize_publish_then_delete_removes_manuscript_test() {
+    use crate::manuscript_publisher::{publish_manuscript, remove_published_manuscript};
+    use crate::repositories::chapter_deletion_repository as chapter_deletion;
+    use crate::repositories::finalization_repository as finalization;
+
+    let root = temp_project("finalize-delete");
+    let root_text = root.to_string_lossy().to_string();
+    let database = ProjectDatabase::open(&root).expect("打开项目库失败");
+    let conn = database.connection();
+    project_core::init(conn, "定稿删除回归", project_core::DEFAULT_WRITING_LANGUAGE).unwrap();
+
+    // 1) 待定稿草稿
+    conn.execute("INSERT INTO contents (body) VALUES ('草稿正文')", [])
+        .unwrap();
+    let content_id = conn.last_insert_rowid();
+    conn.execute(
+        "INSERT INTO drafts (chapter_number, version, status, content_id) VALUES (1, 1, 'draft', ?1)",
+        [content_id],
+    )
+    .unwrap();
+    let draft_id = conn.last_insert_rowid();
+
+    // 2) 定稿提交（G1）：事务内冻结正文 / 状态 / 字数 / outbox
+    let body = "# 第一章 起点\n\n正文第一段。\n";
+    let record = finalization::commit(
+        conn,
+        &finalization::FinalizationCommitInput {
+            finalization_id: "fin-disk-1".to_string(),
+            draft_id,
+            chapter_number: 1,
+            chapter_title: "起点".to_string(),
+            content: body.to_string(),
+            content_hash: crate::repositories::finalized_continuity_repository::sha256_hex(body),
+            content_revision: 1,
+            target_file_name: "第1章 起点.txt".to_string(),
+        },
+    )
+    .expect("定稿提交失败");
+    assert_eq!(record.publication_status, "pending");
+    assert_eq!(record.content_snapshot, body, "outbox 必须冻结不可变正文");
+    assert_eq!(
+        conn.query_row("SELECT body FROM contents WHERE id = ?1", [content_id], |row| row
+            .get::<_, String>(0))
+            .unwrap(),
+        body,
+        "定稿后 contents.body 应等于冻结正文"
+    );
+
+    // 3) 发布实体稿（真实文件，标题行被剥离）
+    publish_manuscript(
+        &root_text,
+        &record.target_file_name,
+        1,
+        "起点",
+        &record.content_snapshot,
+    )
+    .expect("发布实体稿失败");
+    let manuscript = root.join("第1章 起点.txt");
+    assert!(manuscript.exists(), "定稿后应落盘实体稿");
+    assert_eq!(
+        std::fs::read_to_string(&manuscript).unwrap(),
+        "第1章 起点\n\n正文第一段。\n"
+    );
+    assert_eq!(
+        finalization::mark_published(conn, &record.finalization_id)
+            .unwrap()
+            .publication_status,
+        "published"
+    );
+
+    // 陪跑文件：非冻结目标，删除时不得被波及
+    let decoy = root.join("其他稿件.txt");
+    std::fs::write(&decoy, "无关内容").unwrap();
+
+    // 4) 章节删除（B2）：冻结收据 + 同事务删除 SQLite 事实
+    let request = chapter_deletion::DeleteFinalizedChapterRequest {
+        draft_id,
+        chapter_number: 1,
+    };
+    let operation = chapter_deletion::begin(conn, "op-disk-1", &request, false)
+        .expect("冻结删除收据失败");
+    assert_eq!(operation.manuscript_status, "pending");
+    assert_eq!(operation.knowledge_status, "not_required");
+    assert_eq!(operation.target_file_name, "第1章 起点.txt");
+    let remaining: i64 = conn
+        .query_row("SELECT COUNT(*) FROM drafts WHERE id = ?1", [draft_id], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    assert_eq!(remaining, 0, "定稿事实应随删除事务移除");
+
+    // 5) 断点恢复的实体稿投影：真实删文件（缺失视为幂等成功）
+    chapter_deletion::start_attempt(conn, "op-disk-1").unwrap();
+    remove_published_manuscript(&root_text, &operation.target_file_name).expect("移除实体稿失败");
+    chapter_deletion::mark_projection(conn, "op-disk-1", "manuscript", "completed", "").unwrap();
+
+    assert!(!manuscript.exists(), "删除章节后实体稿文件应被真实移除");
+    assert!(decoy.exists(), "非冻结目标的陪跑文件不得被删除");
+    let finished = chapter_deletion::get(conn, "op-disk-1").unwrap().unwrap();
+    assert_eq!(finished.manuscript_status, "completed");
+    assert_eq!(finished.status, "completed", "双通道完成后聚合状态应为 completed");
+
+    // 6) 幂等：同一目标再次清理不报错
+    remove_published_manuscript(&root_text, &operation.target_file_name).unwrap();
+
+    // 7) 跨连接重开仍持久
+    let db_path = project_database_path(&root);
+    drop(database);
+    let reopened = ProjectDatabase::open(&root).unwrap();
+    assert!(db_path.exists());
+    assert_eq!(
+        chapter_deletion::get(reopened.connection(), "op-disk-1")
+            .unwrap()
+            .unwrap()
+            .status,
+        "completed"
+    );
+    assert!(!manuscript.exists());
+
+    let _ = std::fs::remove_dir_all(&root);
+}

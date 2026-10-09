@@ -189,6 +189,10 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'chapter:retry-deletion': ['operationId', 'expectedProjectPath'],
   'chapter:confirm-legacy-knowledge-absent': ['operationId', 'expectedProjectPath'],
   'chapter:list-incomplete-deletions': ['expectedProjectPath'],
+  // 批次 E（G1）：定稿提交 / 实体稿重试（finalization:* 2 频道；客户端显式传会话，
+  // 不走 ipc-client 的项目域自动注入）
+  'finalization:commit': ['snapshot', 'projectSession'],
+  'finalization:retry': ['finalizationId', 'projectSession'],
 
   // 批次 E 第一部分补登记（E 收尾时补齐，测试 channel-migration-coverage 断言）
   'db:recovery-candidate-record': ['request', 'expectedProjectPath'],

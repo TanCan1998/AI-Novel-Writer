@@ -1,9 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { retryFinalizationPublication } from '../finalization-client'
 import { setActiveProjectSessionContext } from '../../shared/project-session-context'
 
-const invoke = vi.fn()
+// 迁移后底层为 `ipc.invoke`（Tauri）。这里 mock 掉 ipc-client，断言调用参数与会话冻结语义。
+const { invoke } = vi.hoisted(() => ({ invoke: vi.fn() }))
+vi.mock('../ipc-client', () => ({ ipc: { invoke } }))
+
+import { retryFinalizationPublication } from '../finalization-client'
+
 const frozenSession = {
   projectId: 'project-a',
   leaseId: 'lease-a',
@@ -13,13 +17,11 @@ const frozenSession = {
 beforeEach(() => {
   invoke.mockReset()
   invoke.mockResolvedValue({ success: true, committed: true })
-  vi.stubGlobal('window', { velaAPI: { invoke } })
   setActiveProjectSessionContext(frozenSession)
 })
 
 afterEach(() => {
   setActiveProjectSessionContext(null)
-  vi.unstubAllGlobals()
 })
 
 describe('retryFinalizationPublication', () => {

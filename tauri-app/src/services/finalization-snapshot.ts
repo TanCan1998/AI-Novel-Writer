@@ -1,26 +1,17 @@
-import type { ProjectSessionContext } from '../shared/ipc-channels'
+import type {
+  FinalizationPublicationStatus,
+  FinalizationSnapshot,
+  ProjectSessionContext,
+} from '../shared/ipc-channels'
 import {
   sameProjectPathKey,
   sameProjectSessionContext,
 } from '../shared/project-session-context'
 import type { EditorTab } from '../stores/editor-store'
 
-export type FinalizationPublicationStatus = 'pending' | 'published'
-
-/**
- * 定稿输入在用户确认时冻结：后续异步流程只能消费这里的内容与会话，
- * 不允许回读数据库正文来替换编辑器可见内容。
- */
-export interface FinalizationSnapshot {
-  tabId: string
-  projectPath: string
-  projectSession: ProjectSessionContext
-  draftId: number
-  chapterNumber: number
-  chapterTitle: string
-  content: string
-  contentRevision: number
-}
+// 定稿快照与发布状态类型的唯一事实源在 `src/shared/ipc-channels.ts`（IPC 契约），
+// 这里再导出以保持既有 import 面不变。
+export type { FinalizationPublicationStatus, FinalizationSnapshot } from '../shared/ipc-channels'
 
 export interface FinalizationCompletion {
   finalizationId: string

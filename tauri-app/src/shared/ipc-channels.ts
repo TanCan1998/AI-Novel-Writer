@@ -1093,6 +1093,52 @@ export interface ChapterLifecycleChannels {
   }
 }
 
+// ===== 定稿（G1）=====
+// 这两个频道在 Electron 侧由 `finalization-controller.ts` 注册，但上游 `ipc-channels.ts`
+// 一直漏声明；Tauri 迁移（G1）在本副本补建契约（基线 `src/` 保持不动，保上游可合并）。
+export type FinalizationPublicationStatus = 'pending' | 'published'
+
+/** 对齐 `electron/services/finalization-service.ts` 的 `FinalizationResult` */
+export interface FinalizationResult {
+  success: boolean
+  /** false 代表数据库事务从未提交；true 则数据库定稿事实已存在。 */
+  committed: boolean
+  finalizationId?: string
+  contentHash?: string
+  contentRevision?: number
+  draftId?: number
+  publicationStatus?: FinalizationPublicationStatus
+  error?: string
+}
+
+/**
+ * 定稿输入在用户确认时冻结：后续异步流程只能消费这里的内容与会话，
+ * 不允许回读数据库正文来替换编辑器可见内容。
+ *
+ * 唯一事实源：`src/services/finalization-snapshot.ts`（本接口在此声明后由其再导出）。
+ */
+export interface FinalizationSnapshot {
+  tabId: string
+  projectPath: string
+  projectSession: ProjectSessionContext
+  draftId: number
+  chapterNumber: number
+  chapterTitle: string
+  content: string
+  contentRevision: number
+}
+
+export interface FinalizationChannels {
+  'finalization:commit': {
+    args: [snapshot: FinalizationSnapshot, projectSession: ProjectSessionContext]
+    return: FinalizationResult
+  }
+  'finalization:retry': {
+    args: [finalizationId: string, projectSession: ProjectSessionContext]
+    return: FinalizationResult
+  }
+}
+
 // ===== MCP =====
 export type MCPConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
@@ -1148,7 +1194,7 @@ export interface MCPChannels {
 }
 
 // ===== 合并所有频道 =====
-export type AllInvokeChannels = WindowChannels & OfficialHomepageChannels & ModelProviderResourceChannels & ConfigChannels & UpdateChannels & SkinChannels & ProjectChannels & FileChannels & AppDataChannels & LLMChannels & DatabaseChannels & KnowledgeBaseChannels & ChapterLifecycleChannels & ImportChannels & MCPChannels
+export type AllInvokeChannels = WindowChannels & OfficialHomepageChannels & ModelProviderResourceChannels & ConfigChannels & UpdateChannels & SkinChannels & ProjectChannels & FileChannels & AppDataChannels & LLMChannels & DatabaseChannels & KnowledgeBaseChannels & ChapterLifecycleChannels & FinalizationChannels & ImportChannels & MCPChannels
 export type AllEventChannels = LLMStreamEvents & UpdateStateEvents & WindowEvents
 
 /** 提取 invoke 频道名 */

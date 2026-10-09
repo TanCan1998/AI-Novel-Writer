@@ -11,11 +11,15 @@ import { readNormalizedSource } from './source-contract'
  *   3. 未迁移频道仍能被识别（集合不是「全量契约」）。
  */
 
-/** 契约里的 invoke 频道（按所属 interface 名排除事件频道） */
+/** 契约里的 invoke 频道（按所属 interface 名排除事件频道）。
+ *
+ * 迁移期契约事实源 = **tauri-app 副本**（工作目录 = tauri-app/）：
+ * G1 的 `finalization:*` 只在 Tauri 侧声明，上游 `src/` 保持不动以保上游可合并。
+ */
 function collectInvokeChannels(): Set<string> {
   const invoke = new Set<string>()
   let iface = ''
-  for (const line of readNormalizedSource('../src/shared/ipc-channels.ts').split('\n')) {
+  for (const line of readNormalizedSource('src/shared/ipc-channels.ts').split('\n')) {
     const ifaceMatch = line.match(/^export interface (\w+)/u)
     if (ifaceMatch) iface = ifaceMatch[1]
     const channel = line.match(/^\s*'([a-z0-9-]+:[a-z0-9-]+)'\s*:\s*\{/u)
@@ -74,7 +78,7 @@ function argsArity(block: string): number {
 
 /** 已迁移频道的契约参数个数（只统计 invoke 频道：事件频道不在 MIGRATED_CHANNELS 内）。 */
 function collectMigratedArgCounts(): Map<string, number> {
-  const source = readNormalizedSource('../src/shared/ipc-channels.ts')
+  const source = readNormalizedSource('src/shared/ipc-channels.ts')
   const headers = [...source.matchAll(/^\s*'([a-z0-9-]+:[a-z0-9-]+)'\s*:\s*\{/gmu)]
   const counts = new Map<string, number>()
   headers.forEach((header, index) => {
@@ -88,7 +92,7 @@ function collectMigratedArgCounts(): Map<string, number> {
 
 /** `ipc-client.ts` 中 `CHANNEL_ARG_NAMES` 已登记的频道 → 参数名序列。 */
 function collectRegisteredArgNames(): Map<string, string[]> {
-  // 注意：此处是 Tauri 侧客户端（工作目录 = tauri-app/），与契约文件（仓库根 src/）不同源。
+  // 注意：此处是 Tauri 侧客户端（工作目录 = tauri-app/），与上式契约同源。
   const source = readNormalizedSource('src/services/ipc-client.ts')
   const registered = new Map<string, string[]>()
   const pattern = /^\s*'([a-z0-9-]+:[a-z0-9-]+)'\s*:\s*\[([^\]]*)\]/gmu
@@ -176,6 +180,9 @@ describe('channel migration coverage', () => {
     expect(MIGRATED_CHANNELS.has('kb:backfill-vectors')).toBe(true)
     expect(MIGRATED_CHANNELS.has('dialog:select-knowledge-files')).toBe(true)
     expect(MIGRATED_CHANNELS.has('dialog:select-knowledge-folder')).toBe(true)
+    // 批次 E（G1）：定稿提交 / 实体稿重试（finalization:* 2 频道）
+    expect(MIGRATED_CHANNELS.has('finalization:commit')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('finalization:retry')).toBe(true)
   })
 
   /**
