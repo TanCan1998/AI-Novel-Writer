@@ -2,7 +2,7 @@
 
 > **📌 最新进展看 [`2026-10-08-tauri-migration-status.md`](./2026-10-08-tauri-migration-status.md)（第二十三次：批次 D2-b 完成，102 命令、279/279）**。
 >
-> **用途**：AI/开发者接续 Tauri 迁移工作的入口文档。**每次迁移工作完成后必须更新本文件的快照区块**。channel 级细节见 [`docs/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md)。
+> **用途**：AI/开发者接续 Tauri 迁移工作的入口文档。**每次迁移工作完成后必须更新本文件的快照区块**。channel 级细节见 [`docs-fork/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md)。
 > 本文件为日期化交接快照（docs/README.md 治理规则）；后续大节点可另立日期文件，勿回写历史快照。
 
 ---
@@ -86,7 +86,7 @@
 
 #### Rust 命令签名约定
 
-遵循以下约定（docs/agents/pi-development.md）：
+遵循以下约定（docs-fork/agents/pi-development.md）：
 - 命令名：snake_case，与频道名一一对应（`config:get` → `config_get`）
 - 入参/返回值：与ipc-channels.ts 的 `args`/`return` 类型一一对应，派生 `Serialize`/`Deserialize` 且 `#[serde(rename_all = "camelCase")]` 对齐前端字段
 - 项目域命令：尾部必须接收 `project_session`（渲染层 ipc-client.ts 自动注入）
@@ -100,7 +100,7 @@
 2. ~~前端适配~~ → ✅ 已完成（ipc-client.ts 已切 Tauri 底层，见下方适配详情）
 
 3. **批次 B 迁移准备**：
-   - 阅读批次 B 盘点清单（docs/plans/tauri-migration-channel-inventory.md）
+   - 阅读批次 B 盘点清单（docs-fork/plans/tauri-migration-channel-inventory.md）
    - 创建新的命令模块文件
 
 4. **窗口冒烟**：`pnpm tauri dev`（需 GUI，建议用户手动验证）
@@ -164,7 +164,7 @@
 
 ### 批次 C（2026-10-06 第八次更新：`project_core` 子域**已完成并提交**）
 
-批次 C = 数据库层（`docs/plans/tauri-migration-channel-inventory.md` §4），采用**垂直切片**策略：DB 层（rusqlite + 连接 + schema + project_core 仓储 + `db:*` 命令）与 `project:create/open` 真实化**同时交付**——因为所有 `db:*` 命令都依赖活跃项目会话租约。
+批次 C = 数据库层（`docs-fork/plans/tauri-migration-channel-inventory.md` §4），采用**垂直切片**策略：DB 层（rusqlite + 连接 + schema + project_core 仓储 + `db:*` 命令）与 `project:create/open` 真实化**同时交付**——因为所有 `db:*` 命令都依赖活跃项目会话租约。
 
 #### 第八次更新：接线、编译验证、提交与质检修正
 
@@ -279,7 +279,7 @@
 
 1. 全量通读 `src/shared/ipc-channels.ts`（1154 行）：15 个 invoke 接口组 + 3 个事件接口组，**193 invoke + 5 event = 198 频道**；盘点 17 个 controller 对应关系。
 2. **前端调用面收敛**：`window.velaAPI` 仅被 `src/services/ipc-client.ts` 与 `src/services/finalization-client.ts` 直接访问 —— 迁移时只换这两个文件底层。
-3. 产出盘点文档：`docs/plans/tauri-migration-channel-inventory.md`（缺口 G1–G6、传输约定、批次 A–H）。
+3. 产出盘点文档：`docs-fork/plans/tauri-migration-channel-inventory.md`（缺口 G1–G6、传输约定、批次 A–H）。
 4. 初始 `src-tauri/` 骨架建于仓库根（后被结构重设计移入 `tauri-app/src-tauri/`）。
 5. pnpm 9.6.0 → 11.11.0 升级（standalone 自装结构，`pnpm add -g pnpm@11.11.0`）；根目录依赖树卡死 → 交用户手动 → 转向结构重设计。
 
@@ -457,8 +457,8 @@
 
 | 文档 | 用途 |
 |---|---|
-| `docs/plans/tauri-migration-channel-inventory.md` | **阶段 1 产出**：198 频道盘点、传输约定、缺口 G1–G6、批次 A–H |
-| `docs/agents/pi-development.md` | 迁移总纲：分层映射、Rust 规范、实施步骤（⚠️ 其目录结构段仍为旧 src-tauri 布局，以本文与 AGENTS.md 为准） |
-| `docs/research/2026-10-04-tauri-migration-evaluation.md` | 迁移决策来源（工时评估） |
+| `docs-fork/plans/tauri-migration-channel-inventory.md` | **阶段 1 产出**：198 频道盘点、传输约定、缺口 G1–G6、批次 A–H |
+| `docs-fork/agents/pi-development.md` | 迁移总纲：分层映射、Rust 规范、实施步骤（⚠️ 其目录结构段仍为旧 src-tauri 布局，以本文与 AGENTS.md 为准） |
+| `docs-fork/research/2026-10-04-tauri-migration-evaluation.md` | 迁移决策来源（工时评估） |
 | `docs/product-domain.md` | 领域词汇与事实源边界（迁移不得偏离） |
 | `docs/adr/0001,0002,0008,0011,0013,0015,0017` | 迁移涉足的关键架构决定 |

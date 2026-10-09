@@ -278,8 +278,8 @@ cargo build --release
 - 对比基线 LanceDB 召回率
 
 ### 第 7 步：文档与提交（1 小时）
-- 更新 `docs/handoffs/2026-10-08-tauri-migration-status.md`
-- 更新 `docs/plans/tauri-migration-channel-inventory.md`
+- 更新 `docs-fork/handoffs/2026-10-08-tauri-migration-status.md`
+- 更新 `docs-fork/plans/tauri-migration-channel-inventory.md`
 - Git 提交：`feat(tauri): 批次 F2 - FTS5 + jieba 知识库检索（17 频道）`
 
 **总工期**：~12 小时（1.5 个工作日）

@@ -1,6 +1,6 @@
 //! Tauri 2 后端入口 —— 迁移自 `electron/main.ts` + `electron/ipc-handlers.ts`。
 //!
-//! 迁移纪律（docs/agents/pi-development.md）：
+//! 迁移纪律（docs-fork/agents/pi-development.md）：
 //! - 每个 `src/shared/ipc-channels.ts` 频道对应一个 `#[tauri::command]`，契约唯一事实源不变；
 //! - 项目域命令预留尾参 `project_session`（渲染层 ipc-client.ts 自动注入）并校验租约（ADR 0001）；
 //! - 仅新增，不改 Electron 代码；每批次迁移配 Rust 单元测试并通过 `cargo test`。

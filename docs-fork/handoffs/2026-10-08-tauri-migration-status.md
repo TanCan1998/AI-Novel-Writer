@@ -3,12 +3,12 @@
 > **用途**：AI/开发者接续 Tauri 迁移工作的入口文档（日期化交接快照）。
 > **命名规则**：文件按日期命名 `YYYY-MM-DD-tauri-migration-status.md`，
 > **一个工作日一个新文件**；当日新增内容只写入当日文件，跨日不回填旧文件
-> （规则见 [`docs/agents/pi-development.md`](../agents/pi-development.md) §9）。
+> （规则见 [`docs-fork/agents/pi-development.md`](../agents/pi-development.md) §9）。
 > 上一份快照（2026-10-07 冻结）：
 > [`2026-10-07-tauri-migration-status.md`](./2026-10-07-tauri-migration-status.md)；
 > 批次 A–C `project_core` / `characters` 的历史细节见
 > [`2026-10-06-tauri-migration-status.md`](./2026-10-06-tauri-migration-status.md)；
-> channel 级盘点见 [`docs/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md)。
+> channel 级盘点见 [`docs-fork/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md)。
 
 > **本文件为三合一合并版**：把当日三份文档
 > （`2026-10-08-tauri-migration-status.md` 快照 + `2026-10-08-end-of-day-summary.md`
@@ -344,7 +344,7 @@ CREATE VIRTUAL TABLE kb_fts USING fts5(
 14. `f2-revised-strategy.md`（7.8 KB）— 修正方案
 15. `final-decision-guide.md`（11 KB）— 决策指南
 
-> 以上文档命名以 `docs/research/2026-10-08-` 为前缀（见 `daily-summary` 文档清单）。
+> 以上文档命名以 `2026-10-08-` 为前缀（见 `daily-summary` 文档清单；现位于 `docs-fork/research/archive/2026-10-08-f2/`）。
 
 ### 9. 验证与测试（**F1 提交前基线**）
 
@@ -551,7 +551,7 @@ Windows 绝对路径透传、**空路径按取消处理**、`file:///F:/…%20�
 **历史修正（BOM 事故）**：`867cbba` / `d4a9ff3` 的前身（`7105b13` / `612002b`）
 提交消息首 3 字节带 UTF-8 BOM（`EF BB BF`），在**推送前**用 `git commit-tree` 重放剥除
 （`tree` / 作者 / 提交者 / 时间戳逐字节保留，仅 SHA 变化），因此本轮先本地重写再一次性推送。
-事故成因、后果与正确写法见 [`docs/agents/pi-development.md`](../agents/pi-development.md) §10.1。
+事故成因、后果与正确写法见 [`docs-fork/agents/pi-development.md`](../agents/pi-development.md) §10.1。
 
 **规则变更**：
 
@@ -562,7 +562,7 @@ Windows 绝对路径透传、**空路径按取消处理**、`file:///F:/…%20�
 - 新增 [`.github/workflows/commit-message-ci.yml`](../../.github/workflows/commit-message-ci.yml)：
   push 检查 `before..after`、pull_request 检查 `base..HEAD`，**刻意不设 `paths-ignore`** ——
   本次事故正好发生在 docs-only 提交上，若挂在 `pr-ci.yml` 下会被其 `paths-ignore` 漏掉。
-- `docs/agents/pi-development.md` 新增 §10「Git 提交消息规范与提交前自检」。
+- `docs-fork/agents/pi-development.md` 新增 §10「Git 提交消息规范与提交前自检」。
 - 根 `AGENTS.md`「Git 工作流」补充 BOM 硬约束与自检命令
   （该文件被 `.gitignore` 忽略，属本地 agent 指引，不入库）。
 
@@ -827,7 +827,7 @@ URL 用字符串拼接（`{base}/v1beta/models/{name}:generateContent` / `…:st
 - **快照命名规则确立**（**本文件即首个按新规则产生的快照**）：交接快照按日期命名
   `docs/handoffs/YYYY-MM-DD-tauri-migration-status.md`，**一个工作日一个新文件**；
   当日章节只写当日文件，跨日**不得回填**旧文件（旧文件视为该日期的冻结快照）。
-  规则出处：[`docs/agents/pi-development.md`](../agents/pi-development.md) §9。
+  规则出处：[`docs-fork/agents/pi-development.md`](../agents/pi-development.md) §9。
   随之完成一次**结构迁移**：本文件承接 2026-10-08 产生的全部内容（快照表 + 第二十三次
   章节 + 滚动的收口/下一步/遗留项），`2026-10-07-*.md` 回退为 `7f0ecc1` 的冻结状态
   并加上前向指针。
@@ -1142,12 +1142,12 @@ URL 用字符串拼接（`{base}/v1beta/models/{name}:generateContent` / `…:st
 
 ### 早期文档清单（6 份）
 
-1. `docs/research/2026-10-08-vector-store-migration-assessment.md`
-2. `docs/research/2026-10-08-vector-alternatives-survey.md`
-3. `docs/research/2026-10-08-f2-batch-decisions.md`
-4. `docs/research/2026-10-08-web-search-findings.md`
-5. `docs/research/2026-10-08-vecstore-feasibility.md`
-6. `docs/research/2026-10-08-f2-final-decision.md`（**最终决策**）
+1. `docs-fork/research/2026-10-08-vector-store-migration-assessment.md`
+2. `docs-fork/research/archive/2026-10-08-f2/2026-10-08-vector-alternatives-survey.md`
+3. `docs-fork/plans/archive/2026-10-08-f2/2026-10-08-f2-batch-decisions.md`
+4. `docs-fork/research/archive/2026-10-08-f2/2026-10-08-web-search-findings.md`
+5. `docs-fork/research/2026-10-08-vecstore-feasibility.md`
+6. `docs-fork/research/archive/2026-10-08-f2/2026-10-08-f2-final-decision.md`（**最终决策**）
 
 **实测代码（2 个）**：
 

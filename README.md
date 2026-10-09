@@ -16,7 +16,7 @@
 >
 > - **迁移策略**：仅**新增** Tauri 支持（`src-tauri/`），保留原有 **Electron** 实现继续可运行，用于**同步上游仓库的修改**。
 > - **上游同步**：通过 `git remote add upstream https://github.com/EthanYoQ/AI-Novel-Writer.git` 关联原仓库，定期 `git fetch upstream` 合并上游演进，避免功能分叉。
-> - **文档**：迁移评估见 `docs/research/2026-10-04-tauri-migration-evaluation.md`；pi agent 开发指南见 `docs/agents/pi-development.md`。
+> - **文档**：迁移评估见 `docs-fork/research/2026-10-04-tauri-migration-evaluation.md`；pi agent 开发指南见 `docs-fork/agents/pi-development.md`。
 >
 > 以下内容与原项目一致。
 

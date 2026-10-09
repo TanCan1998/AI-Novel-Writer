@@ -36,7 +36,7 @@
 //!
 //! `storage_dir` 由调用方提供，**必须是 Tauri 专属目录**，严禁复用 Electron
 //! 基线的 `.vela/lancedb/`、`.vela/vectors.json` 等（见
-//! `docs/handoffs/2026-10-08-tauri-migration-status.md` 第二十六次快照 §2）。
+//! `docs-fork/handoffs/2026-10-08-tauri-migration-status.md` 第二十六次快照 §2）。
 
 use hnsw_rs::prelude::*;
 use serde::{Deserialize, Serialize};

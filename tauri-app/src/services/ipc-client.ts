@@ -5,7 +5,7 @@
  *   import { ipc } from '@/services/ipc-client'
  *   const result = await ipc.invoke('project:create', { name: '...' })
  *
- * 迁移说明（docs/handoffs/2026-10-06-tauri-migration-status.md）：
+ * 迁移说明（docs-fork/handoffs/2026-10-06-tauri-migration-status.md）：
  * - 原 Electron 底层为 preload 注入的 `window.velaAPI.invoke(channel, ...args)`
  *   （可变位置参数）；Tauri 2 的 `invoke(cmd, args)` 使用命名参数对象。
  * - 频道 → 命令名映射为机械规则：`config:get` → `config_get`、

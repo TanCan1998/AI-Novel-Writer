@@ -5,7 +5,7 @@ description = "AI Novel Writer — 本地优先的长篇小说创作工作台（
 edition = "2021"
 
 # 迁移自 Electron 主进程（electron/）。迁移期间 Electron 保留可运行，
-# 本 crate 仅承载 Tauri 侧实现；分层映射见 docs/agents/pi-development.md。
+# 本 crate 仅承载 Tauri 侧实现；分层映射见 docs-fork/agents/pi-development.md。
 
 [lib]
 # lib.rs 独立于 main.rs，便于桌面/移动端复用与单元测试。

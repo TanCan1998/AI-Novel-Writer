@@ -1,6 +1,6 @@
 //! Tauri 命令注册表 —— 对应 `src/shared/ipc-channels.ts` 各频道组的迁移落点。
 //!
-//! 约定（docs/agents/pi-development.md §2/§6 + docs/plans/tauri-migration-channel-inventory.md）：
+//! 约定（docs-fork/agents/pi-development.md §2/§6 + docs-fork/plans/tauri-migration-channel-inventory.md）：
 //! - 命令名 snake_case，与频道名一一对应（`config:get` → `config_get`）；
 //! - 入参/返回值与契约文件的 `args`/`return` 类型一一对应，结构体派生
 //!   `Serialize`/`Deserialize` 且 `#[serde(rename_all = "camelCase")]` 对齐前端字段；

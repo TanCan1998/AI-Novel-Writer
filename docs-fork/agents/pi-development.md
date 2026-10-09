@@ -2,7 +2,7 @@
 
 > 本文面向 pi coding agent。当前项目为 **Electron 桌面应用**，正在迁移为 **Tauri 2**。本文以「迁移为 Tauri」为核心目标，提供当前 Electron 基线、迁移映射、Rust 后端规范与分步实施路径。通用命令/风格见根 `AGENTS.md`。
 
-**决策来源**：`docs/research/2026-10-04-tauri-migration-evaluation.md`（源自 `F:\Temp\ai-novel-writer-memory.md`）评估结论——UI/脚本复用率 >95%，核心工作量在 IPC 层与原生绑定重写（约 3–4 周，IPC 层 3–4 周为关键路径）。
+**决策来源**：`docs-fork/research/2026-10-04-tauri-migration-evaluation.md`（源自 `F:\Temp\ai-novel-writer-memory.md`）评估结论——UI/脚本复用率 >95%，核心工作量在 IPC 层与原生绑定重写（约 3–4 周，IPC 层 3–4 周为关键路径）。
 
 > ⚠️ 现状：桌面应用目前仍是 **Electron**。Tauri 迁移为**进行中的目标任务**，`src-tauri/` 尚未建立；任何开发须区分「维护 Electron 基线」与「推进 Tauri 迁移」，勿混改。
 
@@ -164,7 +164,7 @@ pub async fn chapter_finalize(
 
 1. `docs/README.md`（文档权威层级与导航）
 2. `docs/product-domain.md`（领域词汇与边界——迁移不得偏离）
-3. `docs/research/2026-10-04-tauri-migration-evaluation.md`（迁移评估决策）
+3. `docs-fork/research/2026-10-04-tauri-migration-evaluation.md`（迁移评估决策）
 4. 相关 `docs/adr/`（0001 会话租约/0002 外部文件/0008 事实与工作流 seam/0011 定稿删除/0013 连续性投影/0015 skill 作用域/0017 角色状态来源）
 5. `docs/agents/issue-tracker.md`（用 gh 操作 Issue，迁移任务按此建 ticket）
 6. 根 `AGENTS.md`（命令/风格/Git）
@@ -192,7 +192,7 @@ pub async fn chapter_finalize(
    - 尾部**滚动章节**：`## 批次 C 收口状态` / `## 建议的下一步` / `## 遗留项`（自上一份承接并更新）。
 5. **章节序号全局递增**：`第 N 次` 跨文件连续，跨日后续上一份的 `N+1`，不重开计数。
 6. **同步两处指针**：根 `AGENTS.md`「接续任务先看进度」、
-   `docs/plans/tauri-migration-channel-inventory.md`（仅当频道口径变化时）。
+   `docs-fork/plans/tauri-migration-channel-inventory.md`（仅当频道口径变化时）。
 7. **简版原则**：快照是接续入口，不是工作总结。只保留 —— 当前状态 / 当日新增摘要 / 交接步骤 /
    阻塞与待授权项 / 红线提醒 / 自检记录。**不得复制**旧日期正文；**建议提交拆分表**、**逐条测试覆盖**、
    **基线对照逐项明细**一律外链（`详见 commit message` / `docs/research/xxx`），不在快照正文展开。
@@ -204,11 +204,11 @@ pub async fn chapter_finalize(
    下一步 1-2-3（含前置条件，如「Ask first」「需先评估」）。
 10. **阻塞项与红线只增不删**：阻塞项表与红线提醒从上一份**逐条承接**；已解除的写
     「✅ 已解除（依据）」而**非删行**；新增红线必须标注来源。
-11. **模板**：新建快照一律从 `docs/handoffs/_TEMPLATE-tauri-migration-status.md` 复制；
+11. **模板**：新建快照一律从 `docs-fork/handoffs/_TEMPLATE-tauri-migration-status.md` 复制；
     模板末尾附「维护者检查清单」，提交前逐项打勾。
 
-> 首次按本规则产生的快照：`docs/handoffs/2026-10-08-tauri-migration-status.md`（第二十三次，批次 D2-b）。
-> 首次按新增第 7–11 条（简版原则 / 数字硬约束 / 模板）精简的快照：`docs/handoffs/2026-10-09-tauri-migration-status.md`。
+> 首次按本规则产生的快照：`docs-fork/handoffs/2026-10-08-tauri-migration-status.md`（第二十三次，批次 D2-b）。
+> 首次按新增第 7–11 条（简版原则 / 数字硬约束 / 模板）精简的快照：`docs-fork/handoffs/2026-10-09-tauri-migration-status.md`。
 > **2026-10-09 规则变更**：旧文件改为「不允许任何修改」（取消前向指针）；快照不得写勘误记录。
 
 ---

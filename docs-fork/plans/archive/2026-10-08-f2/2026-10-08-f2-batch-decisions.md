@@ -3,7 +3,7 @@
 > **⚠️ 已过时（Superseded）**
 > 本文件是 2026-10-08 F2 决策的中间稿，D1–D5 中多数决策已被后续文件推翻
 > （D1 由 FTS5 only 改为方案 B；D2 多空间未保留；D4 阶段 1 已并入方案 B；D5 由 unicode61 改为 jieba-rs）。
-> 最终决策见 [`docs/research/2026-10-08-final-decision-plan-b.md`](../../../research/2026-10-08-final-decision-plan-b.md)。
+> 最终决策见 [`docs-fork/research/2026-10-08-final-decision-plan-b.md`](../../../research/2026-10-08-final-decision-plan-b.md)。
 > 本文仅保留用户原始答复与决策演进记录，不得作为实施依据。
 
 > **背景**：批次 F2（`kb:*` 15 频道 + `dialog:select-knowledge-*` 2 频道）技术方案决策。  

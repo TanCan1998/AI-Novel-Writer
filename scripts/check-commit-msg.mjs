@@ -383,7 +383,7 @@ function main() {
 
   console.log(`提交消息检查失败：${failed.length} / ${results.length} 个提交不合规。`)
   console.log('规范：`type(scope): 中文描述`（类型见 scripts/check-commit-msg.mjs 顶部注释）；')
-  console.log('消息必须无 BOM、无 CRLF、无行尾空白。详见 docs/agents/pi-development.md §10。')
+  console.log('消息必须无 BOM、无 CRLF、无行尾空白。详见 docs-fork/agents/pi-development.md §10。')
   return 1
 }
 

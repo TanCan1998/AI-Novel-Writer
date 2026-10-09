@@ -2,7 +2,7 @@
 
 > **用法**：复制本文件为 `docs/handoffs/YYYY-MM-DD-tauri-migration-status.md`（日期取**撰写当日**），
 > 删除本段说明与所有 `<!-- -->` 注释后填写。**一个工作日一个新文件**，不得在旧日期文件里追加当日章节。
-> 规则见 [`docs/agents/pi-development.md`](../agents/pi-development.md) §9。
+> 规则见 [`docs-fork/agents/pi-development.md`](../agents/pi-development.md) §9。
 >
 > **简版原则**：快照是**接续入口**，不是工作总结。只保留 —— 当前状态 / 当日新增摘要 / 交接步骤 /
 > 阻塞与待授权项 / 红线提醒 / 自检记录。**不复制**：旧日期正文、建议提交拆分表、逐条测试覆盖、
@@ -16,12 +16,12 @@
 
 > **用途**：AI/开发者接续 Tauri 迁移工作的入口文档（日期化交接快照）。
 > **规则**：命名 `YYYY-MM-DD-tauri-migration-status.md`，一日一新文件，**旧文件冻结后不允许修改**
-> （见 [`docs/agents/pi-development.md`](../agents/pi-development.md) §9）。
+> （见 [`docs-fork/agents/pi-development.md`](../agents/pi-development.md) §9）。
 > **模板**：[`_TEMPLATE-tauri-migration-status.md`](./_TEMPLATE-tauri-migration-status.md)。
 >
 > 全部历史快照见 `docs/handoffs/` 目录（按日期命名）。
 >
-> - channel 级盘点：[`docs/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md)。
+> - channel 级盘点：[`docs-fork/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md)。
 
 ---
 

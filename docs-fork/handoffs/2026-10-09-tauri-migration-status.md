@@ -2,12 +2,12 @@
 
 > **用途**：AI/开发者接续 Tauri 迁移工作的入口文档（日期化交接快照）。
 > **规则**：按日期命名，一个工作日一个新文件；当日新增只写当日文件，跨日不回填旧文件；
-> 旧文件冻结后不允许修改（见 [`docs/agents/pi-development.md`](../agents/pi-development.md) §9）。
+> 旧文件冻结后不允许修改（见 [`docs-fork/agents/pi-development.md`](../agents/pi-development.md) §9）。
 > **模板**：[`_TEMPLATE-tauri-migration-status.md`](./_TEMPLATE-tauri-migration-status.md)。
 >
 > 全部历史快照见 `docs/handoffs/` 目录（按日期命名）。
 >
-> - channel 级盘点：[`docs/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md)。
+> - channel 级盘点：[`docs-fork/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md)。
 
 ---
 
@@ -96,7 +96,7 @@ SQLite 事实删除**已真实提交**（`committed: true`）。
 ## 第二十七次（批次 E 第一部分，同日）—— 摘要
 
 > 详细正文已精简；完整明细见提交 `abfa1698` / `f5fde636` / `00bba449` / `634182d3` / `e59e4fb0` 的 commit message。
-> 逐条测试覆盖、基线对照细节见各 commit message 与 [`docs/research/`](../research/) 及 [`docs/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md) §4.13。
+> 逐条测试覆盖、基线对照细节见各 commit message 与 [`docs/research/`](../research/) 及 [`docs-fork/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md) §4.13。
 
 **范围**：批次 E 共 **28 个 invoke 频道**，本轮完成前 **24 个**（Schema 层 + 4 子域）。
 

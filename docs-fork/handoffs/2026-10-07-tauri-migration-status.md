@@ -5,7 +5,7 @@
 批次 D2-b）见 [`2026-10-08-tauri-migration-status.md`](./2026-10-08-tauri-migration-status.md)。
 > 批次 A–C `project_core` / `characters` 的历史细节见
 > [`2026-10-06-tauri-migration-status.md`](./2026-10-06-tauri-migration-status.md)；
-> channel 级盘点见 [`docs/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md)。
+> channel 级盘点见 [`docs-fork/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md)。
 
 ---
 
