@@ -110,6 +110,24 @@ Unknown Error: invalid args `request` for command `chapter_delete_finalized`: mi
 `cargo test --lib` **491/491**（478 → +13）；`cargo check --all-targets` **0 告警**；`pnpm typecheck` / `lint` **exit 0**；
 `check:channels` **193 契约 / 152 命令 / 151 覆盖 / 42 未迁移**，orphan 空；定向 vitest **6 文件 / 16 测试全过**。
 
+### 6. GUI 冒烟夹具与残留处置（2026-10-09 收尾，用户确认「保留可复用的并记入文档，其余删除」）
+
+**保留（下次 GUI 冒烟可直接复用，零 API）**：
+
+| 保留物 | 位置 | 用途 |
+|---|---|---|
+| 现成 `.lore/` 测试项目 | `F:\Temp\loretest\lore-smoke\` | 含 `.lore/project.json` + 已建库（当前 0 草稿）；可直接打开 |
+| KB 导入样本 | `F:\Temp\loretest\reference\雾港设定.txt` | 知识库导入/检索用参考文本 |
+| 播种与取证脚本 | `F:\Temp\loretest\seed_draft.py` / `seed_ch2.py` / `inspect*.py`（4 个） | Python 3 + sqlite3 直接读写 `.lore/lorekeeper.db`：播种草稿、只读取证（无 API 也能造出可定稿的草稿） |
+| 假生成模型「222」 | `C:\Users\tanca\.lorekeeper\models.json` | 内置 OpenAI 预设（`gpt-4o-mini` + 未连通 baseUrl + 占位 key），仅用于通过生成运行时的「默认模型」前置校验 |
+| 最近项目条目 | `C:\Users\tanca\.lorekeeper\recent-projects.json` | 保留 `lore-smoke`，方便一键重开 |
+
+⚠️ **`config.json` 的 `defaultModelId` 已恢复为 `null`**（不把假模型留在默认位，避免正常使用时误发请求得 401）；下次冒烟时在「设置 → 模型配置」把「222」设为默认即可。若已配置真实模型，建议直接删掉「222」。
+
+**已删除**：`tauri-dev*.log` / `tauri-dev*.err.log`（含 ANSI 的 dev 日志，4 个）、`msg1..3.txt`（提交消息中间文件）。
+
+**进程**：`pnpm tauri dev` 进程树已全部停止（含 vite / cargo-watch / `lorekeeper.exe`），释放 `.lore/lorekeeper.db` 文件锁。
+
 ---
 
 ## 本次更新（第三十一次：F2-3 收口 —— kb 命令层 + 外部授权注册表）
