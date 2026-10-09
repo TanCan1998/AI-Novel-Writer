@@ -11,7 +11,7 @@
 
 ---
 
-## 快照（最后更新：2026-10-10 · 第三十五次）
+## 快照（最后更新：2026-10-10 · 第三十六次）
 
 > 本表只填**最新一次自检的实测值**。改表前必须重跑对应命令，不得沿用旧数字、不得估算。
 > 本轮实测命令与输出见下方「[§5 自检记录](#5-自检记录2026-10-10-实测)」。
@@ -20,23 +20,23 @@
 |---|---|
 | 仓库 / 分支 | **`TanCan1998/Lorekeeper`**（`EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork）· `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 已注册命令 | **167** |
-| 覆盖 invoke 频道 | **166**（契约总数 193，事件频道 4） |
-| 未迁移 invoke 频道 | **27**（`db=18 mcp=9`） |
+| 已注册命令 | **170** |
+| 覆盖 invoke 频道 | **169**（契约总数 193，事件频道 4） |
+| 未迁移 invoke 频道 | **24**（`db=15 mcp=9`） |
 | orphan | **空** ✅ |
-| `cargo test --lib` | **572/572** ✅（本轮新增 30 条） |
+| `cargo test --lib` | **585/585** ✅（G2a 新增 13 条） |
 | `cargo fmt --check` | **干净（0 差异）** ✅ |
 | `cargo check --all-targets` | **0 告警** ✅ |
 | `pnpm typecheck` / `lint` | exit 0 / exit 0 ✅ |
 | 定向 `vitest` | **7/7**（2 文件：契约覆盖 / 入参结构体契约）✅ |
-| 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅（本次）** |
-| 当前阶段 | **批次 G1 完成**（作者原稿导入完整链路）。下一步 **G2（状态机主体 + `reference` 路径，5 频道）→ G3（租约与批次推进，11）→ G4（收口）**（未迁移 27 → 9）。其它待办：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项 |
-| 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、`tauri-plugin-opener 2.7.0`。**本轮新增**：`windows-sys 0.61`（`[target.'cfg(windows)'.dependencies]`，仅在 lock 中提级为直接依赖，**0 新下载**；Ask first 已批准 2026-10-10）。向量层 `hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio`；FTS5 由 `libsqlite3-sys` bundled 提供 |
+| 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅** / **批次 G2a ✅（本次）** |
+| 当前阶段 | **批次 G2a 完成**（导入运行读面 3 频道）。下一步 **G2b（写面 2 频道 + 复活 `reference` 路径）→ G3（租约与批次推进，11 + effect receipts）→ G4（收口）**（未迁移 24 → 9）。其它待办：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项 |
+| 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、`tauri-plugin-opener 2.7.0`、`windows-sys 0.61`（`[target.'cfg(windows)'.dependencies]`，仅 lock 提级，**0 新下载**；Ask first 已批准 2026-10-10）。**G2a 零新依赖**。向量层 `hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio`；FTS5 由 `libsqlite3-sys` bundled 提供 |
 | GUI 冒烟 | ✅ 自 2026-10-07 起 **十轮**。**第十轮（2026-10-10，批次 G1）**：vite `441 ms` + cargo `47.50s` → `lorekeeper.exe`（90 MB）；用户人工验证 3 项全部通过 —— 作者原稿（2 个 `.txt`）显示拆章/预览、参考语料（`.md`）显示指向 G2 的诚实错误、`.epub` 显示「导出尚未迁移」诚实错误；dev 日志**无 error/panic/失败**输出（仅两条已知 `setZoomFactor` 占位提示 + Windows EBUSY 文件监视器噪声）。近两轮：第九轮（2026-10-09，批次 H 前三项 + B12）；**第八轮（2026-10-09，批次 E G1）** |
 | 双栈隔离 | **L0/L1/L2/L3 全部独立**：安装标识 / `~/.lorekeeper` / `<root>/.lore/`（库 `.lore/lorekeeper.db`、KB 向量 `.lore/kb/`）。基线为 `~/.vela` / `<root>/.vela/`。**两栈项目目录刻意不互通**（`ee40aaab`） |
 | Rust 工具链 | rustc/cargo **1.99.0 stable-msvc** @ `D:\Environment\rust\`（脚本内须显式设 `RUSTUP_HOME` / `CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
 
-<sub>*命令与频道差额：**167 命令**中 1 个为阶段 0 骨架（`app_health_check`，不对应任何契约频道），其余 **166** 与 invoke 频道一一对应。</sub>
+<sub>*命令与频道差额：**170 命令**中 1 个为阶段 0 骨架（`app_health_check`，不对应任何契约频道），其余 **169** 与 invoke 频道一一对应。</sub>
 
 ---
 
@@ -134,19 +134,85 @@ Windows `EBUSY` 文件监视器噪声（目标产物被占用，属正常）。�
 
 ---
 
+## 本次更新（第三十六次：批次 G2a —— 导入运行读面 3 频道）
+
+> 承接同日的 G2 开工清单（[`docs-fork/plans/2026-10-10-g2-import-run-kickoff.md`](../plans/2026-10-10-g2-import-run-kickoff.md)）。
+> G2a 只交付**读面**；写面（`beginParsing` / `finalizeParsing` / `prepare`）归 G2b。
+
+### 1. 新增（本轮）
+
+| 项 | 内容 |
+|---|---|
+| 模块 | `src/import/batch_checkpoint.rs`（新建：批次检查点 ID 的解析/构造纯函数）；`src/repositories/import_run_repository.rs`（新建：G2a 读面） |
+| 命令 | `db:import-run-get`、`db:import-run-list-resumable`、`db:import-run-list-chapters`（`commands/db.rs` 追加 3 inner + 3 命令） |
+| Schema | **无 Schema 变更**（G 的 9 张表已在 `cca792cd` 落地，本轮只读消费） |
+| 接线 | `repositories/mod.rs` / `import/mod.rs` 增模块；`import/mod.rs` 增 `ImportPurpose::parse_contract` / `ImportRunLocale::parse_contract`；`lib.rs` 注册 3 命令 |
+
+**实现要点**：
+
+1. **`row_to_snapshot` 完整对齐契约 `ImportRunSnapshot`**（含 `manifest*` 仅在 author-manuscript 下发、
+   `completedBatches` 宽检、`unfinishedSourceDisplay` 恒下发、`baseRunId`/`completedAt` 空则省略）；
+2. **保留基线的「两条宽松度不同」**：`completed_batches()` 校验并抛错（“checkpoint 损坏”），
+   `row_to_snapshot` 的输出字段走 `parse_json(…, {})` 兑底 —— **勿合并**；
+3. **`persisted_progress` 的六条分支**逐字平移（parsing / prepared / knowledge / blueprints / global·style·refresh / 其余），
+   knowledge 与 blueprints 的完成章数取 `completed_batches` × checkpoint 校验后的**去重章号集合**；
+4. **`checkpoint_chapter_numbers` 的 knowledge 分支**额外校验
+   `import_run_knowledge_receipts`（purpose / 来源归属 / 内容指纹 / documentId 为 64 hex / state=committed）
+   与冻结章节逐条对齐，否则报「参照知识 receipt 未完成或与冻结章节不匹配」；
+5. **`assert_frozen_chapter_snapshot`** 在读取时重算 sha256 与字节数（拒绝被篡改的冻结正文）；
+6. **`list_chapter_batch` 的 `limit` 夹到 1..=100**（命令层收 `f64` 后 `floor()`，容忍 JS 小数）；
+7. `ImportRunRow` / `ImportRunChapterRow` / `ImportRunSourceRow` **完整保留 schema 列集**，
+   尚未消费的字段用 `#[allow(dead_code)]` + 注释标出（由 G2b/G3 消费，对齐 `security.rs` 先例）。
+
+**⚠️ 诚实化占位 / 降级项**：本批无新增；G1 的 B18（`.epub` 依赖）与 G2b 范围内的 `reference` 诚实错误按计划保持。
+
+### 2. 刻意偏离
+
+本批无新偏离（沿用 G1 D1′–D10）；`batch_checkpoint.rs` 仅把 JS 的 `\d` 写作 `[0-9]`（Rust `regex` 默认含 Unicode 数字），语义不变。
+
+### 3. 前端登记
+
+- `src/services/ipc-client.ts`：+3 条（`db:import-run-get` / `-list-resumable` / `-list-chapters`）。
+- `src/shared/migrated-channels.ts`：生成物，169 频道（须与 `lib.rs` 同提交）。
+- `test/channel-migration-coverage.test.ts`：G2a 3 频道断言 `true`；`-prepare-inspection` / `-finalize-parsing` 保持 `false`。
+
+**实际收益**：`ImportNovelDialog` 开启时调用的 `db:import-run-list-resumable` 从「尚未迁移」的友好报错变为**真实可恢复任务列表**。
+
+### 4. 验证（本轮实测）
+
+| 命令 | 输出 |
+|---|---|
+| `cargo test --lib` | `585 passed; 0 failed`（+13：batch_checkpoint 3 + 读面 10） |
+| `cargo check --all-targets` | **0 告警** |
+| `cargo fmt --check` | **0 行** |
+| `node scripts/verify-channel-coverage.mjs` | 契约 **193** · 已注册 **170** → 覆盖 **169** · 未迁移 **24** `[db=15 mcp=9]` · orphan 空 |
+| `pnpm typecheck` / `lint` | exit 0 / exit 0 |
+| `npx vitest run`（2 文件） | `Test Files 2 passed`，`Tests 7 passed` |
+
+⚠️ GUI 冒烟**未做**（G2a 为读频道；`ImportNovelDialog` 的「可恢复任务」区已有真数据可验，但需 dev 环境）。
+
+### 5. 收尾
+
+- 提交清单：`feat(tauri): 批次 G2a 导入运行读面（3 频道 + 批次检查点单源）`。
+- 规则变更：无。
+
+---
+
 ## 交接给下次会话（**从这里接**）
 
 ### 1. 当前工作区状态
 
-**工作区干净**（本轮的 2 个提交已完成；本文件因追加第十轮冒烟记录产生第 3 个提交）：
+**工作区干净**（G1 全链与 G2 开工清单均已提交并推送 `origin/master`；本份快照的 G2a 章节为待生成提交的一部分）：
 
 | Commit | 说明 |
 |---|---|
 | `fbb88307` | `feat(tauri): 批次 G1 作者原稿导入（dialog:select-novel-files + db:import-run-author-preview）` |
 | `75379748` | `docs(tauri): 第三十五次快照与频道盘点更新（批次 G1 收口）` |
-| 待生成 | `docs(tauri): 记录第十轮 GUI 冒烟（批次 G1 验收通过）`（即本文件的追加） |
+| `e2bb92cc` | `docs(tauri): 记录第十轮 GUI 冒烟（批次 G1 验收通过）` |
+| `8edd1b46` | `docs(tauri): G2 开工清单（状态机细分 G2a/G2b）与决策归档` |
+| 待生成 | `feat(tauri): 批次 G2a 导入运行读面（3 频道 + 批次检查点单源）`（含本文件的 G2a 章节） |
 
-- HEAD（写入本表时）：`75379748 docs(tauri): 第三十五次快照与频道盘点更新（批次 G1 收口）`
+- HEAD（写入本表时）：`8edd1b46 docs(tauri): G2 开工清单（状态机细分 G2a/G2b）与决策归档`
 - ⚠️ 上一份快照（2026-10-09）中**已过期的交接描述**（防照旧操作）：
   1. 「未迁移 29（`db=19 mcp=9 dialog=1`）」「已注册命令 165」「`cargo test — 542/542`」→ 均已变为 **27 / 167 / 572**；
   2. 「下一步 1：批次 G 从 G1 开始」→ **G1 已完成**，下一步是 G2；
@@ -156,15 +222,15 @@ Windows `EBUSY` 文件监视器噪声（目标产物被占用，属正常）。�
 ### 2. 下一步（1-2-3）
 
 1. ~~GUI 冒烟（G1 验收剩余项）~~ ✅ **已完成**（第十轮，2026-10-10，3 项全部通过 —— 见「本次更新 §5」）。
-2. **批次 G2（状态机主体 + `reference` 路径，5 频道）**：`db:import-run-prepare-inspection` /
-   `-finalize-parsing` / `-get` / `-list-resumable` / `-list-chapters`。核心是 `ImportRunRepository` 的
-   `beginParsing`（基线 2551 行状态机，**新模块，需先读 `electron/repositories/import-run-repository.ts`**）+
-   `ImportSourceIdentityRepository.resolveEncodedSources` 的**无密钥 sha256 版**（G1 已铺 `location_alias_digest`/`file_alias_digest`，
-   G2 需补「别名表 upsert + sourceId 复用 + sourceFingerprint」）。
-   ⚠️ **开工前仍需按老规矩先出开工清单**（读剩余规范 → 分批 → 决策入档）。
-3. **G3 / G4**：执行租约与批次推进 + effect receipts + `db:import-global-facts-commit`；
+2. ~~批次 G2 开工清单~~ ✅ **已完成**（`8edd1b46`，含 G2a/G2b 细分）。~~G2a（读面 3 频道）~~ ✅ **已完成**（见第三十六次）。
+3. **批次 G2b（写面 2 频道 + 复活 `reference` 路径）**：按
+   [`docs-fork/plans/2026-10-10-g2-import-run-kickoff.md`](../plans/2026-10-10-g2-import-run-kickoff.md) §3.2 执行 ——
+   新建 `src/import/identity.rs`（无密钥版 `resolveEncodedSources`）+ `import_run_repository.rs` 续写
+   `begin_parsing` / `commit_parsed_source` / `fail_parsed_source` / `finalize_parsing` / `prepare` + 2 命令 +
+   2 前端登记 + 删除 `commands/import.rs` 的 `reference` 诚实错误早退。**开工前先读清单 §4 的 ~620 行**。
+4. **G3 / G4**：执行租约与批次推进 + effect receipts + `db:import-global-facts-commit`；
    `kb:import-reference-text` 去占位 + 前端登记。
-4. **其它待办**：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项。
+5. **其它待办**：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项。
 
 ### 3. 阻塞项与待授权项（**不得删除，须逐条确认后更新**）
 
@@ -213,14 +279,14 @@ Windows `EBUSY` 文件监视器噪声（目标产物被占用，属正常）。�
 
 | 命令 | 工作目录 | 实测输出 |
 |---|---|---|
-| `node scripts/verify-channel-coverage.mjs --quiet` | `tauri-app/` | 契约 invoke 频道 **193**（事件频道 4）· 已注册命令 **167** → 覆盖 **166** · 未迁移 **27** `[db=18 mcp=9]` · 命令名与契约频道一一对应 ✅ |
-| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 572 passed; 0 failed; 0 ignored; 0 measured` |
+| `node scripts/verify-channel-coverage.mjs --quiet` | `tauri-app/` | 契约 invoke 频道 **193**（事件频道 4）· 已注册命令 **170** → 覆盖 **169** · 未迁移 **24** `[db=15 mcp=9]` · 命令名与契约频道一一对应 ✅ |
+| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 585 passed; 0 failed; 0 ignored; 0 measured` |
 | `cargo check --all-targets` | `tauri-app/src-tauri/` | `Finished dev profile ... `（**0 告警**） |
 | `cargo fmt --check` | `tauri-app/src-tauri/` | 输出 **0 行**（干净） |
 | `pnpm typecheck` / `pnpm run lint` | `tauri-app/` | exit 0 / exit 0 |
 | `npx vitest run test/channel-migration-coverage.test.ts test/ipc-arg-struct-contract.test.ts` | `tauri-app/` | `Test Files 2 passed`，`Tests 7 passed` |
-| `git status --porcelain` | 仓库根 | **空**（提交 `fbb88307` + `75379748` 后；本文件的冒烟追加为第 3 个提交） |
-| `git log -1` | 仓库根 | `75379748 docs(tauri): 第三十五次快照与频道盘点更新（批次 G1 收口）` |
+| `git status --porcelain` | 仓库根 | **空**（G1 三个提交 + G2 开工清单均已推送；G2a 为待生成提交） |
+| `git log -1` | 仓库根 | `8edd1b46 docs(tauri): G2 开工清单（状态机细分 G2a/G2b）与决策归档` |
 | `pnpm tauri dev`（第十轮冒烟） | `tauri-app/` | VITE `ready in 441 ms` · cargo `Finished dev profile in 47.50s` · `lorekeeper.exe` 工作集 **90 MB** · 3 项人工验证全部 ✅ |
 
 ---
