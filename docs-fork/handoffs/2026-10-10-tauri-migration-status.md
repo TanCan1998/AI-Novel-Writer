@@ -11,7 +11,7 @@
 
 ---
 
-## 快照（最后更新：2026-10-10 · 第三十七次）
+## 快照（最后更新：2026-10-10 · 第三十八次）
 
 > 本表只填**最新一次自检的实测值**。改表前必须重跑对应命令，不得沿用旧数字、不得估算。
 > 本轮实测命令与输出见下方「[§5 自检记录](#5-自检记录2026-10-10-实测)」。
@@ -32,7 +32,7 @@
 | 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅** / **批次 G2a ✅（本次）** |
 | 当前阶段 | **批次 G2a 完成**（导入运行读面 3 频道）。下一步 **G2b（写面 2 频道 + 复活 `reference` 路径）→ G3（租约与批次推进，11 + effect receipts）→ G4（收口）**（未迁移 24 → 9）。其它待办：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项 |
 | 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、`tauri-plugin-opener 2.7.0`、`windows-sys 0.61`（`[target.'cfg(windows)'.dependencies]`，仅 lock 提级，**0 新下载**；Ask first 已批准 2026-10-10）。**G2a 零新依赖**。向量层 `hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio`；FTS5 由 `libsqlite3-sys` bundled 提供 |
-| GUI 冒烟 | ✅ 自 2026-10-07 起 **十二轮**。**第十二轮（2026-10-10，冒烟发现的三项缺陷修复）**：① 弹窗 **ESC 关闭**（根因：Radix `DismissableLayer` 仅在 `index === layers.length-1` 时注册 ESC，而 Radix 关闭后仍保留 `DialogContent` 挂载——实测 `layers.length=7`，可见弹窗永远不是最高层）；② **窗口命令真实化**（批次 A 四个命令原为假成功骨架）；③ **标题栏拖拽**（`-webkit-app-region` 在 WebView2 无效 → 补 `data-tauri-drag-region`）。4 项人工验证全部 ✅。近三轮：第十一轮（G2a）、第十轮（G1）、第九轮（H 前三项 + B12） |
+| GUI 冒烟 | ✅ 自 2026-10-07 起 **十三轮**。**第十三轮（2026-10-10，弹窗动画统一）**：设置弹窗明显变快（修复前实为“静置 400ms + 播 220ms”）、四类弹窗进出场一致、Radix 弹窗仍居中且尺寸正常 ✅。**第十二轮（2026-10-10，冒烟发现的三项缺陷修复）**：① 弹窗 **ESC 关闭**（根因：Radix `DismissableLayer` 仅在 `index === layers.length-1` 时注册 ESC，而 Radix 关闭后仍保留 `DialogContent` 挂载——实测 `layers.length=7`，可见弹窗永远不是最高层）；② **窗口命令真实化**（批次 A 四个命令原为假成功骨架）；③ **标题栏拖拽**（`-webkit-app-region` 在 WebView2 无效 → 补 `data-tauri-drag-region`）。4 项人工验证全部 ✅。近三轮：第十一轮（G2a）、第十轮（G1）、第九轮（H 前三项 + B12） |
 | 双栈隔离 | **L0/L1/L2/L3 全部独立**：安装标识 / `~/.lorekeeper` / `<root>/.lore/`（库 `.lore/lorekeeper.db`、KB 向量 `.lore/kb/`）。基线为 `~/.vela` / `<root>/.vela/`。**两栈项目目录刻意不互通**（`ee40aaab`） |
 | Rust 工具链 | rustc/cargo **1.99.0 stable-msvc** @ `D:\Environment\rust\`（脚本内须显式设 `RUSTUP_HOME` / `CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
 
@@ -300,6 +300,57 @@ dev 进程树已 `taskkill /T` 结束，无残留进程；用户目录 `%TEMP%` 
 
 ---
 
+## 本次更新（第三十八次：弹窗动画统一 + B22 补验 + 闪烁登记）
+
+### 1. B22 补验 ✅（两段式关窗协议）
+
+构造未保存内容（改章节不保存，标签页出现未保存标记）→ 点标题栏【关闭】：
+① 弹出「未保存修改」确认框（保存并退出 / 放弃修改退出 / 取消）✅；
+② 点【取消】→ 窗口保留、确认框消失 ✅；
+③ 点【放弃修改退出】→ 应用正常退出 ✅。B22 解除。
+
+### 2. 弹窗动画统一 + 修掉 0.4s 隐形延迟（真 bug）
+
+**根因**：`index.css` 的 `--transition-spring: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)`
+**自身带时长**，却被当作缓动函数插进 `animation` 简写：
+
+```css
+animation: dialog-enter 0.22s var(--transition-spring) both;
+/* 展开 → dialog-enter 0.22s 0.4s cubic-bezier(...) both
+   多出来的 0.4s 落在 animation-delay 位 → 先静置 400ms 再播 220ms */
+```
+
+配合 `both` 填充（静置期保持 0% 关键帧 = 透明 + 缩小），实测观感：
+**设置弹窗 0.62s、Confirm 0.65s、AlertDialog 0.70s**；而 Radix 的 `ui/Dialog` 走 Tailwind
+`duration-300` 无此问题 → 四类弹窗三种节奏（用户报的「不统一 + 设置弹窗太长」）。
+
+**修复**：
+
+| 项 | 内容 |
+|---|---|
+| 单源变量 | `index.css` 新增 `--dialog-{enter,exit}-duration` / `--dialog-backdrop-{enter,exit}-duration` / `--dialog-{enter,exit}-ease`（**时长与缓动严格分开**，并加注释禁止重犯）；进场 **170ms**、退场 **120ms** |
+| 唯一实现 | 新增 `.lk-dialog-backdrop` / `.lk-dialog-panel`（`[data-state='closed']` 触发退场、含 `prefers-reduced-motion` 降级）；新弹窗只加这两个 class |
+| `ui/Dialog.tsx` | 改用上述 class；定位从 `left-1/2 top-1/2 -translate-x/y-1/2` 换成 **flex 居中包裹层**（包裹层 `pointer-events-none`、面板 `pointer-events-auto`），否则关键帧的 transform 会抵消居中位移 |
+| `Confirm` / `AlertDialog` / `SettingsModal` | 删内联 `animation`，改 `class` + `data-state`；三者时长/缓动/关键帧至此与 Radix 弹窗完全一致 |
+
+`SettingsModal` 的退场采用「渲染期同步调整派生状态」而非 effect 内 `setState`
+（后者触发 `react-hooks/set-state-in-effect`）。
+
+**验证（第十三轮 GUI 观感，用户人工）**：设置弹窗明显变快 ✅、四类弹窗一致 ✅、
+Radix 弹窗仍居中且尺寸正常 ✅。
+
+### 3. 自检（本轮）
+
+仅前端改动：`pnpm typecheck` / `pnpm run lint` 均 exit 0（实测）；**Rust 未改动**，
+`cargo test 586/586` / `check` 0 告警沿用上一轮实测；`check:channels` 193/170/169/24（无频道变化）。
+
+### 4. 收尾
+
+- 提交：`61ea32ad`（本节的代码改动）+ 本快照；均已推送 `origin/master`。
+- 规则变更：无。
+
+---
+
 ## 交接给下次会话（**从这里接**）
 
 ### 1. 当前工作区状态
@@ -314,8 +365,10 @@ dev 进程树已 `taskkill /T` 结束，无残留进程；用户目录 `%TEMP%` 
 | `8edd1b46` | `docs(tauri): G2 开工清单（状态机细分 G2a/G2b）与决策归档` |
 | `1a523707` | `feat(tauri): 批次 G2a 导入运行读面（3 频道 + 批次检查点单源）` |
 | `9d12514d` | `docs(tauri): 第三十六次快照与频道盘点更新（批次 G2a 收口）` |
-| 待生成 ① | `fix(tauri): 修复弹窗 ESC、窗口命令真实化与标题栏拖拽` |
-| 待生成 ② | `docs(tauri): 第三十七次快照 —— 冒烟三项缺陷修复` |
+| `63f255b8` | `fix(tauri): 修复弹窗 ESC、窗口命令真实化与标题栏拖拽` |
+| `3f3486f5` | `docs(tauri): 第三十七次快照 —— 冒烟三项缺陷修复` |
+| `61ea32ad` | `fix(tauri): 统一弹窗进出场动画并修掉 0.4s 隐形延迟` |
+| 待生成 | `docs(tauri): 第三十八次快照 —— 弹窗动画统一与 B22/B23/B24 归档` |
 
 - HEAD（写入本表时）：`9d12514d docs(tauri): 第三十六次快照与频道盘点更新（批次 G2a 收口）`
 - ⚠️ 上一份快照（2026-10-09）中**已过期的交接描述**（防照旧操作）：
@@ -363,7 +416,9 @@ dev 进程树已 `taskkill /T` 结束，无残留进程；用户目录 `%TEMP%` 
 | **B20** | **D7 zh-CN 排序不等价** | ⚠️ **新增（本次）**：无 ICU 依赖，来源文件名排序用数字感知自然序近似；如需逐字对齐须 Ask first 引 ICU |
 | **B21** | **G1 GUI 冒烟** | ✅ **已解除（本次）**：第十轮冒烟 3 项全部通过（作者原稿预览 / reference 诚实错误 / epub 诚实错误），dev 日志无 error/panic |
 | **B22** | **两段式关窗的未保存内容确认未验证** | ⚠️ **新增（本次）**：`window:close` 现在会拦截并广播 `window:close-requested`，渲染层无 dirty 时直接 `proceed`；**dirty 分支（确认框 + cancel / 再次关窗）尚未实测**，需构造未保存内容后再验 |
-| **B23** | **手写弹层无退出动画** | ⚠️ **新增（本次）**：`SettingsModal` 在 `open=false` 时直接 `return null`（无 `Presence` 式延迟卸载），关闭“生硬”；**这是基线既有表现，非本次回归**（点 X 同样如此）。如需动画需改成延迟卸载，代价中等，待定 |
+| **B23** | **手写弹层无退出动画** | ✅ **已解除（本次）**：`SettingsModal` 已改为延迟卸载 + 统一进出场（`.lk-dialog-backdrop` / `.lk-dialog-panel`），第十三轮实测有淡出 |
+| **B24** | **窗口最小/最大化后整屏瞬黑（闪烁）** | ⚠️ **新增（本次）·用户决定暂缓到专门批次**。现象：最小/最大化后鼠标在窗口内移动时**整屏瞬黑**（偶发）；**浏览器打开同一页面拖动不闪** → 壳层问题。已排查且排除：透明/effect 配置、常驻 `backdrop-filter`、resize 重渲染风暴、`backgroundColor` 缺失、`shadow:false`（实测无效已回滚）；事件日志无 TDR/dxgkrnl/DWM 错误。机器：AMD Radeon(2021‑11‑30 驱动) + RTX 3060 Laptop 混合显卡、单屏 2560×1440@**165Hz**、**FreeSync/VRR 开启**。候选方案：M3 给 `lorekeeper.exe` 指定单一 GPU ／ M4 临时 60Hz ／ A2 WebView2 `--disable-direct-composition` ／ M1 关 MPO（注册表，需审批+重启）／ M2 更新 AMD 驱动 |
+| **B25** | **`ClearProjectDataDialog` 未纳入统一动画** | ⚠️ **新增（本次）**：该弹窗是手写全屏弹层且**当前无任何进出场动画**（关闭是硬切）；纳入统一需把它 3 处 `onClose()` 包成 `requestClose` 并加延迟卸载（同 `SettingsModal` 做法，约 15 行） |
 
 ### 4. 红线提醒（每次接手都要过一遍）
 
