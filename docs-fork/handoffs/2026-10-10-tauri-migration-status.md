@@ -24,13 +24,13 @@
 | 覆盖 invoke 频道 | **171**（契约总数 193，事件频道 4） |
 | 未迁移 invoke 频道 | **22**（`db=13 mcp=9`） |
 | orphan | **空** ✅ |
-| `cargo test --lib` | **606/606** ✅ |
+| `cargo test --lib` | **607/607** ✅ |
 | `cargo fmt --check` | **干净（0 差异）** ✅ |
 | `cargo check --all-targets` | **0 告警** ✅ |
 | `pnpm typecheck` / `lint` | exit 0 / exit 0 ✅ |
 | 定向 `vitest` | **7/7**（2 文件：契约覆盖 / 入参结构体契约）✅ |
-| 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅** / **批次 G2a ✅（本次）** |
-| 当前阶段 | **批次 G2a 完成**（导入运行读面 3 频道）。下一步 **G2b（写面 2 频道 + 复活 `reference` 路径）→ G3（租约与批次推进，11 + effect receipts）→ G4（收口）**（未迁移 24 → 9）。其它待办：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项 |
+| 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅** / **批次 G2a ✅（本次）** / **批次 G2b ✅（1–6 步全部完成）** |
+| 当前阶段 | **批次 G2b 全 6 步完成**（导入运行写面收口；`dialog:select-novel-files` 的 `reference` 分支已复活）。下一步 **G3**（执行租约 / 批次推进 / effect receipts 11 频道 + `db:import-global-facts-commit`）→ **G4**（`kb:import-reference-text` 去占位 + 前端登记 + GUI 冒烟）（未迁移 22 → 9）。其它待办：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项、B24（整屏瞬黑，暂缓） |
 | 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、`tauri-plugin-opener 2.7.0`、`windows-sys 0.61`（`[target.'cfg(windows)'.dependencies]`，仅 lock 提级，**0 新下载**；Ask first 已批准 2026-10-10）。**G2a 零新依赖**。向量层 `hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio`；FTS5 由 `libsqlite3-sys` bundled 提供 |
 | GUI 冒烟 | ✅ 自 2026-10-07 起 **十三轮**。**第十三轮（2026-10-10，弹窗动画统一）**：设置弹窗明显变快（修复前实为“静置 400ms + 播 220ms”）、四类弹窗进出场一致、Radix 弹窗仍居中且尺寸正常 ✅。**第十二轮（2026-10-10，冒烟发现的三项缺陷修复）**：① 弹窗 **ESC 关闭**（根因：Radix `DismissableLayer` 仅在 `index === layers.length-1` 时注册 ESC，而 Radix 关闭后仍保留 `DialogContent` 挂载——实测 `layers.length=7`，可见弹窗永远不是最高层）；② **窗口命令真实化**（批次 A 四个命令原为假成功骨架）；③ **标题栏拖拽**（`-webkit-app-region` 在 WebView2 无效 → 补 `data-tauri-drag-region`）。4 项人工验证全部 ✅。近三轮：第十一轮（G2a）、第十轮（G1）、第九轮（H 前三项 + B12） |
 | 双栈隔离 | **L0/L1/L2/L3 全部独立**：安装标识 / `~/.lorekeeper` / `<root>/.lore/`（库 `.lore/lorekeeper.db`、KB 向量 `.lore/kb/`）。基线为 `~/.vela` / `<root>/.vela/`。**两栈项目目录刻意不互通**（`ee40aaab`） |
@@ -40,7 +40,7 @@
 
 ---
 
-## 本次更新（第三十九次：B25 收口 + G2b 写入面 / 四态分类 / prepare / 两频道）
+## 本次更新（第三十九次：B25 收口 + G2b 全 6 步收口）
 
 ### 1. B25 ✅ `ClearProjectDataDialog` 纳入统一动画
 
@@ -59,6 +59,7 @@ SettingsModal / ClearProjectDataDialog）。GUI 已验：淡入 + 淡出 ✅。
 | G2b-3 | `finalize_parsing` **四态分类**（`new` / `resumable` / `conflict` / `exact-duplicate`）+ 辅助函数族（`create_preparation_inspection` / `assign_stable_chapter_numbers` / `completed_chapter_manifest` / `matching_resumable_run` / `latest_completed_run` / `overlapping_resumable_source_run` / `discard_provisional_parsing_run`）+ 契约类型 `ImportRunPreparationResult` / `ImportRunPreparationInspection`；含 4 条测试（四态各一 + 未完成来源拒绝） | 本次 |
 | G2b-4 | `prepare` **两分支**：author（复用 E 批次 `finalized_draft_import_repository::preview`，含 `AUTHOR_IMPORT_PREVIEW_STALE` 经 `PrepareError::AuthorPreviewStale` 表达）+ reference（直接写冻结章、`stage='knowledge'`）；配套 `has_committed_author_finalization_receipt` / `fence_uncommitted_author_run`；含 2 条测试 | 本次 |
 | G2b-5 | **两频道**：`db:import-run-prepare-inspection`（结构化入参 + 项目门禁 + `peek`（含 purpose 校验，author 先做 `preview` 预检）→ `consume` → 身份解析 → author 走 `prepare` / reference 走 `begin_parsing`+逐来源 `commit/fail`+`finalize_parsing`；stale 回 `errorCode` 信封、其余失败 **reject** 带 `Error: ` 前缀，与 Electron 一致）+ `db:import-run-finalize-parsing`；`AppState` 增 `with_project_db_typed`（保留自定义错误类型）；含 3 条测试 | 本次 |
+| G2b-6 | **`reference` 分支复活**：`dialog:select-novel-files` 去掉诚实错误早退，改为**选择期**即落地解析运行（`resolve_encoded_sources` → `begin_parsing` → 逐来源 `parsed_source_status` 跳过已完成 / 受限读取 / 拆章 / `commit_parsed_source`（失败先 `fail_parsed_source` 再抛、消息用**映射后**文案）→ `finalize_parsing`），返回 `{success:true, preparation}`；返回类型改为 `InspectOutcome`（Inspection / Preparation），`NovelFileSelectionResult.preparation` 转为强类型；含 2 条测试（真实内存库 + 非结构化/无库/EPUB 三态） | 本次 |
 
 **顺带**：`lib.rs` 的 `mod repositories;` → `pub mod repositories;`（与 `pub mod db` 一致）——
 否则尚未被命令层消费的新仓储 API 会持续触发 `dead_code` 告警（之前靠逐项 `#[allow]` 缓解）。
@@ -71,7 +72,7 @@ SettingsModal / ClearProjectDataDialog）。GUI 已验：淡入 + 淡出 ✅。
 
 ### 3. 自检（本轮）
 
-`cargo test --lib` **606/606**（+15）· `cargo check --all-targets` **0 告警** ·
+`cargo test --lib` **607/607**（+16）· `cargo check --all-targets` **0 告警** ·
 `cargo fmt --check` 干净 · `pnpm typecheck` / `lint` exit 0（B25 改动时实测）·
 `check:channels` 193/172/171/22（无频道变化）。
 
@@ -168,7 +169,7 @@ SettingsModal / ClearProjectDataDialog）。GUI 已验：淡入 + 淡出 ✅。
 | 命令 | 工作目录 | 实测输出 |
 |---|---|---|
 | `node scripts/verify-channel-coverage.mjs --quiet` | `tauri-app/` | 契约 invoke 频道 **193**（事件频道 4）· 已注册命令 **172** → 覆盖 **171** · 未迁移 **22** `[db=13 mcp=9]` · 命令名与契约频道一一对应 ✅ |
-| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 606 passed; 0 failed; 0 ignored; 0 measured` |
+| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 607 passed; 0 failed; 0 ignored; 0 measured` |
 | `cargo check --all-targets` | `tauri-app/src-tauri/` | `Finished dev profile ... `（**0 告警**） |
 | `cargo fmt --check` | `tauri-app/src-tauri/` | 输出 **0 行**（干净） |
 | `pnpm typecheck` / `pnpm run lint` | `tauri-app/` | exit 0 / exit 0 |
