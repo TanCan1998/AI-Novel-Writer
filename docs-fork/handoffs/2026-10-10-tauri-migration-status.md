@@ -32,7 +32,7 @@
 | 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅** / **批次 G2a ✅（本次）** |
 | 当前阶段 | **批次 G2a 完成**（导入运行读面 3 频道）。下一步 **G2b（写面 2 频道 + 复活 `reference` 路径）→ G3（租约与批次推进，11 + effect receipts）→ G4（收口）**（未迁移 24 → 9）。其它待办：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项 |
 | 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、`tauri-plugin-opener 2.7.0`、`windows-sys 0.61`（`[target.'cfg(windows)'.dependencies]`，仅 lock 提级，**0 新下载**；Ask first 已批准 2026-10-10）。**G2a 零新依赖**。向量层 `hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio`；FTS5 由 `libsqlite3-sys` bundled 提供 |
-| GUI 冒烟 | ✅ 自 2026-10-07 起 **十轮**。**第十轮（2026-10-10，批次 G1）**：vite `441 ms` + cargo `47.50s` → `lorekeeper.exe`（90 MB）；用户人工验证 3 项全部通过 —— 作者原稿（2 个 `.txt`）显示拆章/预览、参考语料（`.md`）显示指向 G2 的诚实错误、`.epub` 显示「导出尚未迁移」诚实错误；dev 日志**无 error/panic/失败**输出（仅两条已知 `setZoomFactor` 占位提示 + Windows EBUSY 文件监视器噪声）。近两轮：第九轮（2026-10-09，批次 H 前三项 + B12）；**第八轮（2026-10-09，批次 E G1）** |
+| GUI 冒烟 | ✅ 自 2026-10-07 起 **十一轮**。**第十一轮（2026-10-10，批次 G2a）**：vite `812 ms` + cargo `42.46s` → `lorekeeper.exe`（45 MB）；4 项全部通过 —— ① 可恢复任务卡片显示夹具运行（`第1章 开端.txt` / `2/2` / 阶段 `author-commit`，即 `list_resumable` + `row_to_snapshot` 投影）；② 点「继续导入」后流程推进到 `db:import-run-prepare-inspection`（**G2b 频道**）才报未迁移，**反证 G2a 的 `-list-chapters` 已真实成功**；③④ G1 两项回归通过。dev 日志仅两条已知 `setZoomFactor` 占位提示 + Windows EBUSY 噪声。近三轮：第十轮（G1，3 项）、第九轮（H 前三项 + B12）、第八轮（E G1） |
 | 双栈隔离 | **L0/L1/L2/L3 全部独立**：安装标识 / `~/.lorekeeper` / `<root>/.lore/`（库 `.lore/lorekeeper.db`、KB 向量 `.lore/kb/`）。基线为 `~/.vela` / `<root>/.vela/`。**两栈项目目录刻意不互通**（`ee40aaab`） |
 | Rust 工具链 | rustc/cargo **1.99.0 stable-msvc** @ `D:\Environment\rust\`（脚本内须显式设 `RUSTUP_HOME` / `CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
 
@@ -189,9 +189,32 @@ Windows `EBUSY` 文件监视器噪声（目标产物被占用，属正常）。�
 | `pnpm typecheck` / `lint` | exit 0 / exit 0 |
 | `npx vitest run`（2 文件） | `Test Files 2 passed`，`Tests 7 passed` |
 
-⚠️ GUI 冒烟**未做**（G2a 为读频道；`ImportNovelDialog` 的「可恢复任务」区已有真数据可验，但需 dev 环境）。
+⚠️ GUI 冒烟见下方「§5 GUI 冒烟（第十一轮）」—— **已通过**。
 
-### 5. 收尾
+### 5. GUI 冒烟（第十一轮，2026-10-10）—— ✅ 通过
+
+`pnpm tauri dev`：VITE v8.3.2 `ready in 812 ms` → cargo `Finished dev profile ... in 42.46s` → `Running target\debug\lorekeeper.exe`（**45 MB**）。
+
+夹具（均在 `F:\Temp\`，**未污染用户目录**）：`F:\Temp\g2a-smoke\g2a-smoke.mjs`（可重复使用：`inspect` / `seed` / `clean`）、
+`F:\Temp\g2a-smoke\files\`（G1 的 4 个素材）、测试项目 `F:\Temp\loretest\22\111`。
+
+| # | 步骤 | 结果 |
+|---|---|---|
+| 1 | 项目「111」→ 导入小说（作者原稿 / 当前项目） | ✅ 出现黄色卡片「可继续的导入」：`第1章 开端.txt` / `2/2` / 「阶段：author-commit；进度：2/2」 |
+| 2 | 点「继续导入」 | ✅ 对话框关闭；dev 日志错误为 `[ImportNovel] 导入失败: Error: [Tauri 适配] 频道 **db:import-run-prepare-inspection** 尚未迁移（参数名未登记）` |
+| 3 | G1 回归：作者原稿 + 两个 `.txt` | ✅ 显示拆章/作者原稿预览 |
+| 4 | G1 回归：参考语料 + `.md` | ✅ 显示指向 G2b 的诚实错误 |
+
+**第 2 项为何是强证据**：`launchRun` 先 `await loadAuthorImportChapterNumbers(...)`（内部调 `db:import-run-list-chapters`，G2a），
+**成功后才**`createImportWorkflow` 并触发 `db:import-run-prepare-inspection`。错误出现在后者，说明前者已真实完成
+（若 `-list-chapters` 未迁移，错误会直接指向它）。
+
+证据：dev 日志**无 panic / 无 Rust error**，仅两条已知 `setZoomFactor`（阶段 3 项）占位提示与 Windows `EBUSY` 文件监视器噪声。
+
+**残留处置**：夹具注入的 `g2a-smoke-*` 运行已用 `clean` 清除（`import_runs` 回到 0 行）；
+dev 进程树已 `taskkill /T` 结束，无残留进程；用户目录 `%TEMP%` 已无任何本轮产物。
+
+### 6. 收尾
 
 - 提交清单：`feat(tauri): 批次 G2a 导入运行读面（3 频道 + 批次检查点单源）`。
 - 规则变更：无。
@@ -210,9 +233,11 @@ Windows `EBUSY` 文件监视器噪声（目标产物被占用，属正常）。�
 | `75379748` | `docs(tauri): 第三十五次快照与频道盘点更新（批次 G1 收口）` |
 | `e2bb92cc` | `docs(tauri): 记录第十轮 GUI 冒烟（批次 G1 验收通过）` |
 | `8edd1b46` | `docs(tauri): G2 开工清单（状态机细分 G2a/G2b）与决策归档` |
-| 待生成 | `feat(tauri): 批次 G2a 导入运行读面（3 频道 + 批次检查点单源）`（含本文件的 G2a 章节） |
+| `1a523707` | `feat(tauri): 批次 G2a 导入运行读面（3 频道 + 批次检查点单源）` |
+| `9d12514d` | `docs(tauri): 第三十六次快照与频道盘点更新（批次 G2a 收口）` |
+| 待生成 | `docs(tauri): 记录第十一轮 GUI 冒烟（批次 G2a 验收通过）`（含本文件的 G2a 冒烟章节） |
 
-- HEAD（写入本表时）：`8edd1b46 docs(tauri): G2 开工清单（状态机细分 G2a/G2b）与决策归档`
+- HEAD（写入本表时）：`9d12514d docs(tauri): 第三十六次快照与频道盘点更新（批次 G2a 收口）`
 - ⚠️ 上一份快照（2026-10-09）中**已过期的交接描述**（防照旧操作）：
   1. 「未迁移 29（`db=19 mcp=9 dialog=1`）」「已注册命令 165」「`cargo test — 542/542`」→ 均已变为 **27 / 167 / 572**；
   2. 「下一步 1：批次 G 从 G1 开始」→ **G1 已完成**，下一步是 G2；
@@ -285,9 +310,10 @@ Windows `EBUSY` 文件监视器噪声（目标产物被占用，属正常）。�
 | `cargo fmt --check` | `tauri-app/src-tauri/` | 输出 **0 行**（干净） |
 | `pnpm typecheck` / `pnpm run lint` | `tauri-app/` | exit 0 / exit 0 |
 | `npx vitest run test/channel-migration-coverage.test.ts test/ipc-arg-struct-contract.test.ts` | `tauri-app/` | `Test Files 2 passed`，`Tests 7 passed` |
-| `git status --porcelain` | 仓库根 | **空**（G1 三个提交 + G2 开工清单均已推送；G2a 为待生成提交） |
-| `git log -1` | 仓库根 | `8edd1b46 docs(tauri): G2 开工清单（状态机细分 G2a/G2b）与决策归档` |
-| `pnpm tauri dev`（第十轮冒烟） | `tauri-app/` | VITE `ready in 441 ms` · cargo `Finished dev profile in 47.50s` · `lorekeeper.exe` 工作集 **90 MB** · 3 项人工验证全部 ✅ |
+| `git status --porcelain` | 仓库根 | **空**（G1 三提交 + G2 开工清单 + G2a 两提交均已推送 `origin/master`；本轮冒烟只改文档） |
+| `git log -1` | 仓库根 | `9d12514d docs(tauri): 第三十六次快照与频道盘点更新（批次 G2a 收口）` |
+| `pnpm tauri dev`（第十轮冒烟，G1） | `tauri-app/` | VITE `ready in 441 ms` · cargo `Finished dev profile in 47.50s` · `lorekeeper.exe` **90 MB** · 3 项人工验证全部 ✅ |
+| `pnpm tauri dev`（第十一轮冒烟，G2a） | `tauri-app/` | VITE `ready in 812 ms` · cargo `Finished dev profile in 42.46s` · `lorekeeper.exe` **45 MB** · 4 项人工验证全部 ✅（唯一 console.error 为预期的 G2b 频道未迁移） |
 
 ---
 
