@@ -19,6 +19,7 @@ mod db; // 批次 C：项目数据库
 mod external_file_grant; // 批次 B：外部文件授权
 pub mod finalization; // 批次 E（G1）：定稿提交 / 实体稿重试（2 频道）
 mod fs; // 批次 B：项目文件系统
+pub mod import; // 批次 G1：导入文件选择（dialog:select-novel-files）
 pub mod kb; // 批次 F2-3：知识库（kb:* 15 频道 + dialog 2）
 mod llm; // 批次 D1：LLM 模型管理（配置读写 7 频道）
 mod llm_execution; // 批次 D2：LLM 生成执行（租约 2 频道）
@@ -40,6 +41,7 @@ pub use db::*;
 pub use external_file_grant::*;
 pub use finalization::*;
 pub use fs::*;
+pub use import::*;
 pub use kb::*;
 pub use llm::*;
 pub use llm_execution::*;

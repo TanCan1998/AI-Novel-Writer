@@ -2799,6 +2799,56 @@ pub fn db_draft_import_finalized_batch(
     }
 }
 
+/// 批次 G1：`db:import-run-author-preview` —— 消费检视 → 权威序列预览。
+///
+/// 复用批次 E 已迁移的 `finalized_draft_import_repository::preview`；检视以
+/// `peek`（只读）方式取用，允许渲染层重复预览同一检视令牌（对齐基线）。
+pub(crate) fn import_run_author_preview_inner(
+    state: &AppState,
+    inspection_id: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<draft_import::AuthorManuscriptImportPreview, String> {
+    guard_read(state, expected_project_path, session)?;
+    let chapters: Vec<draft_import::FinalizedDraftImportChapter> = {
+        let mut guard = state
+            .import_inspections
+            .lock()
+            .map_err(|_| "导入检查状态被污染".to_string())?;
+        let inspection = guard.peek(
+            inspection_id,
+            Some(crate::import::ImportPurpose::AuthorManuscript),
+        )?;
+        inspection
+            .chapters
+            .iter()
+            .map(|chapter| draft_import::FinalizedDraftImportChapter {
+                chapter_number: chapter.number,
+                title: chapter.title.clone(),
+                content: chapter.content.clone(),
+                word_count: chapter.word_count,
+            })
+            .collect()
+    };
+    state.with_project_db(|conn| draft_import::preview(conn, &chapters))
+}
+
+/// `db:import-run-author-preview`（读频道：失败直接 reject，对齐基线）
+#[tauri::command]
+pub fn db_import_run_author_preview(
+    state: State<'_, AppState>,
+    inspection_id: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<draft_import::AuthorManuscriptImportPreview, String> {
+    import_run_author_preview_inner(
+        state.inner(),
+        &inspection_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4489,6 +4539,71 @@ mod tests {
         assert!(resolved.success, "resolve 应成功：{:?}", resolved.error);
         let listed = recovery_candidate_list_inner(&state, &root, Some(&session)).unwrap();
         assert!(listed.is_empty(), "终态后不再出现在待处理列表");
+
+        cleanup(&root);
+    }
+
+    #[test]
+    fn import_run_author_preview_consumes_inspection_against_ledger_test() {
+        use crate::import::inspection_store::{InspectedImportChapter, InspectedImportSource};
+        use crate::import::parsing::sha256_hex;
+        use crate::import::ImportPurpose;
+
+        let (state, root, session) = activated_state("author-preview");
+        let content = "正文甲";
+        let summary = {
+            let mut store = state.import_inspections.lock().unwrap();
+            store
+                .create(
+                    ImportPurpose::AuthorManuscript,
+                    vec![InspectedImportSource {
+                        location_alias_digest: "a".repeat(64),
+                        file_alias_digest: Some("b".repeat(64)),
+                        display_name: "第1章.txt".to_string(),
+                        media_type: "text/plain".to_string(),
+                        size: content.len(),
+                    }],
+                    vec![InspectedImportChapter {
+                        number: 1,
+                        source_index: 0,
+                        source_chapter_number: 1,
+                        title: "开端".to_string(),
+                        content: content.to_string(),
+                        word_count: 3,
+                        content_fingerprint: sha256_hex(content),
+                        content_size: content.len(),
+                    }],
+                )
+                .unwrap()
+        };
+
+        // 空台账 → 第 1 章为新增，分类 ready
+        let preview =
+            import_run_author_preview_inner(&state, &summary.inspection_id, &root, Some(&session))
+                .unwrap();
+        assert_eq!(preview.classification, "ready");
+        assert_eq!(preview.chapter_count, 1);
+        assert_eq!(preview.new_chapter_numbers, vec![1]);
+        assert_eq!(preview.target_status, "finalized");
+        assert!(!preview.authority_invalid);
+
+        // 检视以 peek（只读）取用，可重复预览
+        let again =
+            import_run_author_preview_inner(&state, &summary.inspection_id, &root, Some(&session))
+                .unwrap();
+        assert_eq!(again.classification, "ready");
+
+        // 跨项目 / 缺会话一律拒绝
+        assert!(import_run_author_preview_inner(
+            &state,
+            &summary.inspection_id,
+            "C:\\other",
+            Some(&session)
+        )
+        .is_err());
+        assert!(
+            import_run_author_preview_inner(&state, &summary.inspection_id, &root, None).is_err()
+        );
 
         cleanup(&root);
     }

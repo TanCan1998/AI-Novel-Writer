@@ -131,8 +131,13 @@ describe('channel migration coverage', () => {
     }
   })
 
-  it('未迁移频道会被前置拦截（如批次 G/H 的导入与更新链）', () => {
-    expect(MIGRATED_CHANNELS.has('dialog:select-novel-files')).toBe(false)
+  it('迁移状态断言：已迁频道在集合内，批次 G2 依赖的频道仍被前置拦截', () => {
+    // 批次 G1：作者原稿导入已迁移
+    expect(MIGRATED_CHANNELS.has('dialog:select-novel-files')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('db:import-run-author-preview')).toBe(true)
+    // 仍未迁移（G2/G3：导入运行状态机与批次推进）
+    expect(MIGRATED_CHANNELS.has('db:import-run-prepare-inspection')).toBe(false)
+    expect(MIGRATED_CHANNELS.has('db:import-run-get')).toBe(false)
     // 已迁频道不受影响
     expect(MIGRATED_CHANNELS.has('config:get')).toBe(true)
     expect(MIGRATED_CHANNELS.has('llm:list-models')).toBe(true)

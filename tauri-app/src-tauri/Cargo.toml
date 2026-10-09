@@ -85,6 +85,21 @@ tauri-plugin-dialog = "2"
 # （权限系统只门禁「渲染层→插件命令」，我们不开这条通道）。
 tauri-plugin-opener = "2"
 
+# 批次 G1（Ask first 已批准 2026-10-10）：Windows 文件标识。
+#
+# 动因：`defaultFileIdentity` 需要 `dev:…:ino:…`，但 std 的
+# `MetadataExt::file_index/volume_serial_number` 仍属 unstable（`windows_by_handle`，
+# rustc 1.99 实测 E0658）。改用 `GetFileInformationByHandle`。
+#
+# 版本/体积：0.61.2 **已在 Cargo.lock**（tauri/reqwest 等的传递依赖），
+# 提升为直接依赖不产生任何新下载；仅按需勾选两个 Win32 模块 feature。
+# 作用域限定 `cfg(windows)`，不污染其他平台构建。
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+] }
+
 # 按需引入（不提前加，避免无用编译）：
 # - rusqlite（bundled feature，避免依赖系统 sqlite）→ 批次 C 数据库层
 # - tauri-plugin-{updater,shell,notification} → 批次 H 按频道批准

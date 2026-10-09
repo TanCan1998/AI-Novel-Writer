@@ -25,6 +25,8 @@ mod plot_tree;
 // 批次 D2：LLM 生成执行域（预设目录 / 推理策略 / 生成参数 / 执行租约 / HTTP 生成链
 // + 模型发现 / 远程 Embedding）。
 mod llm;
+// 批次 G1：作者原稿导入（检视存储 + 章节解析；`dialog:select-novel-files`）。
+pub mod import;
 // 批次 E（G1）：实体稿发布 / 清理投影（`electron/services/manuscript-publisher.ts` 的平移）。
 mod manuscript_publisher;
 mod project_access;
@@ -261,6 +263,9 @@ pub fn run() {
             commands::kb_backfill_vectors,
             commands::dialog_select_knowledge_files,
             commands::dialog_select_knowledge_folder,
+            // 批次 G1：作者原稿导入（dialog:select-novel-files + db:import-run-author-preview）
+            commands::dialog_select_novel_files,
+            commands::db_import_run_author_preview,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");

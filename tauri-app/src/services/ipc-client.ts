@@ -184,6 +184,12 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'kb:get-vector-rebuild-status': ['expectedProjectPath'],
   'kb:backfill-vectors': ['expectedProjectPath'],
 
+  // 批次 G1：作者原稿导入（2 频道）
+  // 注：`dialog:select-novel-files` 是能力域频道（不自动注入项目会话），
+  // 因此 `projectSession` 由调用点显式作为第 2 个定位参数传入。
+  'dialog:select-novel-files': ['request', 'projectSession'],
+  'db:import-run-author-preview': ['inspectionId', 'expectedProjectPath'],
+
   // 批次 E 第二部分：章节生命周期（chapter-lifecycle，4 频道）
   'chapter:delete-finalized': ['request', 'expectedProjectPath'],
   'chapter:retry-deletion': ['operationId', 'expectedProjectPath'],
