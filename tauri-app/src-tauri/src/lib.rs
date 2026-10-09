@@ -48,6 +48,28 @@ pub fn run() {
         // 故 `capabilities/default.json` 维持最小权限（不追加 `dialog:*`）。
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        // 批次 A 收口（2026-10-10）：两段式关窗守卫。
+        // 拦截 `CloseRequested` → 广播 `window:close-requested` 让渲染层确认未保存内容，
+        // 待 `window:resolve-close(proceed)` 将 `approved` 置位后才真正放行。
+        .on_window_event(|window, event| {
+            use tauri::{Emitter, Manager};
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let (allow_close, request_id) = window
+                    .app_handle()
+                    .state::<state::AppState>()
+                    .request_window_close(window.label());
+                if allow_close {
+                    return;
+                }
+                api.prevent_close();
+                if let Some(request_id) = request_id {
+                    let _ = window.emit(
+                        "window:close-requested",
+                        serde_json::json!({ "requestId": request_id }),
+                    );
+                }
+            }
+        })
         // 对齐基线 `ensureVelaHome()`：启动即保证 `~/.lorekeeper/{prompts,logs}` 存在。
         // 失败不阻断启动（首次写入时会再次建目录并给出可读错误）。
         .setup(|app| {

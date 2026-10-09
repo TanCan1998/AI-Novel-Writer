@@ -217,6 +217,9 @@ export default function TitleBar() {
   return (
     <>
       <div
+      // Tauri（WebView2）不支持 `-webkit-app-region`，需用官方拖拽区属性；
+      // 保留 `WebkitAppRegion` 以维持与基线的可对比性（对 Tauri 无副作用）。
+      data-tauri-drag-region
       className="writer-topbar no-select flex items-center gap-2"
       style={{
         height: 'var(--height-titlebar)',

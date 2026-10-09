@@ -82,6 +82,24 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
     return () => window.clearTimeout(syncTimer)
   }, [open, requestedSection])
 
+  // ESC 关闭（fork 侧健壮化，2026-10-10）。
+  // 本组件是**手写全屏弹层**（`fixed inset-0 z-50`），不走 `ui/Dialog`，
+  // 因而不具备 Radix 的 ESC 通道；写法与 `ClearProjectDataDialog` 的既有先例一致。
+  // 用冒泡阶段 + 尊重 `defaultPrevented`：若上层 `ui/Dialog` 已用 capture 通道关闭自己，
+  // 本次 ESC 不再连带关闭设置弹窗。
+  // ⚠️ 基线同文件无此段（上游待修）；同步上游时需保留。
+  useEffect(() => {
+    if (!open) return
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      if (event.defaultPrevented) return
+      event.preventDefault()
+      onClose()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [open, onClose])
+
   if (!open) return null
 
   return (

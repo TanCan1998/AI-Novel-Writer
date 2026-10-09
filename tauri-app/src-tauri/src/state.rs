@@ -37,6 +37,8 @@ pub struct AppState {
     pub(crate) started_at_ms: u64,
     /// 批次 A：皮肤命令存储
     pub(crate) skin: Mutex<crate::commands::SkinCommandStore>,
+    /// 批次 A 收口（2026-10-10）：两段式关窗守卫（对齐基线 `installWindowCloseGuard`）
+    pub(crate) window_close_guard: Mutex<crate::commands::WindowCloseGuard>,
     /// 批次 B/C：活跃项目会话（None = 未打开项目；项目域命令一律拒绝）
     pub(crate) active_project: Mutex<Option<ActiveProject>>,
     /// 批次 C：项目数据库连接，生命周期与 `active_project` 一致
@@ -78,6 +80,7 @@ impl AppState {
                 .map(|d| d.as_millis() as u64)
                 .unwrap_or(0),
             skin: Mutex::new(crate::commands::SkinCommandStore::new()),
+            window_close_guard: Mutex::new(crate::commands::WindowCloseGuard::default()),
             active_project: Mutex::new(None),
             project_db: Mutex::new(None),
             latest_open_token: Mutex::new(None),
@@ -200,6 +203,26 @@ impl AppState {
         match guard.as_ref() {
             Some(database) => operation(database.connection()),
             None => Err("项目数据库未打开".to_string()),
+        }
+    }
+
+    /// 批次 A 收口：窗口 `CloseRequested` 入口。
+    ///
+    /// 返回 `(allow_close, emit_request_id)`；详见
+    /// [`crate::commands::WindowCloseGuard::on_close_requested`]。
+    pub(crate) fn request_window_close(&self, label: &str) -> (bool, Option<String>) {
+        match self.window_close_guard.lock() {
+            Ok(mut guard) => guard.on_close_requested(label),
+            // 状态被污染时保守拒绝关闭（宁可弹确认框，也不静默丢数据）
+            Err(_) => (false, None),
+        }
+    }
+
+    /// 批次 A 收口：渲染层回应关窗确认（`window:resolve-close`）
+    pub(crate) fn resolve_window_close(&self, request_id: &str, proceed: bool) -> bool {
+        match self.window_close_guard.lock() {
+            Ok(mut guard) => guard.resolve(request_id, proceed),
+            Err(_) => false,
         }
     }
 
