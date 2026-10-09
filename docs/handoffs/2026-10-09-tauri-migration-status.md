@@ -26,6 +26,62 @@
 
 ---
 
+## 本次更新（第二十八次：批次 E 第二部分完成 —— chapter-lifecycle 收口）
+
+### 0. 范围
+- 实现 `chapter-lifecycle-controller.ts` 的 4 个频道（真实名：`chapter:delete-finalized` / `chapter:retry-deletion` / `chapter:confirm-legacy-knowledge-absent` / `chapter:list-incomplete-deletions`，请求即执行 + 断点恢复状态机）。
+- `finalization:commit` / `finalization:retry` 契约补齐**未做**（G1，属定稿不可逆核心，Ask first 待批）。
+
+### 1. 仓储：`chapter_deletion_repository.rs`
+
+平移基线 `electron/repositories/chapter-deletion-repository.ts`：
+
+- `begin`（幂等冻结：同 draft 返回已冻结收据；章号不匹配拒绝；无 legacy 授权时同事务 `delete_chapter_facts` = 失效水位推进 + 删 runs/drafts/contents）
+- `confirm_legacy_knowledge_absent`（一次性授权：`required → consumed`，确认前校验定稿收据身份 + 后处理 run 快照未漂移）
+- `get` / `get_by_draft_id` / `list_incomplete` / `start_attempt` / `mark_projection` + `refresh_aggregate_status`
+- 事务用 `conn.unchecked_transaction()`（state 连接为 `&Connection`，规避 rusqlite `&mut` 可重入限制）
+
+### 2. 命令：`commands/chapter_lifecycle.rs`（4 命令）
+
+| 命令 | 频道 | 说明 |
+|---|---|---|
+| `chapter_delete_finalized` | `chapter:delete-finalized` | 幂等 delete + resume |
+| `chapter_retry_deletion` | `chapter:retry-deletion` | 未找到/授权必需分支逐字对齐 |
+| `chapter_confirm_legacy_knowledge_absent` | `chapter:confirm-legacy-knowledge-absent` | 一次性确认后 resume |
+| `chapter_list_incomplete_deletions` | `chapter:list-incomplete-deletions` | 读信封 |
+
+**诚实化占位**（仿 `dialog:select-export-directory` 先例）：`resume` 的两个物理清理投影
+（删实体稿文件 → 批次 H fs 授权域；删知识库文档 → 批次 F2 kb）当前一律显式 `failed`
+（附可读原因），状态机流转与基线逐字对齐；SQLite 事实删除已真实提交（`committed: true`）。
+批次 H / F2 落地后把 `manuscript_cleanup_unavailable` / `knowledge_cleanup_unavailable`
+替换为真实 cleaner 即恢复完整断点恢复。
+
+### 3. 前端登记补齐
+
+- `ipc-client.ts`：+4 条 chapter 频道 + **补登记 E 第一部分 13 条**（recovery / continuity / finalization-link / draft 导出与导入——上次快照称已登记但实际缺失，由 `channel-migration-coverage` 测试暴露）。
+- `migrated-channels.ts` 重新生成（132 频道）。
+
+### 4. 验证
+
+| 检查 | 结果 |
+|---|---|
+| `cargo check --all-targets` | ✅ 0 告警 |
+| `cargo test --lib` | ✅ **423/423**（420 → +5：仓储 3 + 命令 2） |
+| `pnpm typecheck` | ✅ exit 0 |
+| `pnpm run lint` | ✅ exit 0 |
+| `check:channels` | ✅ 133 命令 / 132 频道 / 未迁移 59（`chapter=0`）/ orphan 空 |
+| 定向 `vitest`（channel-migration-coverage） | ✅ 6/6 |
+| GUI 冒烟 / 行为对照 | ⚠️ 未做（chapter-lifecycle 依赖含正文项目） |
+
+### 5. 交接（从这里接）
+
+1. **提交本轮改动**（见下）。
+2. **`finalization:commit` / `finalization:retry`（G1 补契约）**：属定稿不可逆核心（Ask first），需用户批准后平移 `electron/services/finalization-service.ts`。
+3. **批次 F2**（方案 B 已评估，待批准实施）：`kb:*` 15 频道 + dialog 2，FTS5 + jieba + HNSW + RRF；落地后把 `knowledge_cleanup_unavailable` 占位替换为真实 `removeDocument`。
+4. 历史指标修正：第二十七次快照的「共 129 命令」按本轮盘点修正为 **133 命令 / 132 invoke 频道 / 未迁移 59**。
+
+---
+
 ## 本次更新（第二十七次：批次 E 第一部分完成）
 
 > 与第二十六次同属 2026-10-09（一个工作日内第一次更新，按 §9 规则写入同一份当日文件）。
