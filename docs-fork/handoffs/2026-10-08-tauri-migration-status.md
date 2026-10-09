@@ -39,7 +39,7 @@
 
 ---
 
-## 本次更新（第二十六次：批次 F1 完成 + F1 GUI 验证 + F2 方案决策）
+## 本次更新（2026-10-08 · 第二十六～二十三次）
 
 > 与第二十五次同属 2026-10-08（一个工作日内第三次更新，按 §9 规则写入同一份当日文件）。
 > **⚠️ F1 本轮改动已完成但尚未提交**（用户选择「先验证、提交前停下等人工核验」，见 §8）。
@@ -415,11 +415,11 @@ CREATE VIRTUAL TABLE kb_fts USING fts5(
 
 ---
 
-## 上一次更新（第二十五次：批次 B 遗留补齐 —— `tauri-plugin-dialog` 接入，`dialog:select-folder` 真实化）
+### 上一次更新（第二十五次：批次 B 遗留补齐 —— `tauri-plugin-dialog` 接入，`dialog:select-folder` 真实化）
 
 > 与第二十四次同属 2026-10-08（一个工作日内两次更新，按 §9 规则写入同一份当日文件）。
 
-### 0. 缺口来源（**补录**：第二十四次快照漏记）
+#### 0. 缺口来源（**补录**：第二十四次快照漏记）
 
 批次 B 交付时留下了一处**自洽但在 UI 上表现为「点了没反应」**的缺口：
 
@@ -433,7 +433,7 @@ CREATE VIRTUAL TABLE kb_fts USING fts5(
 - 定性：这**不是新功能开发**，而是「契约已声称迁移、实现却是占位」的**诚实性缺口**，
   故优先补齐，并借此把 dialog 能力一次性接好，供批次 F/G/H 复用。
 
-### 1. 依赖决策（Ask first —— 已获用户授权）
+#### 1. 依赖决策（Ask first —— 已获用户授权）
 
 | 方案 | 内容 | 结论 |
 |---|---|---|
@@ -458,7 +458,7 @@ CREATE VIRTUAL TABLE kb_fts USING fts5(
 `Cargo.toml` 保留插件默认 features（`gtk3`）：该 feature 只影响 **Linux/BSD** 的 rfd 后端，
 Windows / macOS 无差异。
 
-### 2. Rust 侧四处改动
+#### 2. Rust 侧四处改动
 
 | 文件 | 改动 |
 |---|---|
@@ -483,13 +483,13 @@ Windows / macOS 无差异。
    `into_path()` 失败（如 Android `content://`）或结果为空串时一律按「取消」返回 `None`，
    **绝不回传无法使用的值**。该函数为 `pub`，供批次 F/G 的文件选择复用。
 
-### 3. `capabilities/default.json` **未改动**（保持 `["core:default"]`）
+#### 3. `capabilities/default.json` **未改动**（保持 `["core:default"]`）
 
 Rust 侧内部调用插件 API **不经过 webview ACL**，故**无需**追加 `dialog:default` / `dialog:allow-open`
 （这一判断修正了本轮开工前的预判方案）。同理 `migrated-channels.ts` 与前端 **零改动**：
 频道集合未变（`dialog:select-folder` 本就是已登记频道），命令签名也未变（无参、返回 `Option<String>`）。
 
-### 4. 为何 `dialog:select-export-directory` **仍**返回 `None`
+#### 4. 为何 `dialog:select-export-directory` **仍**返回 `None`
 
 其返回类型是 **`ExternalDirectoryGrant`（grantId + 展示名，绝对路径不得越界回传，ADR 0002）**，
 而非路径 —— 签发 grant 需要 **grant 注册表**，该表与 `fs:grant-*` 三命令同在**批次 H**。
@@ -498,7 +498,7 @@ Rust 侧内部调用插件 API **不经过 webview ACL**，故**无需**追加 `
 即静默返回，无契约偏差）。**弹窗能力本轮已就绪**：待批次 H 落地 grant 域后，
 只需把选择结果喂给 grant 签发，插件侧无需再改。
 
-### 5. 验证与测试
+#### 5. 验证与测试
 
 | 检查 | 结果 |
 |---|---|
@@ -515,7 +515,7 @@ Windows 绝对路径透传、**空路径按取消处理**、`file:///F:/…%20�
 
 > ✅ **人工点验已完成**（2026-10-08 会话末尾）：在 `pnpm tauri dev` 中验证了系统原生对话框正常弹出、不被无边框主窗口遮挡、选择后路径正确回填表单、点击取消静默无报错。自动化部分（编译通过 + 命令能注册 + 纯函数语义正确 + 单测 4/4）也已全绿。
 
-### 6. 交接给下次会话（**从这里接**）
+#### 6. 交接给下次会话（**从这里接**）
 
 **当前工作区状态**：`master` 上有 **5 个未提交的已修改文件**（`Cargo.lock` / `Cargo.toml` /
 `lib.rs` / `commands/project.rs` / `commands/external_file_grant.rs`），全部属于本轮 dialog 接入，
@@ -539,7 +539,7 @@ Windows 绝对路径透传、**空路径按取消处理**、`file:///F:/…%20�
 `AI_NOVEL_LOREKEEPER_HOME` 或 `~/.lorekeeper`；失败文案按基线 MUTATING 规则带 `"Error: "` 前缀
 （`commands/db.rs::mutating_error`）；前端只经自研命令、**不直调插件 API**。
 
-### 7. 收尾：提交、历史修正与规则变更
+#### 7. 收尾：提交、历史修正与规则变更
 
 **提交清单**（已推送 `origin/master`）：
 
@@ -573,9 +573,9 @@ Windows 绝对路径透传、**空路径按取消处理**、`file:///F:/…%20�
 
 ---
 
-## 上一次更新（第二十四次：批次 D2-c — `llm:*` 收口：模型发现 + 连通性探测 2 频道）
+### 上一次更新（第二十四次：批次 D2-c — `llm:*` 收口：模型发现 + 连通性探测 2 频道）
 
-### 0. 范围与依赖
+#### 0. 范围与依赖
 
 `llm:*` 前缀下最后 2 个未迁频道：
 
@@ -589,7 +589,7 @@ Windows 绝对路径透传、**空路径按取消处理**、`file:///F:/…%20�
 「含 body 读取」的总时长语义），因此**不需要** `tokio` 直接依赖，也无需
 `futures-util`。测试亦不依赖异步运行时（见 §3 的纯函数切分）。
 
-### 1. `llm/discovery.rs`（新，204 行基线的逐支复刻）
+#### 1. `llm/discovery.rs`（新，204 行基线的逐支复刻）
 
 | 项 | 对齐基线 |
 |---|---|
@@ -610,7 +610,7 @@ Windows 绝对路径透传、**空路径按取消处理**、`file:///F:/…%20�
 2. **URL 规范化**：`URL.toString()` vs `url::Url::to_string()` 在极端形态上可能
    有百分号编码差异；端点语义一致，已在测试中固定关键形态。
 
-### 2. `llm/embedding.rs`（新，**刻意收窄**的迁移范围）
+#### 2. `llm/embedding.rs`（新，**刻意收窄**的迁移范围）
 
 `electron/embedding.ts` 共 360 行，本批次**只迁移调用面**：
 
@@ -637,7 +637,7 @@ Windows 绝对路径透传、**空路径按取消处理**、`file:///F:/…%20�
 2. OpenAI 响应校验在「条目缺 `embedding`」时 `continue` 后**仍会汇总**
    「`index` 覆盖不完整」错误，最终文案是 `A；B` 拼接（测试逐条固定该拼接结果）。
 
-### 3. `commands/llm_management.rs`（新，2 频道）
+#### 3. `commands/llm_management.rs`（新，2 频道）
 
 | 频道 | 行为 |
 |---|---|
@@ -657,14 +657,14 @@ Windows 绝对路径透传、**空路径按取消处理**、`file:///F:/…%20�
 - `llm_management::resolve_connection_options()`（参数决议，含 Kimi 温度校验）；
 - `embedding::embedding_batches()`（批量切分）。
 
-### 4. 小重构（消除第二份定义）
+#### 4. 小重构（消除第二份定义）
 
 - `is_gemini()` 上移到 `llm/chat.rs` 作为单源；`commands/llm_generation.rs` 的私有
   副本删除并改为引用（其测试保留，注释标注实现单源位置）；
 - `llm/chat.rs` 新增 `build_client_with_timeout()`，`build_client()` 改为它的
   `None` 特例（行为不变，仍是「无总超时」）。
 
-### 5. 接线
+#### 5. 接线
 
 - `llm/mod.rs`：新增 `pub mod discovery; pub mod embedding;`；
 - `commands/mod.rs`：新增 `mod llm_management;` + glob 再导出；
@@ -675,7 +675,7 @@ Windows 绝对路径透传、**空路径按取消处理**、`file:///F:/…%20�
 - `test/channel-migration-coverage.test.ts`：未迁移样本改指 `kb:search` / `update:get-state`，
   并断言 2 个新频道已迁移。
 
-### 6. 验证与测试
+#### 6. 验证与测试
 
 | 检查 | 结果 |
 |---|---|
@@ -697,9 +697,9 @@ Kimi 越界文案、探测不带会话粘性、探测复用已验证推理指令
 
 ---
 
-## 更早更新（第二十三次：批次 D2-b — LLM 生成 / 流式 / 取消 3 频道 + 3 事件）
+### 更早更新（第二十三次：批次 D2-b — LLM 生成 / 流式 / 取消 3 频道 + 3 事件）
 
-### 0. 依赖决策（推翻了「`default-tls` = native-tls」的假设）
+#### 0. 依赖决策（推翻了「`default-tls` = native-tls」的假设）
 
 抽 `reqwest 0.13.5` 权威 feature 表后确认：`default = ["default-tls", "charset", "http2", "system-proxy"]`，
 而 **`default-tls = ["rustls"]`** —— 0.13 起默认 TLS 后端已是 rustls，不再是 native-tls。
@@ -718,7 +718,7 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "str
 - **未引入 `futures-util`**（原计划项）：取消改用 `tauri::async_runtime::JoinHandle::abort()`，
   零新依赖达成基线 `AbortController` 的效果（见 §4）。
 
-### 1. `src-tauri/src/llm/chat.rs`（新，共享层）
+#### 1. `src-tauri/src/llm/chat.rs`（新，共享层）
 
 | 项 | 对齐基线 |
 |---|---|
@@ -728,7 +728,7 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "str
 | `provider_error_text()` | 复刻 `String(error)` 的 `"Error: "` 前缀，**复用** `commands::db::mutating_error`，不造第二份格式定义 |
 | 共享类型 | `LlmFinishReason`（6 档 snake_case）、`TokenUsage`（三项 `Option`）、`LlmResponse`（`camelCase` + `skip_serializing_if`）、`LlmGenerateOptions`、`ChatMessage`、`StreamFailure`（`Cancelled` 与 `Message` 分开） |
 
-### 2. `src-tauri/src/llm/openai.rs`（新）
+#### 2. `src-tauri/src/llm/openai.rs`（新）
 
 - `build_request_body()`：`temperature` 为 `None` 时**整键省略**（不得回退 `model.temperature`）；
   NovelAI 走窄兼容载荷（不吃 `reasoning_effort` / `response_format` / `stream_options`）；
@@ -744,14 +744,14 @@ reqwest = { version = "0.13", default-features = false, features = ["json", "str
 - `generate_stream()`：三态回调；`!sawDone` → `响应流在完成标记前结束，生成结果不完整`；
   推理块未闭合时补 `\n</think>\n\n`；失败一律走 `fail()`，把**已交付的可见候选**（空则不给）交回调用方。
 
-### 3. `src-tauri/src/llm/gemini.rs`（新）
+#### 3. `src-tauri/src/llm/gemini.rs`（新）
 
 `system` 消息提升为 `systemInstruction`、`assistant` → `model` 重命名、
 URL 用字符串拼接（`{base}/v1beta/models/{name}:generateContent` / `…:streamGenerateContent?alt=sse`，
 与基线模板字面量一致，不做 URL 规范化）；SSE 解码器**宽松解析**（坏行跳过而非 fatal，CRLF 尾缓冲、
 `null` finish_reason → `unknown`）；**Gemini 不剥离推理块**（prompt 不走 `<think>`，与 OpenAI 分道）。
 
-### 4. `commands/llm_generation.rs`（新，3 频道 + 3 事件）
+#### 4. `commands/llm_generation.rs`（新，3 频道 + 3 事件）
 
 | 频道 | 行为 |
 |---|---|
@@ -780,7 +780,7 @@ URL 用字符串拼接（`{base}/v1beta/models/{name}:generateContent` / `…:st
 - `task: Arc<Mutex<Option<StreamTask>>>`：`llm_cancel` 借此 `abort()` 掉挂起中的
   `chunk().await`（基线由 `AbortController` 关闭连接达成同等效果），避免连接与任务永久残留。
 
-### 5. 与基线的**刻意差异**（均已在代码注释注明）
+#### 5. 与基线的**刻意差异**（均已在代码注释注明）
 
 | # | 基线 | Tauri 侧 | 影响 |
 |---|---|---|---|
@@ -790,7 +790,7 @@ URL 用字符串拼接（`{base}/v1beta/models/{name}:generateContent` / `…:st
 | 4 | 取消 → `AbortError` → `onError('已取消生成')` | `abort()` + 命令层主动补发同名终态事件 | 等价，且保证 `cleanup()` 执行 |
 | 5 | `usage` 中间态为 `undefined`（structured clone 保留） | 序列化为 `null` | `?? 0` 类消费无差别 |
 
-### 6. 接线
+#### 6. 接线
 
 - `commands/mod.rs`：`mod llm_generation` + glob 再导出；
 - `lib.rs`：注册 3 命令（99 → **102**），并**移除** D2 期遗留的 `#[allow(dead_code)] mod llm;`
@@ -801,7 +801,7 @@ URL 用字符串拼接（`{base}/v1beta/models/{name}:generateContent` / `…:st
 
 事件无需前端登记：`ipc.on(channel, …)` 直通 `tauriListen`，与 Electron 版语义一致。
 
-### 7. 验证与测试
+#### 7. 验证与测试
 
 | 检查 | 结果 |
 |---|---|
@@ -819,7 +819,7 @@ URL 用字符串拼接（`{base}/v1beta/models/{name}:generateContent` / `…:st
 
 ---
 
-### 8. 收尾（工作区卫生 + 快照命名规则）
+#### 8. 收尾（工作区卫生 + 快照命名规则）
 
 - **提交** `1bcae45`（`chore: 忽略 pi 会话数据目录（.pi/）`）：`.pi/` 新增忽略
   （内含 `agent/auth.json` 凭据、`tmp/reqwest.index` 临时索引近 1 MB）；目录**保留在磁盘**，

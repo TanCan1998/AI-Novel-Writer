@@ -11,7 +11,7 @@
 
 ---
 
-## 快照（最后更新：2026-10-10 · 第三十四次）
+## 快照（最后更新：2026-10-09 · 第三十四次）
 
 > 本表只填**最新一次自检的实测值**。改表前必须重跑对应命令，不得沿用旧数字、不得估算。
 > 本轮实测命令与输出见下方「[§5 自检记录](#5-自检记录2026-10-09-实测)」。
@@ -40,7 +40,7 @@
 
 ---
 
-## 本次更新（第三十四次：批次 H3 —— `update:*` 6 频道 + `update:state` 事件）
+## 本次更新（2026-10-09 · 第三十四～二十七次）
 
 > 承接第三十三次，跨日到 **2026-10-10**。本批按用户确认的**零依赖方案**落地更新域；
 > **未迁移 35 → 29**（`update=6` 全部收口），批次 H 基本收尾（仅剩 H4 暂缓）。
@@ -124,12 +124,12 @@ open-release 注入闭包 / 每次变更都发布快照）。
 
 ---
 
-## 本次更新（第三十三次：批次 H 前三项 —— H1 外部文件授权真实化 / H2 应用数据域 / B12 打开外部链接）
+### 本次更新（第三十三次：批次 H 前三项 —— H1 外部文件授权真实化 / H2 应用数据域 / B12 打开外部链接）
 
 > 承接第三十二次，同属 **2026-10-09**。本批完成 **H1 + H2 + B12 + 遗留项 L**，
 > 并产出 H3/H4 依赖评估；**未迁移 42 → 35**，多条旧阻塞项（B3/B5/B8/B10/B12）全部解除。
 
-### 0. 决策（用户确认）
+#### 0. 决策（用户确认）
 
 | 决策 | 选择 |
 |---|---|
@@ -138,7 +138,7 @@ open-release 注入闭包 / 每次变更都发布快照）。
 | **B12（打开外部链接）** | **引入 `tauri-plugin-opener`**（一次修好 official-homepage / model-provider-resource / update:open-release） |
 | **H4（mcp）** | **本轮暂缓**（基线仅 stdio、SSE 明确未实现；用户决定改做批次 G） |
 
-### 1. H1：外部文件授权域真实化（提交 `2f055519`）
+#### 1. H1：外部文件授权域真实化（提交 `2f055519`）
 
 解除 **B10**（KB 界面导入 / 导出成稿 / 角色卡导入全部不可用）与 **B3**。
 
@@ -152,7 +152,7 @@ open-release 注入闭包 / 每次变更都发布快照）。
   导出目录选择（tauri-plugin-dialog `pick_folder` → 签发 `write`+`create` 授权 → `{grantId, displayName}`）；
   错误文案四桶分桶，绝不回传绝对路径。
 
-### 2. H2：应用数据域（提交 `099c757b`）
+#### 2. H2：应用数据域（提交 `099c757b`）
 
 - 新增 `commands/app_data.rs`（**7 频道**）与 `writing_skills.rs`（`src/shared/writing-skills.ts` 的 Rust 单源）。
 - `prompt:load/save/delete-global`：`~/.lorekeeper/prompts/<key>[.<lang>].json`；文件名与内部标识一致性校验、
@@ -164,7 +164,7 @@ open-release 注入闭包 / 每次变更都发布快照）。
 - `writing_skills.rs`：frontmatter 解析、语言/阶段归一、建议阶段启发式、**六类不兼容原因**、GitHub raw URL 编码。
 - 失败信封口径：`prompt:save/delete` 带 `Error: ` 前缀；`skills:*` 与 `prompt:load-global` 的 diagnostics 不带前缀。
 
-### 3. L：遗留项（提交 `3397f23c` + `2b45c707`）
+#### 3. L：遗留项（提交 `3397f23c` + `2b45c707`）
 
 - **B8 解除**：`ipc-client-project-session.test.ts` 改为注入 `window.__TAURI_INTERNALS__.invoke` 桩
   （而非已废弃的 `window.velaAPI`），真实覆盖频道映射 / 命名参数 / 会话注入；断言只比前两位参数
@@ -172,7 +172,7 @@ open-release 注入闭包 / 每次变更都发布快照）。
 - **B5 解除**：`cargo fmt` 全量格式化 **66 文件**（`cargo fmt --check` 现已干净，纳入验收）。
   ⚠️ **未改 CI**：把 fmt 加入 CI 属「改 CI/发布配置」（Ask first），需单独批准。
 
-### 4. B12 + 依赖评估（提交 `ee4a3f07` + `df9ceb75`）
+#### 4. B12 + 依赖评估（提交 `ee4a3f07` + `df9ceb75`）
 
 - 新增评估文档 `docs-fork/research/2026-10-09-h3-h4-dependency-evaluation.md`。
 - **B12（新发现）**：`official-homepage:open` 与 `model-provider-resource:open` 是**假成功占位**
@@ -183,13 +183,13 @@ open-release 注入闭包 / 每次变更都发布快照）。
 - 后续项（新记）：基线还有「拒绝渲染层导航替换主框架」（`preventRendererNavigation`）的等价防护，
   Tauri 侧 `on_navigation` / 新窗口拦截**尚未接入**（见 B13）。
 
-### 5. 验证（本轮实测）
+#### 5. 验证（本轮实测）
 
 `cargo test --lib` **510/510**（491 → +19）；`cargo check --all-targets` **0 告警**；`cargo fmt --check` **干净**；
 `pnpm typecheck` / `lint` **exit 0**；`check:channels` **193 契约 / 159 命令 / 158 覆盖 / 35 未迁移**，orphan 空；
 定向 vitest **8 文件 / 33 测试全过**。
 
-### 6. GUI 冒烟（第九轮，2026-10-09）—— ✅ 通过
+#### 6. GUI 冒烟（第九轮，2026-10-09）—— ✅ 通过
 
 测试项目 `F:\Temp\loretest\lore-smoke`（清单 + 播种的**已定稿**章「雾港的灯语」+ 真实 `.txt`）；
 参考文本 `F:\Temp\loretest\reference\雾港设定.txt`。用户逐项人工验证：
@@ -204,7 +204,7 @@ open-release 注入闭包 / 每次变更都发布快照）。
 事后库/磁盘复核：定稿章与 outbox `published` 完整；`kb_documents` / `kb_chunks` 归零（对应步骤 6 的删除）；
 `.lore/prompts` 已被应用创建；`~/.lorekeeper/{prompts,skills}` 与预期一致（已删除/为空）。
 
-### 7. 本轮未做 / 下一步
+#### 7. 本轮未做 / 下一步
 
 - **H3（update 6 频道 + `update:state` 事件）** —— 下一步（零依赖 GitHub-Release 后端）。
 - **批次 G（import-run 19 + `dialog:select-novel-files`，20 频道）** —— 收口 `kb:import-reference-text`。
@@ -212,12 +212,12 @@ open-release 注入闭包 / 每次变更都发布快照）。
 
 ---
 
-## 本次更新（第三十二次：批次 E 收口 G1 —— 定稿提交/重试 + 实体稿发布与清理真实化；GUI 冒烟发现并修复入参契约缺陷）
+### 本次更新（第三十二次：批次 E 收口 G1 —— 定稿提交/重试 + 实体稿发布与清理真实化；GUI 冒烟发现并修复入参契约缺陷）
 
 > 承接第三十一次，同属 **2026-10-09**。本轮把批次 E 唯一剩余缺口 **G1** 落地，
 > 并借此**真实化** `chapter:*` 的删实体稿投影（解除 B2），随后完成**第八轮 GUI 冒烟**。
 
-### 0. 决策（用户确认，本轮）
+#### 0. 决策（用户确认，本轮）
 
 | 决策 | 选择 |
 |---|---|
@@ -226,7 +226,7 @@ open-release 注入闭包 / 每次变更都发布快照）。
 | **B2 范围** | G1 一并真实化「删实体稿文件」，**不再等批次 H**（核对基线 `chapter-deletion-service.ts`：删实体稿仅 `unlink` 项目根内冻结文件名，路径受约束，不需 ADR 0002 外部授权） |
 | **冒烟方式** | GUI 加一个「假」生成模型（内置 OpenAI 预设 + 任意 key，仅用于通过生成运行时前置校验）。**定稿的提交/发布在命令体最前**（`finalize-chapter.command.ts:708`），随后的 AI 后处理失败不影响已提交事实 |
 
-### 1. 交付
+#### 1. 交付
 
 **Rust**
 - `repositories/finalization_repository.rs`：+`FinalizationCommitInput` / `commit`（正文·字数·定稿状态·outbox **同事务**）/ `get` / `get_by_draft_id` / `mark_publication_pending` / `mark_published`；抽取 `map_record` 收敛列投影
@@ -239,7 +239,7 @@ open-release 注入闭包 / 每次变更都发布快照）。
 - `src/services/finalization-client.ts`：`getVelaApi()`（读 `window.velaAPI`）→ `ipc.invoke`；`projectSession` 仍**显式**尾参（保持基线 `(snapshot, context)` 签名）
 - `src/services/ipc-client.ts`：+2 条 `CHANNEL_ARG_NAMES`；`migrated-channels.ts` 重新生成（149 → **151**）
 
-### 2. 🐞 GUI 冒烟发现并修复的真实缺陷（本轮最大收获）
+#### 2. 🐞 GUI 冒烟发现并修复的真实缺陷（本轮最大收获）
 
 **现象**：侧边栏删除已定稿章节 → 确认框弹出、点确认后「什么都没发生」（无 toast、库中零记录）。
 
@@ -257,7 +257,7 @@ Unknown Error: invalid args `request` for command `chapter_delete_finalized`: mi
 3. ✅ **新增源码扫描测试** `test/ipc-arg-struct-contract.test.ts`：任何派生 `Deserialize` 且含下划线字段的结构体都必须显式 camelCase（内部结构体走白名单）。已实测**「注入回归 → 立刻报错」**（去掉属性即报 `DeleteFinalizedChapterRequest [draft_id,chapter_number]`），当前 0 违规
 4. 📋 全仓审计：82 个 `Deserialize` 结构体中**仅此 1 个**是 IPC 入参且缺 rename（其余为单词字段或纯内部）；规则已写入 `docs-fork/agents/pi-development.md` §2 第 5 条
 
-### 3. GUI 冒烟（第八轮，2026-10-09）—— ✅ 通过
+#### 3. GUI 冒烟（第八轮，2026-10-09）—— ✅ 通过
 
 测试项目 `F:\Temp\loretest\lore-smoke`（手写 `.lore/project.json` 清单；草稿由外部脚本播种，**零 API**）。
 
@@ -272,18 +272,18 @@ Unknown Error: invalid args `request` for command `chapter_delete_finalized`: mi
 
 > 顺带确认：无向量（vectorless 导入）时 `.lore/kb/` 不落 HNSW 快照 —— 属预期。
 
-### 4. 阻塞项变化
+#### 4. 阻塞项变化
 
 - **B1 ✅ 解除**：G1 落地；`finalization-client.ts` 底层已切 `ipc.invoke`。
 - **B2 ✅ 全部解除**：删 KB 文档（F2-3）+ 删实体稿文件（本轮）均真实化。
 - **新增 B10**：`fs:grant-read-file` / `write-file` / `mkdir` 仍是批次 H 占位（`commands/external_file_grant.rs:65`）。影响面：**KB 界面导入**、**导出成稿**、**角色卡导入**三条前端路径；且 `kb:import-document` / `kb:import-folder` **无任何 UI 调用点**（唯一 UI 导入入口是 `KnowledgeOverview` 的「导入参考资料」→ `selectPlanningMaterials()`）。
 
-### 5. 验证（本轮实测）
+#### 5. 验证（本轮实测）
 
 `cargo test --lib` **491/491**（478 → +13）；`cargo check --all-targets` **0 告警**；`pnpm typecheck` / `lint` **exit 0**；
 `check:channels` **193 契约 / 152 命令 / 151 覆盖 / 42 未迁移**，orphan 空；定向 vitest **6 文件 / 16 测试全过**。
 
-### 6. GUI 冒烟夹具与残留处置（2026-10-09 收尾，用户确认「保留可复用的并记入文档，其余删除」）
+#### 6. GUI 冒烟夹具与残留处置（2026-10-09 收尾，用户确认「保留可复用的并记入文档，其余删除」）
 
 **保留（下次 GUI 冒烟可直接复用，零 API）**：
 
@@ -303,12 +303,12 @@ Unknown Error: invalid args `request` for command `chapter_delete_finalized`: mi
 
 ---
 
-## 本次更新（第三十一次：F2-3 收口 —— kb 命令层 + 外部授权注册表）
+### 本次更新（第三十一次：F2-3 收口 —— kb 命令层 + 外部授权注册表）
 
 > 承接第三十次，同属 **2026-10-09**。实现细节见 `419076db` / `20d26f42` / `0e74971e` 的 commit message。
 > 本批**无新依赖**（HNSW / jieba / reqwest / tauri-plugin-dialog 均已在列）。
 
-### 1. 交付（3 个提交）
+#### 1. 交付（3 个提交）
 
 | Commit | 内容 |
 |---|---|
@@ -316,7 +316,7 @@ Unknown Error: invalid args `request` for command `chapter_delete_finalized`: mi
 | `20d26f42` | 命令层：`commands/kb.rs`（15 频道 + 2 dialog）+ `lib.rs` 注册 17 命令 + `chapter_lifecycle` 知识库清理真实化 |
 | `0e74971e` | 前端登记：`ipc-client` 参数名 15 条、`migrated-channels` 重生（149）、coverage 断言更新 |
 
-### 2. 语义要点
+#### 2. 语义要点
 
 - **默认对齐基线**：`kb:search*` 向量可用且召回非空 → 短路；否则文本支路。嵌入空间按「指纹 + 维度」匹配；换模型触发 `reindex_required`（旧代际不破坏）。
 - **用户 2026-10-09 决定**：文本支路 score 返回**真实词命中度**（基线恒 0.5）；RRF 仍为可选开关（本批命令层未暴露开关，默认关）。
@@ -324,24 +324,24 @@ Unknown Error: invalid args `request` for command `chapter_delete_finalized`: mi
 - **外部授权注册表**：`dialog:select-knowledge-*` 签发一次性 grant，`kb:import-{document,folder}` 解析消费；**批次 H 的 `fs:grant-*` 复用同一注册表**（模块头已注明）。
 - **章节清理收口**：`chapter:*` 的知识库物理清理由占位改为真实 `removeDocument`（SQLite 事实 + HNSW 向量）；实体稿清理仍占位（批次 H）。相关命令改为 async（Tauri async 命令含引用入参须返回 `Result`）。
 
-### 3. 已知缺口（待后续批次）
+#### 3. 已知缺口（待后续批次）
 
 - `kb:import-reference-text`：依赖**批次 G**（import-run 权威），先注册但**显式占位失败**。
 - 存储预检：仅最小移植（Windows MAX_PATH），基线 `vectors.json` 迁移 barrier 在双栈隔离后无适用路径。
 - 向量持久化：HNSW 快照落 `<project>/.lore/kb/index-<generation>.hnsw.*`（需真实项目 GUI 验证）。
 
-### 4. 验证（本轮实测）
+#### 4. 验证（本轮实测）
 
 `cargo test --lib` **478/478**（F2-3 +20）；`cargo check --all-targets` **0 告警**；`pnpm typecheck` / `lint` **exit 0**；`check:channels` **150 命令 / 149 覆盖 / 42 未迁移**，orphan 空；coverage 测试 6/6 通过。
 
 ---
 
-## 本次更新（第三十次：F2-1 分块/FTS5 层 + F2-2 混合编排）
+### 本次更新（第三十次：F2-1 分块/FTS5 层 + F2-2 混合编排）
 
 > 承接第二十九次，同属 **2026-10-09**。实现细节见 `99efceaf` / `d0538819` 的 commit message。
 > 本批**无新依赖**（`jieba-rs` / `hnsw_rs` / `tokio` / `rusqlite [bundled]` 早于 `4aff3f65` 已声明）。
 
-### 0. 关键决策与发现（本轮）
+#### 0. 关键决策与发现（本轮）
 
 **读基线源码确认：基线并无融合。** `electron/vector-store.ts::searchWithScope` 实为**二选一短路** ——
 向量可用且召回非空则 `return` 纯向量结果（`score = 1/(1+distance)`）；否则降级为 `LIKE '%term%'` 子串扫描，
@@ -353,7 +353,7 @@ Unknown Error: invalid args `request` for command `chapter_delete_finalized`: mi
 2. **RRF 作为可选开关，默认关**；
 3. 降级分支**改为返回真实相关性分**（刻意差异，已在 `hybrid.rs` 模块文档记录）。
 
-### 1. F2-1（`99efceaf`）
+#### 1. F2-1（`99efceaf`）
 
 | 产出 | 要点 |
 |---|---|
@@ -361,7 +361,7 @@ Unknown Error: invalid args `request` for command `chapter_delete_finalized`: mi
 | `db/kb/chunks.rs` | `chunkText` 逐字移植：`\n\s*\n` **贪婪回溯**切段、`(?<=[。！？.!?])\s*` **零宽后视**切句、硬切步进 `max(start+1, end-overlap)`。长度口径 = **UTF-16 码元**；`is_js_whitespace` 显式枚举 ECMAScript 集合。**唯一刻意偏离**：切片边界吸附到码点（Rust 无孤立代理项，宁可偏移 ≤1 码元也不产 `U+FFFD`） |
 | `db/kb/fts.rs` | jieba 预分词（滤除纯标点 token）+ FTS5 CRUD + `-bm25()` 检索（分数越大越相关）+ `quote_token` 转义 |
 
-### 2. F2-2（`d0538819`）
+#### 2. F2-2（`d0538819`）
 
 `db/kb/hybrid.rs`：`SearchMode::{Baseline,Hybrid}` / `baseline_source` / `vector_distance_to_score` /
 `extract_query_terms`（`\p{L}\p{N}-` 提取 → 优先 ≥2 码点 → 小写去重 → **上限 8**）/ `text_relevance`（`Σ(n-index)`）/
@@ -370,30 +370,30 @@ Unknown Error: invalid args `request` for command `chapter_delete_finalized`: mi
 回填计划 `vectorless_chunk_ids`。
 另为 `db/vector.rs` 补只读 API `live_doc_ids` / `contains`。
 
-### 3. 验证（本轮实测）
+#### 3. 验证（本轮实测）
 
 `cargo test --lib` **458/458**（F2-1 +20、F2-2 +15）；`cargo check --all-targets` **0 告警**。
 `check:channels` 仍 **133 / 132 / 59**（F2-1/F2-2 不注册频道，符合预期）。
 
-### 4. 遗留
+#### 4. 遗留
 
 - **F2-3 未开工**：15 个 `kb:*` + 2 个 dialog 频道 + 前端登记。已知依赖缺口：`kb:import-reference-text` → 批次 G（占位失败）；`kb:import-{document,folder}` → 需安全文件系统读取面；存储预检待最小移植；回填需 embedding 调用。
 - `.lore` 改名后，**基线项目文件夹不再能被 Lorekeeper 打开**（项目目录刻意不互通）——E 第二部分 GUI 冒烟需用 `.lore` 项目。
 
 ---
 
-## 第二十九次（L3 项目目录改名 + F2 知识库 schema 申报，同日）—— 正文
+### 第二十九次（L3 项目目录改名 + F2 知识库 schema 申报，同日）—— 正文
 
 > 承接第二十八次，同属 **2026-10-09**。本轮以 **L3 双栈隔离**为主，兼落 F2 首个交付物（schema 申报书）。
 > 实现细节见 `ee40aaab` 的 commit message；本批**无 Schema 变更**（F2 申报书尚未实施）。
 
-### 0. 决策（用户确认）
+#### 0. 决策（用户确认）
 
 - **L3 解锁**：原先因「两栈共享 `.vela` 项目目录」而押后；用户明确「两栈项目本就互不相通」，故 **Tauri 项目目录改用 `.lore`**，两栈项目目录**刻意不互通**。
 - **F2 schema 获批**：申报书四条 DDL 获批；向量快照目录定为 **`<project>/.lore/kb/`**（原提案 `.vela/lorekeeper-kb/` 被否决后随 L3 定名）。
 - **F2 本批范围**：先做 **F2-1**（`chunks` + `fts`）；`kb:import-reference-text` 依赖未迁移的 import-run 域 → 先注册但 **占位失败**（沿用批次 E 诚实化占位先例，待批次 G 收口）。
 
-### 1. L3 改名实现（commit `ee40aaab`，36 文件）
+#### 1. L3 改名实现（commit `ee40aaab`，36 文件）
 
 | 层 | 文件 | 改动 |
 |---|---|---|
@@ -406,35 +406,35 @@ Unknown Error: invalid args `request` for command `chapter_delete_finalized`: mi
 
 **刻意保留（非项目目录，不得改）**：`vela://` 应用内伪协议、`window.velaAPI` 测试桥、`.vela-editor-content` CSS 类、`app_paths.rs` 中对基线的描述。
 
-### 2. F2 知识库 schema 申报（本轮未实施）
+#### 2. F2 知识库 schema 申报（本轮未实施）
 
 `docs-fork/research/2026-10-09-f2-kb-schema-proposal.md`：四条 DDL（`kb_documents` / `kb_chunks` / `kb_embedding_spaces` / `kb_fts`）+ 向量快照目录 + 三增量切分（F2-1 chunks+fts / F2-2 hybrid / F2-3 命令层 17 频道）。**只申报，未写入 `db/schema.rs`。**
 
-### 3. 事实核实（本轮实测）
+#### 3. 事实核实（本轮实测）
 
 - **F2 无需新增依赖**（见上表「依赖」行）。
 - **FTS5 可用**：`libsqlite3-sys` bundled 构建带 `-DSQLITE_ENABLE_FTS5`。
 - **基线无 SQLite kb 表**：知识库全在 LanceDB + `.vela/*.json`，故 Tauri 侧为**全新设计**（非列集对齐）。
 
-### 4. 验证与自检
+#### 4. 验证与自检
 
 `cargo test --lib` **423/423**；`cargo check --all-targets` **0 告警**；`pnpm typecheck` / `lint` **exit 0 / exit 0**；`check:channels` 仍 **133 / 132 / 59**。
 **vitest 回归判定**：受影响的 9 个测试文件，失败数 HEAD 与改动后**完全一致（46 failed / 28 passed）** → **零回归**（详见 §5）。
 
-### 5. 遗留
+#### 5. 遗留
 
 - 既有 vitest 失败根因：node 模式下 `@tauri-apps/api` 的 `invoke` 未被 mock（该批测试需浏览器 runner），**非本轮引入**。
 - `kb:import-reference-text` 待批次 G（import-run 域）；`chapter:*` 物理清理待批次 H + F2。
 
 ---
 
-## 第二十八次（批次 E 第二部分完成 —— chapter-lifecycle 收口，同日）—— 正文
+### 第二十八次（批次 E 第二部分完成 —— chapter-lifecycle 收口，同日）—— 正文
 
 > **本文件同日含三份内容**：第二十九次（L3 + F2 申报）+ 第二十八次（本正文）+ 第二十七次（批次 E 第一部分，见下方摘要）。
 > 实现细节见 `a554f76a` 的 commit message；状态机与基线逐字对齐，423 单测覆盖。
 > 承接第二十七次，两次更新同属 **2026-10-09** 一个工作日。
 
-### 1. 新增（本轮）
+#### 1. 新增（本轮）
 
 `repositories/chapter_deletion_repository.rs`（平移基线 `electron/repositories/chapter-deletion-repository.ts`）+
 `commands/chapter_lifecycle.rs` —— **4 频道**（真实名以 inventory §4.13 / controller 为准）。
@@ -458,17 +458,17 @@ SQLite 事实删除**已真实提交**（`committed: true`）。
 
 批次 H / F2 落地后替换为真实 cleaner 即恢复完整断点恢复。**在此之前该 4 频道的 delete 操作不会真正清理磁盘稿件与 KB 文档。**
 
-### 2. 前端登记补齐
+#### 2. 前端登记补齐
 
 `ipc-client.ts` +4 条 chapter 频道、并**补登记第二十七次的 13 条**（recovery / continuity / finalization-link / draft 导出与导入 —— 第二十七次快照曾称已登记但实际缺失，由 `channel-migration-coverage` 测试暴露）；`migrated-channels.ts` 重新生成（**生成物**，须随 `lib.rs` 同提交）；`channel-migration-coverage.test.ts` +E 频道断言。
 
-### 3. 行为对照（Electron ↔ Tauri，2026-10-09 补验）
+#### 3. 行为对照（Electron ↔ Tauri，2026-10-09 补验）
 
 素材为用户真实项目「武林秘事」**副本**（73 定稿章节 + 73 outbox + 73 后处理 run + 1 continuity meta，已删），**原项目零改动**；两侧对副本执行同一操作（删除第 10 章定稿，`draft_id=10`，带 `knowledge_document_id`），Electron 走 `initProjectDatabase` + `ChapterDeletionRepository.begin`、Tauri 走 ignored 测试直连 `&Connection`（临时脚本均已清理）。
 结果 **六项指标完全一致**（`status` / `manuscript_status` / `knowledge_status` / `legacy_knowledge_authorization` / `drafts·contents·runs` = `73/74/72` / `continuity` = `10/1`），**仓储层行为与基线逐字节一致，无差异需修复**。
 边界：对照**只在仓储层**（命令层为薄壳，状态机已由 423 单测覆盖）；副本 `lorekeeper.db` 为旧 schema，测试前用 `db::schema::create_tables` 幂等补齐。
 
-### 4. 提交清单（第二十八次，均已提交）
+#### 4. 提交清单（第二十八次，均已提交）
 
 | Commit | 类型: 主题词 |
 |---|---|
@@ -482,7 +482,7 @@ SQLite 事实删除**已真实提交**（`committed: true`）。
 
 ---
 
-## 第二十七次（批次 E 第一部分，同日）—— 摘要
+### 第二十七次（批次 E 第一部分，同日）—— 摘要
 
 > 详细正文已精简；完整明细见提交 `abfa1698` / `f5fde636` / `00bba449` / `634182d3` / `e59e4fb0` 的 commit message。
 > 逐条测试覆盖、基线对照细节见各 commit message 与 [`docs/research/`](../research/) 及 [`docs-fork/plans/tauri-migration-channel-inventory.md`](../plans/tauri-migration-channel-inventory.md) §4.13。

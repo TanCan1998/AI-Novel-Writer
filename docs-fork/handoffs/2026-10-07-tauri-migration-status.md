@@ -28,7 +28,7 @@
 
 ---
 
-## 本次更新（第十一次：`blueprints` S2-a — 基础读写 7 频道）
+## 本次更新（2026-10-07 · 第十一～二十二次）
 
 ### ⚠️ 首先修复了上次中断遗留的损坏在途改动
 
@@ -101,9 +101,9 @@
 
 ---
 
-## 本次更新（第十二次：`blueprints` S2-b — 范围提交 1 频道）
+### 本次更新（第十二次：`blueprints` S2-b — 范围提交 1 频道）
 
-### 1. `repositories/blueprint_repository.rs`（S2-b）
+#### 1. `repositories/blueprint_repository.rs`（S2-b）
 
 新增（逐条对齐 `electron/repositories/blueprint-repository.ts` 的 `commitRange` 链）：
 
@@ -126,7 +126,7 @@
 - 新回执类型：`BlueprintCommitRangeReceipt` / `BlueprintCharacterSyncOperation` /
   `BlueprintCharacterSyncCompletionReceipt` / `BlueprintCharacterSyncCompletionRosterReceipt`。
 
-### 2. 范围调整说明（相对第十次拆解）
+#### 2. 范围调整说明（相对第十次拆解）
 
 原拆解把 `snapshot_with_character_sync_facts` / `same_persisted_blueprint` /
 `read_character_sync_operation` / authoritative 校验归入 S2-c。但 `commit-range` 的**回执构造**与
@@ -135,14 +135,14 @@
 故**提前到 S2-b 落地**；S2-c 相应缩为「3 个命令的接线 + `list_pending` 查询 +
 `complete` 的 UPDATE 事务」。
 
-### 3. `commands/db.rs` / `lib.rs` / `ipc-client.ts`
+#### 3. `commands/db.rs` / `lib.rs` / `ipc-client.ts`
 
 - 新增命令 `db:blueprint-commit-range`（MUTATING，失败走 `mutating_error`），
   信封 `BlueprintCommitRangeResult { success, receipt?, error? }`。
 - `lib.rs` 注册（**48 → 49**）；`ipc-client.ts` 登记
   `'db:blueprint-commit-range': ['request', 'expectedProjectPath']`。
 
-### 4. 验证与测试
+#### 4. 验证与测试
 
 新增 Rust 测试 **8 个**（仓储 7 + 命令 1）：canonical 哈希字段敏感性 / 范围断言 5 类 /
 提交-幂等-冲突 / 两种模式的裁剪语义 / 回执冻结非表列字段 / 同步事实错误文案（含 legacy 跳过）/
@@ -153,9 +153,9 @@
 
 ---
 
-## 本次更新（第十三次：`blueprints` S2-c — 角色同步 3 频道，子域收口）
+### 本次更新（第十三次：`blueprints` S2-c — 角色同步 3 频道，子域收口）
 
-### 1. `repositories/blueprint_repository.rs`（S2-c）
+#### 1. `repositories/blueprint_repository.rs`（S2-c）
 
 - 抽出 `SYNC_OPERATION_COLUMNS` + `character_sync_operation_row` 共享行读取（三条查询共用，避免列名漂移）。
 - `list_pending_character_sync_operations` —— 对齐 `listPendingCharacterSyncOperations`
@@ -166,13 +166,13 @@
   单事务 + 幂等（已完成直接回读校验）+ `UPDATE ... WHERE status = 'pending'` 变更数校验
   + 回读校验；回执按 `canonical_json` 序列化存储。
 
-### 2. `commands/db.rs` / `lib.rs` / `ipc-client.ts`
+#### 2. `commands/db.rs` / `lib.rs` / `ipc-client.ts`
 
 - 3 命令：`db:blueprint-character-sync-list-pending`（读）、`-get`（读）、
   `-complete`（MUTATING，信封 `{ success, operation?, error? }`）。
 - `lib.rs` 注册（**49 → 52**）；`ipc-client.ts` 登记 3 个频道参数名。
 
-### 3. 验证与测试
+#### 3. 验证与测试
 
 新增 Rust 测试 **5 个**（仓储 4 + 命令 1）：列表/单读/空 ID 校验、already-satisfied、
 **committed**（以同一 operationId 先跑 `roster::commit`，验证名单证据与幂等重放）、
@@ -181,7 +181,7 @@
 结果：`cargo check --all-targets` **0 告警** · `cargo test --lib` **114/114** ·
 `pnpm typecheck` / `pnpm run lint` 均 exit 0。
 
-### 4. `blueprints` 子域收口状态
+#### 4. `blueprints` 子域收口状态
 
 | 步骤 | 频道数 | 状态 |
 |---|---|---|
@@ -192,14 +192,14 @@
 
 ---
 
-## 本次更新（第十四次：`drafts` S3-a — 草稿基础读写 12 频道）
+### 本次更新（第十四次：`drafts` S3-a — 草稿基础读写 12 频道）
 
-### 1. `repositories/content_repository.rs`（新）
+#### 1. `repositories/content_repository.rs`（新）
 
 平移 `electron/repositories/content-repository.ts`：`create` / `get_body` / `update_body` / `delete`。
 删除受 `ON DELETE RESTRICT` 外键保护时失败（由调用方决定是否忽略，对齐基线）。
 
-### 2. `repositories/draft_repository.rs`（新，本子域核心）
+#### 2. `repositories/draft_repository.rs`（新，本子域核心）
 
 逐条对齐 `electron/repositories/draft-repository.ts`：
 
@@ -219,7 +219,7 @@
 
 - 哈希复用 `character_roster_repository::hash_text`（`pub(crate)`）；**零新增依赖**。
 
-### 3. `commands/db.rs` / `lib.rs` / `ipc-client.ts`
+#### 3. `commands/db.rs` / `lib.rs` / `ipc-client.ts`
 
 - 12 命令：`create`（MUTATING，信封 `{success,id?,error?}`）、6 读频道、
   `get-max-finalized-chapter` / `next-version`、`update-status` / `update-content`（MUTATING）、
@@ -227,7 +227,7 @@
 - `db:draft-update-content` 复刻 controller 的**前置检查顺序**（「草稿不存在：{id}」/「已定稿正文为只读内容，不能再修改」）。
 - `lib.rs` 注册（**52 → 64**）；`ipc-client.ts` 登记 12 个频道参数名。
 
-### 4. 验证与测试
+#### 4. 验证与测试
 
 新增 Rust 测试 **14 个**（content 2 + draft 11 + 命令 1）：版本分配与读 API、非法/过期依赖拒绝、
 依赖变旧标记（含**传递闭包**）、定稿不可逆规则、正文只读、删除与定稿删除入口、
@@ -238,19 +238,19 @@
 
 ---
 
-## 本次更新（第十五次：`revisions` S3-b — 修稿 9 频道）
+### 本次更新（第十五次：`revisions` S3-b — 修稿 9 频道）
 
-### 1. `db/schema.rs`：新增 `CREATE_REVISIONS`
+#### 1. `db/schema.rs`：新增 `CREATE_REVISIONS`
 
 按 `electron/database.ts` 的最终列集建 `revisions` 表（含 `source_draft_*` 冻结源稿四列、
 `idx_revisions_draft_index` 唯一索引、指向 `drafts` 的 `ON DELETE CASCADE` 与 `contents` 的 `ON DELETE RESTRICT`）。
 
-### 2. `src-tauri/src/draft_source_guard.rs`（新，模块级非仓储）
+#### 2. `src-tauri/src/draft_source_guard.rs`（新，模块级非仓储）
 
 平移 `electron/repositories/draft-source-guard.ts`：`ExpectedDraftSource`（冻结源稿身份）、
 `assert_expected_draft_source`（id/章号/版本/状态/正文全等校验）、`SOURCE_DRAFT_CHANGED` 常量与固定文案。
 
-### 3. `repositories/revision_repository.rs`（新，本子域核心）
+#### 3. `repositories/revision_repository.rs`（新，本子域核心）
 
 | 内容 | 要点 |
 |---|---|
@@ -260,13 +260,13 @@
 | `mark_merged` / `mark_discarded` | 仅 `pending` → 目标态；`changes == 0` 时回基线原文案（含 `[RevisionRepository]` 前缀） |
 | 读 API | `list_by_draft` / `get_pending` / `get_full` / `get_next_index` |
 
-### 4. 接线
+#### 4. 接线
 
 - 9 命令（`create` / `replace-pending` / `merge` / `mark-merged` / `mark-discarded` 为 MUTATING）；
   `create`/`replace-pending` 失败时按守卫文案同时回填 `errorCode: SOURCE_DRAFT_CHANGED` 与 `error`（`String(err)` 形态）。
 - `lib.rs` 注册（**64 → 73**）；`ipc-client.ts` 登记 9 个频道参数名。
 
-### 5. 验证与测试
+#### 5. 验证与测试
 
 新增 Rust 测试 **12 个**（守卫 1 + 仓储 10 + 命令 1）：序号分配与源稿冻结、守卫三重校验、
 `replace_pending` 弃用语义、合并写入与幂等重放、**6 类合并拒绝分支**、旧修订稿缺源稿、
@@ -279,15 +279,15 @@
 
 ---
 
-## 本次更新（第十六次：`reviews` S3-c — 审稿 5 频道）
+### 本次更新（第十六次：`reviews` S3-c — 审稿 5 频道）
 
-### 1. `db/schema.rs`：新增 `CREATE_REVIEWS`
+#### 1. `db/schema.rs`：新增 `CREATE_REVIEWS`
 
 按 `electron/database.ts` 建 `reviews` 表（含 `source_draft_*` 冻结源稿四列、
 `idx_reviews_draft_index` 唯一索引、`drafts` CASCADE / `contents` RESTRICT 外键）。
 注意：`reviews` 表**没有** `updated_at` 列（与 `revisions` 不同），元数据也不含该字段。
 
-### 2. `repositories/review_repository.rs`（新）
+#### 2. `repositories/review_repository.rs`（新）
 
 | 内容 | 要点 |
 |---|---|
@@ -298,14 +298,14 @@
 
 复用 `draft_source_guard`；审稿无状态流转（不像修稿有 pending/merged/discarded）。
 
-### 3. 接线
+#### 3. 接线
 
 - 5 命令（`db:review-create` 为 MUTATING）；失败时按守卫文案同时回填
   `errorCode: SOURCE_DRAFT_CHANGED` 与 `error`（信封 `ReviewCreateResult`：
   `{ success, id?, reviewIndex?, errorCode?, error? }` —— 字段名为 `reviewIndex`，故不能复用 `RevisionCreateResult`）。
 - `lib.rs` 注册（**73 → 78**）；`ipc-client.ts` 登记 5 个频道参数名。
 
-### 4. 验证与测试
+#### 4. 验证与测试
 
 新增 Rust 测试 **5 个**（仓储 4 + 命令 1）：序号分配与源稿冻结（含“忽略入参 99”）、
 源守卫双重校验、`get_latest` 取最大序号、序列化扁平 + `sourceDraft` camelCase + 旧行 null、
@@ -316,15 +316,15 @@
 
 ---
 
-## 本次更新（第十七次：`post-process` S3-d — 后处理跑批 6 频道）
+### 本次更新（第十七次：`post-process` S3-d — 后处理跑批 6 频道）
 
-### 1. `db/schema.rs`：新增 `CREATE_POST_PROCESS`
+#### 1. `db/schema.rs`：新增 `CREATE_POST_PROCESS`
 
 `post_process_runs`（TEXT UUID 主键 + `all_critical_passed` 派生标志）+
 `idx_post_runs_source` + `post_process_steps`（含 `attempt_count`/`completed_at`/`last_attempt_at`，
 `ON DELETE CASCADE` 指向 runs）。
 
-### 2. `repositories/post_process_repository.rs`（新）
+#### 2. `repositories/post_process_repository.rs`（新）
 
 | 内容 | 要点 |
 |---|---|
@@ -340,12 +340,12 @@
 补充：新增了共享 helper `commands::db::simple_mutating_result(outcome)`，收敛后两个
 MUTATING 命令复用。
 
-### 3. 接线
+#### 3. 接线
 
 - 6 命令（`create-run` / `mark-step-ok` / `mark-step-failed` 为 MUTATING）。
 - `lib.rs` 注册（**78 → 84**）；`ipc-client.ts` 登记 6 个频道参数名。
 
-### 4. 验证与测试
+#### 4. 验证与测试
 
 新增 Rust 测试 **7 个**（仓储 6 + 命令 1）：跑批初始化与步骤明细、
 逐步成功与汇总切换、失败重算与恢复、步骤不存在拒绝、空跑批语义、
@@ -356,9 +356,9 @@ MUTATING 命令复用。
 
 ---
 
-## 本次更新（第十八次：`llm 日志/摘要` — 5 频道）
+### 本次更新（第十八次：`llm 日志/摘要` — 5 频道）
 
-### 1. `db/schema.rs`：新增 `CREATE_LLM_CALLS` 与 `CREATE_SUMMARY_SNAPSHOTS`
+#### 1. `db/schema.rs`：新增 `CREATE_LLM_CALLS` 与 `CREATE_SUMMARY_SNAPSHOTS`
 
 - `llm_calls`（表名是 `llm_calls`，非 `llm_call_logs`）；
 - `summary_snapshots` 按**最终列集**建表（含 `draft_id`/`chapter_notes`/`continuity_facts`/
@@ -366,7 +366,7 @@ MUTATING 命令复用。
   + `idx_summary_snapshots_draft` 部分唯一索引。`continuity_projection_meta` / `consistency_exemptions`
   属连续性/一致性豁免子域，留给批次 E。
 
-### 2. `repositories/llm_repository.rs`（新）
+#### 2. `repositories/llm_repository.rs`（新）
 
 | 内容 | 要点 |
 |---|---|
@@ -375,13 +375,13 @@ MUTATING 命令复用。
 | `get_history` | 按 `id DESC LIMIT ?`；`finishReason` 由 `error_message` 的 CASE 推导（成功恒 `stop`） |
 | `save_summary_snapshot` / `get_latest_summary_snapshot` | 后者只读 `draft_id IS NULL` 的行（旧式快照），定稿绑定行不可见 |
 
-### 3. 接线
+#### 3. 接线
 
 - 5 命令：`db:log-llm-call`（MUTATING）、`db:get-llm-stats`、`db:get-llm-history`
   （`limit` 可缺省，默认 **50**）、`db:save-summary-snapshot`（MUTATING）、`db:get-latest-summary`。
 - `lib.rs` 注册（**84 → 89**）；`ipc-client.ts` 登记 5 个频道参数名。
 
-### 4. 验证与测试
+#### 4. 验证与测试
 
 新增 Rust 测试 **8 个**（仓储 7 + 命令 1）：空库 token 为 null、写入与聚合统计、
 `finishReason` 映射矩阵（7 用例）、`modelId` 必填、JS 真值语义、`limit` 生效、
@@ -392,7 +392,7 @@ MUTATING 命令复用。
 
 ---
 
-## 本次会话结束状态（2026-10-07 · 第二轮）
+### 本次会话结束状态（2026-10-07 · 第二轮）
 
 **工作区**：干净（仅未跟踪的 `.pi/` agent 临时目录，不入 Git）；`master` 已与 `origin/master` 同步。
 
@@ -405,14 +405,14 @@ MUTATING 命令复用。
 | GUI 冒烟 | ✅ 两轮（首轮采集信号；次轮闭环验证友好文案） |
 | 未迁移频道 | 102（契约 191 invoke 频道；已按批次归类） |
 
-### 下一次会话的推荐起手
+#### 下一次会话的推荐起手
 
 1. **批次 D（`llm:*` 14 频道）** —— 当前最低风险的实质推进项；做完可让 `llm:list-models`
    等启动即调用的频道真正可用（遗留项 12 的友好提示仍会保留作为「未迁」兜底）。
 2. 批次 F（豁免/叙事线程/派生树/恢复候选，16 频道，互依赖少）。
 3. 批次 E（continuity + finalization + `chapter:*`）需先落 finalization 仓储，风险最大。
 
-### GUI 冒烟清单（本轮已做部分已勾选）
+#### GUI 冒烟清单（本轮已做部分已勾选）
 
 ```bash
 cd tauri-app && pnpm tauri dev
@@ -435,14 +435,14 @@ cd tauri-app && pnpm tauri dev
 
 ---
 
-## 本次更新（第十九次：`project 清理` — 批次 C 数据库层收口）
+### 本次更新（第十九次：`project 清理` — 批次 C 数据库层收口）
 
-### 1. `db/schema.rs`：新增 `CREATE_IMPORT_OPERATIONS`
+#### 1. `db/schema.rs`：新增 `CREATE_IMPORT_OPERATIONS`
 
 补 `finalized_draft_import_operations` / `import_global_fact_operations` 两张幂等日志表
 （本子域只需前者：`generatedText` 清理要删它；仓储与命令仍随批次 E / G）。
 
-### 2. `repositories/project_clear_repository.rs`（新）
+#### 2. `repositories/project_clear_repository.rs`（新）
 
 | 内容 | 要点 |
 |---|---|
@@ -451,18 +451,18 @@ cd tauri-app && pnpm tauri dev
 | `move_generated_files_to_trash` | 事务**之前**把根目录成稿移入 `.vela/trash/clear-<ISO 时间戳>/`（时间戳复用 `commands::project::{epoch_millis_now, iso8601_utc_from_millis}`）；失败即按逆序回滚已移动文件 |
 | `clear_generated_data` | 单事务：`generatedText`（8 张表）→ `blueprints`（复用 `clear_blueprint_facts_within_transaction`）→ `creativeFields`（先 `migrate_character_roster_schema` 再删三张表 + `project_core` 九个字段）；成功后才删除回收子目录，失败则回滚文件移动 |
 
-### 3. 可见性调整
+#### 3. 可见性调整
 
 `commands/mod.rs` 的 `mod project;` → `pub mod project;`（crate 内可见），
 使时间戳 helper 可被仓储层复用，避免重复实现 ISO8601。
 
-### 4. 接线
+#### 4. 接线
 
 - 1 命令：`db:project-clear-generated-data`（MUTATING，信封
   `{ success, cleared?, physicalFilesDeleted?, error? }`）；项目路径取自活跃租约而非入参。
 - `lib.rs` 注册（**89 → 90**）；`ipc-client.ts` 登记该频道参数名。
 
-### 5. 验证与测试
+#### 5. 验证与测试
 
 新增 Rust 测试 **6 个**（仓储 5 + 命令 1）：文件名模式矩阵（3 接受 / 5 拒绝）、
 `generatedText` 清空 + 物理文件移动 + 非成稿文件保留、缺项目路径拒绝、
@@ -471,7 +471,7 @@ cd tauri-app && pnpm tauri dev
 结果：`cargo check --all-targets` **0 告警** · `cargo test --lib` **166/166** ·
 `pnpm typecheck` / `pnpm run lint` 均 exit 0。
 
-### 6. 新增契约覆盖校验脚本（静态回归工具）
+#### 6. 新增契约覆盖校验脚本（静态回归工具）
 
 `tauri-app/scripts/verify-channel-coverage.mjs` + `pnpm run check:channels`（零依赖纯 node）：
 不启动应用即可核对「契约频道 ↔ 已注册命令」的机械映射，输出未迁移清单与 orphan 清单
@@ -498,12 +498,12 @@ cd tauri-app && pnpm tauri dev
 
 ---
 
-## 本次更新（第二十次：GUI 冒烟验证 + 遗留项 12 修复 + 磁盘级端到端回归）
+### 本次更新（第二十次：GUI 冒烟验证 + 遗留项 12 修复 + 磁盘级端到端回归）
 
 本轮完成的是上一轮「结束本次」所中断的事项：**GUI 实机冒烟**（批次 C 交付 56 命令后
 从未在真实项目上验证过，是当时最大的风险敷口）。
 
-### 1. GUI 实机冒烟（两轮）
+#### 1. GUI 实机冒烟（两轮）
 
 **首轮（采集信号）**：
 
@@ -521,7 +521,7 @@ cd tauri-app && pnpm tauri dev
 `[Tauri 适配] 频道 llm:list-models 尚未迁移到 Tauri 侧（后续批次），已拒绝调用`。
 两轮冒烟后进程树均已清理（端口 5190 释放）。
 
-### 2. 遗留项 12 修复：未迁移频道友好提示（`24c008f`）
+#### 2. 遗留项 12 修复：未迁移频道友好提示（`24c008f`）
 
 - `scripts/verify-channel-coverage.mjs` 新增 `--emit`：生成
   `src/shared/migrated-channels.ts`（89 个已迁移频道；内容未变时不写盘）。
@@ -531,7 +531,7 @@ cd tauri-app && pnpm tauri dev
 - 新增 `test/channel-migration-coverage.test.ts`（4 用例）：重算契约↔命令映射并与生成物
   比对，**防止生成物过期或被手改**；断言已迁移集合是契约的真子集。
 
-### 3. 磁盘级端到端回归（`4d5ef61`）—— 冒烟的可自动化版本
+#### 3. 磁盘级端到端回归（`4d5ef61`）—— 冒烟的可自动化版本
 
 新增 `src-tauri/src/disk_e2e.rs`（`#[cfg(test)] mod`）。与各仓储的内存库单测不同，它走
 **真机等价路径**：真实 `<root>/.vela/lorekeeper.db`、WAL、`foreign_keys=ON`、
@@ -545,7 +545,7 @@ cd tauri-app && pnpm tauri dev
 
 这三项**内存库测不出来**（WAL、真实路径、跨重开），正是此前「56 命令未经真机验证」的核心缺口。
 
-### 4. 验证
+#### 4. 验证
 
 `cargo test --lib` **169/169**（166 + 3 磁盘级）· `cargo check --all-targets` **0 告警** ·
 `pnpm typecheck` / `pnpm run lint` exit 0 · `pnpm run check:channels` orphan 空 ·
@@ -553,9 +553,9 @@ cd tauri-app && pnpm tauri dev
 
 ---
 
-## 本次更新（第二十一次：批次 D1 — 全局 JSON 存储层 + `llm:*` 模型管理 7 频道）
+### 本次更新（第二十一次：批次 D1 — 全局 JSON 存储层 + `llm:*` 模型管理 7 频道）
 
-### 0. 为什么拆成 D1 / D2
+#### 0. 为什么拆成 D1 / D2
 
 批次 D 的 14 个频道分两类，依赖面完全不同：
 
@@ -564,7 +564,7 @@ cd tauri-app && pnpm tauri dev
 | **D1** | `list-models` / `save-model` / `delete-model` / `get|set-default-model` / `get|set-default-embedding-model`（7） | 仅 JSON 文件读写（`config.json` / `models.json`） | ✅ 本轮完成，**零新增依赖** |
 | **D2** | `begin|close-execution-lease` / `generate` / `generate-stream` / `cancel` / `discover-models` / `test-connection`（7 + 3 事件） | HTTP 客户端 + SSE 流式（`reqwest` 或 `tauri-plugin-http`）+ 生成参数策略复刻 | ⬜ 需 **Ask first**（新增 Rust crate） |
 
-### 1. 着手前修掉的**真实缺口**：`config:get/set` 此前只是内存态
+#### 1. 着手前修掉的**真实缺口**：`config:get/set` 此前只是内存态
 
 批次 A 落地的 `ConfigStore` 是**内存 HashMap**（当时标注「骨架阶段」）。它是 D1 的硬前置：
 `llm:get-default-model` / `llm:set-default-model` / `llm:delete-model` 与它共用同一份
@@ -580,7 +580,7 @@ cd tauri-app && pnpm tauri dev
 
 `AppState.config`（内存存储）已移除；`Default for AppState` 相应同步。
 
-### 2. 新增 `src-tauri/src/app_paths.rs`（全局数据根）
+#### 2. 新增 `src-tauri/src/app_paths.rs`（全局数据根）
 
 把原先只存在于 `commands/project.rs` 的 `lorekeeper_home()` 提为**独立模块**（避免
 `json_store` → `commands` 的反向依赖），并补齐 `config.json` / `models.json` /
@@ -593,7 +593,7 @@ cd tauri-app && pnpm tauri dev
   `~/.lorekeeper/{prompts,logs}`（失败不阻断启动，只告警）。**冒烟实测**：首轮启动后
   `~/.lorekeeper/` 已含 `logs`、`prompts`。
 
-### 3. 新增 `src-tauri/src/json_store.rs`（迁移 `electron/utils/config-utils.ts`）
+#### 3. 新增 `src-tauri/src/json_store.rs`（迁移 `electron/utils/config-utils.ts`）
 
 | 函数 | 对齐基线 |
 |---|---|
@@ -604,7 +604,7 @@ cd tauri-app && pnpm tauri dev
 `commands/project.rs` 的最近项目读写改为复用该层（此前是裸 `fs::write`），
 `recent-projects.json` 由此获得与基线一致的原子写语义。
 
-### 4. 新增 `commands/llm.rs`（7 命令）
+#### 4. 新增 `commands/llm.rs`（7 命令）
 
 | 频道 | 命令 | 关键行为 |
 |---|---|---|
@@ -626,7 +626,7 @@ cd tauri-app && pnpm tauri dev
   `Option<Value>` 区分「缺省」与「显式 null」。
 - 回滚失败文案逐字复刻基线的**双 `Error: ` 前缀**（`String(new Error(\`${String(e1)}；恢复默认模型配置失败：${String(e2)}\`))` 的链式结果），并单测锁定。
 
-### 5. 接线
+#### 5. 接线
 
 - `commands/mod.rs`：`mod llm;` + `pub use llm::*;`
 - `lib.rs`：`mod app_paths; mod json_store;` + `setup` 建目录 + 注册 7 命令（**90 → 97**）
@@ -637,7 +637,7 @@ cd tauri-app && pnpm tauri dev
 - `test/channel-migration-coverage.test.ts`：负例改用未迁频道 `llm:generate`，并加断言
   `llm:list-models` 已迁移
 
-### 6. 验证与测试
+#### 6. 验证与测试
 
 新增 Rust 测试 **33 个**（app_paths 6 + json_store 6 + config 9 + llm 12；
 旧 config 的内存态测试 3 个被替换，故净 +30）：
@@ -654,7 +654,7 @@ cd tauri-app && pnpm tauri dev
 结果：`cargo check --all-targets` **0 告警** · `cargo test --lib` **199/199** ·
 `pnpm typecheck` exit 0 · `pnpm run lint` exit 0 · `pnpm run check:channels` orphan 空。
 
-### 7. GUI 实机冒烟（第三轮）
+#### 7. GUI 实机冒烟（第三轮）
 
 `pnpm tauri dev`：vite `ready in 436 ms` @5190 → cargo 编译 `lorekeeper` →
 `Running target\debug\lorekeeper.exe`（**30.1 MB**）。
@@ -668,9 +668,9 @@ cd tauri-app && pnpm tauri dev
 
 ---
 
-## 本次更新（第二十二次：批次 D2-a — 生成参数策略 + 模型执行租约 2 频道）
+### 本次更新（第二十二次：批次 D2-a — 生成参数策略 + 模型执行租约 2 频道）
 
-### 0. 决策：D2 采用「Rust 重写」（用户已批准 `reqwest` 依赖）
+#### 0. 决策：D2 采用「Rust 重写」（用户已批准 `reqwest` 依赖）
 
 D2 的两种策略经**实测对比**后由用户拍板 **Rust 重写**。关键实测事实：
 
@@ -684,7 +684,7 @@ D2 的两种策略经**实测对比**后由用户拍板 **Rust 重写**。关键
 
 D2 拆为三层推进：**D2-a 零依赖地基（本轮完成）** → D2-b 生成 / 流式（`reqwest`）→ D2-c 模型发现 / 连通性。
 
-### 1. 新增 `src-tauri/src/llm/`（4 模块，与基线「一文件 ↔ 一模块」对齐）
+#### 1. 新增 `src-tauri/src/llm/`（4 模块，与基线「一文件 ↔ 一模块」对齐）
 
 | Rust 模块 | 行数 | 基线来源 | 内容 |
 |---|---|---|---|
@@ -708,14 +708,14 @@ D2 拆为三层推进：**D2-a 零依赖地基（本轮完成）** → D2-b 生�
 1. `LeaseRecord` 手写 `Debug`，快照（含 `apiKey`）一律打码成 `<redacted>`，避免任何日志 / 诊断输出泄露凭据（有专门测试断言回执与序列化结果均不含密钥）；
 2. 指纹改用**规范化 JSON**（对象键排序）而非依赖 `serde_json` 的 map 后端 → 与 `preserve_order` feature 是否被其它依赖开启无关；与 Node 的哈希**刻意不要求逐字节一致**（`AGENTS.md` 双栈隔离约定，已在模块文档写明）。
 
-### 2. 新增 `commands/llm_execution.rs`（2 命令）
+#### 2. 新增 `commands/llm_execution.rs`（2 命令）
 
 | 频道 | 命令 | 关键行为 |
 |---|---|---|
 | `llm:begin-execution-lease` | `llm_begin_execution_lease` | `AppState.llm_leases` 冻结快照并签发**非密钥**回执 |
 | `llm:close-execution-lease` | `llm_close_execution_lease` | 幂等关闭（墓碑窗口内重复关闭仍 `success: true`） |
 
-### 3. 接线（含一处**真实缺口**修复）
+#### 3. 接线（含一处**真实缺口**修复）
 
 - `lib.rs`：`mod llm;` + 注册 2 命令（**97 → 99**）。该模块暂带 `#[allow(dead_code)]`：推理 / 参数模块的调用面在 D2-b 落地，注解处已写明「D2-b 接通后移除」。
 - `state.rs`：新增 `llm_leases: Mutex<LlmLeaseStore>`（进程内存态，重启即失效，对齐基线模块级 `Map`）。
@@ -723,7 +723,7 @@ D2 拆为三层推进：**D2-a 零依赖地基（本轮完成）** → D2-b 生�
 - **新增回归防线**（`test/channel-migration-coverage.test.ts`，+2 测试）：机械比对契约源码中每个**已迁移**频道的 `args` 个数与 `CHANNEL_ARG_NAMES` 登记 —— 漏登记 / 多登记 / 个数不符 / 命名非 lowerCamelCase 都会在 `pnpm test` 阶段失败（这类缺陷原本只有真机点开对应功能才暴露）。解析器已处理多行元组、尾逗号、以及 `Record<string, unknown>` 这类泛型实参内部的逗号。
 - `pnpm run check:channels:emit` 重新生成 `src/shared/migrated-channels.ts`（**98** 个频道）。
 
-### 4. 验证与测试
+#### 4. 验证与测试
 
 新增 Rust 测试 **44 个**（presets 9 + reasoning 8 + params 10 + lease 12 + llm_execution 4 + state 1），`cargo test --lib` **199 → 243**：
 
@@ -737,14 +737,14 @@ D2 拆为三层推进：**D2-a 零依赖地基（本轮完成）** → D2-b 生�
 `pnpm typecheck` exit 0 · `pnpm run lint` exit 0 · `pnpm run check:channels` orphan 空
 （已注册 **99** → 覆盖 98 频道 → 未迁移 **93**，其中 `llm=5` 即 D2-b/c） · `vitest` 频道覆盖 **6/6**。
 
-### 5. GUI 实机冒烟（第四轮）
+#### 5. GUI 实机冒烟（第四轮）
 
 `pnpm tauri dev`：vite `ready in 482 ms` @5190 → `Running target\debug\lorekeeper.exe`；
 webview 已联通（日志出现渲染层 `ipc-client` 输出），**无 panic**，无 `Command ... not found`；
 `AI_NOVEL_LOREKEEPER_HOME` 首次启动自动创建 `logs/` + `prompts/`（L1 隔离继续生效）；
 冒烟后进程树已清理（已核实残留 `node` 进程命令行均为 pi 自身，非本项目产物）。
 
-### 6. 依赖成本实测
+#### 6. 依赖成本实测
 
 `Cargo.lock` **仅 +1 行**（`lorekeeper` 的依赖边新增 `url`），**零新增 crate 下载** ——
 `url` 早已在 `tauri → reqwest` 的传递依赖中。D2-b 将首次真正新增 crate（TLS 后端家族）。
