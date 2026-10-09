@@ -176,6 +176,11 @@ pub fn run() {
             commands::db_continuity_save_character_state_candidates,
             commands::db_continuity_list_before,
             commands::db_continuity_read_source,
+            // 批次 E：定稿回链 + 导出权威（finalization-link + draft 收尾前 3 频道）
+            commands::db_finalization_link_knowledge_document,
+            commands::db_draft_authority_sequence,
+            commands::db_draft_export_snapshot,
+            commands::db_draft_export_authority_current,
             // 批次 D1：LLM 模型管理（7 频道）
             commands::llm_list_models,
             commands::llm_save_model,

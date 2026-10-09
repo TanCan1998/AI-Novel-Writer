@@ -29,6 +29,9 @@ url = "2"
 # 基线 `stripThinking()` 的三条替换规则（`<think>` 剥离链）。
 # 已在 Cargo.lock（1.13.1），声明为直接依赖不产生任何新下载。
 regex = "1"
+# 批次 E：定稿导入字数契约 countDraftUnits 的 NFC 归一化前置。
+# 纯 Rust、无传递依赖（Ask first 已批准 2026-10-09）。
+unicode-normalization = "0.1"
 
 # 批次 F2（方案 B：自研混合检索）—— 双路检索依赖，均为纯 Rust 生态。
 #

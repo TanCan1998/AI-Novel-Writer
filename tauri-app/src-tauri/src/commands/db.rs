@@ -20,6 +20,8 @@ use crate::repositories::character_roster_repository as roster;
 use crate::repositories::consistency_exemption_repository as consistency;
 use crate::repositories::draft_repository as drafts;
 use crate::repositories::finalized_continuity_repository as continuity;
+use crate::repositories::finalized_draft_import_repository as draft_import;
+use crate::repositories::finalization_repository as finalization;
 use crate::repositories::llm_repository as llm;
 use crate::repositories::narrative_thread_repository as threads;
 use crate::repositories::plot_tree_repository as plot_tree;
@@ -2631,6 +2633,82 @@ pub fn db_continuity_read_source(
 ) -> Result<continuity::FinalizedSourceReadResult, String> {
     guard_read(state.inner(), &expected_project_path, project_session.as_ref())?;
     state.with_project_db(|conn| continuity::read_finalized_source(conn, draft_id))
+}
+
+// ===== 批次 E：定稿回链 + 导出权威（finalization-link / draft 收尾 4 频道之一部分） =====
+
+/// `db:finalization-link-knowledge-document` 的 IPC 信封
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FinalizationLinkResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub finalization: Option<finalization::FinalizationRecord>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// `db:finalization-link-knowledge-document`
+#[tauri::command]
+pub fn db_finalization_link_knowledge_document(
+    state: State<'_, AppState>,
+    draft_id: i64,
+    document_id: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> FinalizationLinkResult {
+    let outcome = guard_read(state.inner(), &expected_project_path, project_session.as_ref())
+        .and_then(|()| state.with_project_db(|conn| finalization::link_knowledge_document(conn, draft_id, &document_id)));
+    match outcome {
+        Ok(record) => FinalizationLinkResult {
+            success: true,
+            finalization: Some(record),
+            error: None,
+        },
+        Err(error) => {
+            eprintln!("[db:finalization-link-knowledge-document] 失败: {error}");
+            FinalizationLinkResult {
+                success: false,
+                finalization: None,
+                error: Some(mutating_error(error)),
+            }
+        }
+    }
+}
+
+/// `db:draft-authority-sequence`（读频道）
+#[tauri::command]
+pub fn db_draft_authority_sequence(
+    state: State<'_, AppState>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<draft_import::AuthoritativeChapterSequence, String> {
+    guard_read(state.inner(), &expected_project_path, project_session.as_ref())?;
+    state.with_project_db(draft_import::authority_sequence)
+}
+
+/// `db:draft-export-snapshot`（读频道）
+#[tauri::command]
+pub fn db_draft_export_snapshot(
+    state: State<'_, AppState>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Vec<finalization::FinalizedDraftExportSnapshot>, String> {
+    guard_read(state.inner(), &expected_project_path, project_session.as_ref())?;
+    state.with_project_db(finalization::list_authoritative_for_export)
+}
+
+/// `db:draft-export-authority-current`（读频道；基线对结构不合法返回 false 而非报错）
+#[tauri::command]
+pub fn db_draft_export_authority_current(
+    state: State<'_, AppState>,
+    receipt: Vec<finalization::FinalizedDraftExportAuthorityItem>,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<bool, String> {
+    guard_read(state.inner(), &expected_project_path, project_session.as_ref())?;
+    state
+        .with_project_db(|conn| Ok(finalization::matches_authoritative_export_receipt(conn, &receipt)))
 }
 
 #[cfg(test)]
