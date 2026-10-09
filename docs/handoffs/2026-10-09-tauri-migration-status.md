@@ -82,6 +82,24 @@
 
 ---
 
+### 6. 行为对照（Electron ↔ Tauri，2026-10-09 补验）
+
+- 素材：用户真实项目「武林秘事」副本（73 定稿章节 + 73 outbox + 73 后处理 run + 1 continuity meta），复制两份到临时目录，原项目零改动（验证后已删除副本）。
+- 方法：两侧各自对副本库执行同一操作 —— Electron 用 `initProjectDatabase` + `ChapterDeletionRepository.begin`（临时 vitest 脚本，已清理）；Tauri 用 ignored 测试直连 `&Connection`（已清理）。操作：删除第 10 章定稿（draft_id=10，带 knowledge_document_id）。
+
+| 指标 | Electron | Tauri | 一致 |
+|---|---|---|---|
+| status | pending | pending | ✅ |
+| manuscript_status / error | pending / "" | pending / "" | ✅ |
+| knowledge_status / error | pending / "" | pending / "" | ✅ |
+| legacy_knowledge_authorization | not_required | not_required | ✅ |
+| drafts / contents / runs 计数 | 73 / 74 / 72 | 73 / 74 / 72 | ✅ |
+| continuity（staleFrom / generation） | 10 / 1 | 10 / 1 | ✅ |
+
+- 结论：chapter-lifecycle 仓储层行为与基线逐字节一致，**无差异需修复**。
+- 备注：副本 lorekeeper.db 为旧 schema，测试前用 `db::schema::create_tables` 幂等补齐；对照只在仓储层（命令层为薄壳 + 状态机已在 423 单测覆盖）。
+
+
 ## 本次更新（第二十七次：批次 E 第一部分完成）
 
 > 与第二十六次同属 2026-10-09（一个工作日内第一次更新，按 §9 规则写入同一份当日文件）。
