@@ -11,7 +11,7 @@
 
 ---
 
-## 快照（最后更新：2026-10-10 · 第三十九次）
+## 快照（最后更新：2026-10-10 · 第四十次）
 
 > 本表只填**最新一次自检的实测值**。改表前必须重跑对应命令，不得沿用旧数字、不得估算。
 > 本轮实测命令与输出见下方「[§5 自检记录](#5-自检记录2026-10-10-实测)」。
@@ -24,14 +24,14 @@
 | 覆盖 invoke 频道 | **171**（契约总数 193，事件频道 4） |
 | 未迁移 invoke 频道 | **22**（`db=13 mcp=9`） |
 | orphan | **空** ✅ |
-| `cargo test --lib` | **607/607** ✅ |
+| `cargo test --lib` | **643/643** ✅ |
 | `cargo fmt --check` | **干净（0 差异）** ✅ |
 | `cargo check --all-targets` | **0 告警** ✅ |
 | `pnpm typecheck` / `lint` | exit 0 / exit 0 ✅ |
 | 定向 `vitest` | **7/7**（2 文件：契约覆盖 / 入参结构体契约）✅ |
-| 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅** / **批次 G2a ✅（本次）** / **批次 G2b ✅（1–6 步全部完成）** |
-| 当前阶段 | **批次 G2b 全 6 步完成**（导入运行写面收口；`dialog:select-novel-files` 的 `reference` 分支已复活）。下一步 **G3**（执行租约 / 批次推进 / effect receipts 11 频道 + `db:import-global-facts-commit`）→ **G4**（`kb:import-reference-text` 去占位 + 前端登记 + GUI 冒烟）（未迁移 22 → 9）。其它待办：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项、B24（整屏瞬黑，暂缓） |
-| 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、`tauri-plugin-opener 2.7.0`、`windows-sys 0.61`（`[target.'cfg(windows)'.dependencies]`，仅 lock 提级，**0 新下载**；Ask first 已批准 2026-10-10）。**G2a 零新依赖**。向量层 `hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio`；FTS5 由 `libsqlite3-sys` bundled 提供 |
+| 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅** / **批次 G2a ✅（本次）** / **批次 G2b ✅（1–6 步全部完成）** / **批次 G3a ✅（本次）** |
+| 当前阶段 | **批次 G3a 仓储层完成**（执行租约 / 批次推进 / effect receipts / 全局事实台账的全部仓储 seam 落地，13 频道所需的仓储依赖齐备）。下一步 **G3b**（13 频道注册：`commands/db.rs` 13 个 `#[tauri::command]` + `lib.rs` `invoke_handler` + 前端门禁登记，未迁移 22 → 9，仅剩 mcp 9）→ **G4**（`kb:import-reference-text` 去占位 + 前端登记 + GUI 冒烟）。其它待办：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项、B24（整屏瞬黑，暂缓） |
+| 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、`tauri-plugin-opener 2.7.0`、`windows-sys 0.61`（`[target.'cfg(windows)'.dependencies]`，仅 lock 提级，**0 新下载**；Ask first 已批准 2026-10-10）。**G2a 零新依赖**，**G3a 零新依赖**（仓储层平移，无 Cargo.toml 改动）。向量层 `hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio`；FTS5 由 `libsqlite3-sys` bundled 提供 |
 | GUI 冒烟 | ✅ 自 2026-10-07 起 **十三轮**。**第十三轮（2026-10-10，弹窗动画统一）**：设置弹窗明显变快（修复前实为“静置 400ms + 播 220ms”）、四类弹窗进出场一致、Radix 弹窗仍居中且尺寸正常 ✅。**第十二轮（2026-10-10，冒烟发现的三项缺陷修复）**：① 弹窗 **ESC 关闭**（根因：Radix `DismissableLayer` 仅在 `index === layers.length-1` 时注册 ESC，而 Radix 关闭后仍保留 `DialogContent` 挂载——实测 `layers.length=7`，可见弹窗永远不是最高层）；② **窗口命令真实化**（批次 A 四个命令原为假成功骨架）；③ **标题栏拖拽**（`-webkit-app-region` 在 WebView2 无效 → 补 `data-tauri-drag-region`）。4 项人工验证全部 ✅。近三轮：第十一轮（G2a）、第十轮（G1）、第九轮（H 前三项 + B12） |
 | 双栈隔离 | **L0/L1/L2/L3 全部独立**：安装标识 / `~/.lorekeeper` / `<root>/.lore/`（库 `.lore/lorekeeper.db`、KB 向量 `.lore/kb/`）。基线为 `~/.vela` / `<root>/.vela/`。**两栈项目目录刻意不互通**（`ee40aaab`） |
 | Rust 工具链 | rustc/cargo **1.99.0 stable-msvc** @ `D:\Environment\rust\`（脚本内须显式设 `RUSTUP_HOME` / `CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
@@ -40,41 +40,56 @@
 
 ---
 
-## 本次更新（第三十九次：B25 收口 + G2b 全 6 步收口）
+## 本次更新（第四十次：批次 G3a 收口）
 
-### 1. B25 ✅ `ClearProjectDataDialog` 纳入统一动画
+### 1. G3a ✅ 仓储层（13 频道的全部仓储 seam）
 
-该弹窗是手写全屏弹层，**此前零动画**（硬切）。不改各处调用点，而在组件内把
-`onClose` 收口为带延迟卸载的包装（`onCloseProp` → `isExiting` → 200ms 后调真 onClose，
-`exitTimerRef` 幂等），因此 ESC / 遮罩点击 / 清除成功后 / 取消按钮 四处入口共同获得动画。
-**至此五类弹窗进出场实现完全一致**（Radix Dialog / Confirm / AlertDialog /
-SettingsModal / ClearProjectDataDialog）。GUI 已验：淡入 + 淡出 ✅。
+提交 `c8c56ad9`（8 文件，+5202/−861）平移基线
+`electron/repositories/import-run-repository.ts`（2551 行）与
+`import-global-facts-repository.ts`，落地开工清单 §3 全部内容：
 
-### 2. G2b 推进
+- **执行租约族**：`assert_execution_authority` / `assert_execution` /
+  `start_or_resume` / `renew_execution` / `restart` / `request_cancel` /
+  `cancel_at_boundary`（`DEFAULT_EXECUTION_LEASE_MS = 15 * 60_000` 对齐）
+- **批次推进族**：`next_stage_for_run` / `author_checkpoint_chapter_number` /
+  `assert_checkpoint_can_apply` / `assert_stage_checkpoint_complete` /
+  `apply_batch_checkpoint` / `complete_batch` / `advance_stage` / `fail` / `complete`
+- **effect receipts**：`canonicalize` / `canonical_payload` / `exact_keys` /
+  `assert_effect_payload_schema` / `assert_effect_payload_binding` /
+  `assert_author_effect_run_binding` / `assert_committed_effect_schema` /
+  `assert_completed_blueprint_sync_operation` / `assert_blueprint_effect_authority` /
+  `assert_committed_effect_authority` / `validate_effect_stage` /
+  `row_to_effect_receipt` / `get_effect_receipt` / `prepare_effect_receipt` /
+  `commit_effect_receipt`（跨仓原子事务，复用下游 `_in_transaction` 抽取件；
+  `MAX_EFFECT_RECEIPT_PAYLOAD_BYTES = 16 MiB`）
+- **新模块** `import_global_facts_repository`：`normalized_request`（13 文本字段
+  trim + 枚举校验 + 总章数/章节字数校验）/ `hash_request` / `core_snapshot` /
+  `parse_receipt` / `ensure_ledger`（D2 懒建表）/ `get_committed_operation`
+  （核心台账 + roster factHash 比对，拒绝历史操作冒充当前事实）/ `commit`
+  （事务：幂等重放或 `ProjectCoreRepository.update` + `CharacterRosterRepository.commit`）
+- **下游读回 helper**：`blueprint_repository::get_committed_range_operation`、
+  `finalized_draft_import_repository::get_committed_operation`、
+  `character_roster_repository` 事务体抽取
+- **会话边界围栏**：`create_tables` 末尾 `fence_import_run_execution_leases`
+  （对齐基线 `createTables` 的「打开项目即围栏上一会话租约」迁移）
 
-| 步 | 内容 | 提交 |
-|---|---|---|
-| G2b-1 | `src/import/identity.rs`：无密钥版 `resolveEncodedSources`（D1′ / D3′），含 5 条测试 | `215b4520` |
-| G2b-2 | `import_run_repository.rs` 解析写入面：`canonical_manifest` / `hash_manifest`（键序对齐 `JSON.stringify`）、`normalize_display/source_ids/source_fingerprints/chapters`、`parsed_source_status`、`begin_parsing`（三分支）、`commit_parsed_source`、`fail_parsed_source`，含 6 条测试 | 本次 |
-| G2b-3 | `finalize_parsing` **四态分类**（`new` / `resumable` / `conflict` / `exact-duplicate`）+ 辅助函数族（`create_preparation_inspection` / `assign_stable_chapter_numbers` / `completed_chapter_manifest` / `matching_resumable_run` / `latest_completed_run` / `overlapping_resumable_source_run` / `discard_provisional_parsing_run`）+ 契约类型 `ImportRunPreparationResult` / `ImportRunPreparationInspection`；含 4 条测试（四态各一 + 未完成来源拒绝） | 本次 |
-| G2b-4 | `prepare` **两分支**：author（复用 E 批次 `finalized_draft_import_repository::preview`，含 `AUTHOR_IMPORT_PREVIEW_STALE` 经 `PrepareError::AuthorPreviewStale` 表达）+ reference（直接写冻结章、`stage='knowledge'`）；配套 `has_committed_author_finalization_receipt` / `fence_uncommitted_author_run`；含 2 条测试 | 本次 |
-| G2b-5 | **两频道**：`db:import-run-prepare-inspection`（结构化入参 + 项目门禁 + `peek`（含 purpose 校验，author 先做 `preview` 预检）→ `consume` → 身份解析 → author 走 `prepare` / reference 走 `begin_parsing`+逐来源 `commit/fail`+`finalize_parsing`；stale 回 `errorCode` 信封、其余失败 **reject** 带 `Error: ` 前缀，与 Electron 一致）+ `db:import-run-finalize-parsing`；`AppState` 增 `with_project_db_typed`（保留自定义错误类型）；含 3 条测试 | 本次 |
-| G2b-6 | **`reference` 分支复活**：`dialog:select-novel-files` 去掉诚实错误早退，改为**选择期**即落地解析运行（`resolve_encoded_sources` → `begin_parsing` → 逐来源 `parsed_source_status` 跳过已完成 / 受限读取 / 拆章 / `commit_parsed_source`（失败先 `fail_parsed_source` 再抛、消息用**映射后**文案）→ `finalize_parsing`），返回 `{success:true, preparation}`；返回类型改为 `InspectOutcome`（Inspection / Preparation），`NovelFileSelectionResult.preparation` 转为强类型；含 2 条测试（真实内存库 + 非结构化/无库/EPUB 三态） | 本次 |
+**测试**：移植基线三个测试文件，净增 **36 例**（execution-lease 11 /
+state-machine 5 / receipt 12 例 22 用例，含 committed 回放、离线伪造拒绝、
+失败关闭、键-载荷绑定、过期租约围栏、全局事实台账哈希校验）。
 
-**顺带**：`lib.rs` 的 `mod repositories;` → `pub mod repositories;`（与 `pub mod db` 一致）——
-否则尚未被命令层消费的新仓储 API 会持续触发 `dead_code` 告警（之前靠逐项 `#[allow]` 缓解）。
+### 2. 刻意偏离（D1–D4，见开工清单 §2）
 
-**尚未做的 G2b 剩余**：`finalize_parsing`、`prepare`（author/reference 两分支）、
-`matching_resumable_run` / `latest_completed_run` / `overlapping_resumable_source_run` /
-`discard_provisional_parsing_run` / `fence_uncommitted_author_run` / `assign_stable_chapter_numbers` /
-`completed_chapter_manifest` / `create_preparation_inspection`（均已在清单 §4 标注行号）
-+ `db:import-run-prepare-inspection` / `-finalize-parsing` 两频道 + 前端登记 + 复活 `reference` 分支。
+`adoptLegacyCompletedRun` 不移植（双栈隔离下 `.lore` 无 legacy 运行）；全局事实
+台账懒建表（不改 `db/schema.rs`，G schema 刻意固定 9 表）；`canonicalize` 键排序
+用字节序（哈希仅 Tauri 内部自洽）；`completeBatch` 的 direct-stage 前置校验
+（`isImportRunDirectCheckpointStage`）留在命令层 G3b（对齐基线 db-controller
+handler 前置断言，D4）。恢复 D1–D3 需用户确认。
 
 ### 3. 自检（本轮）
 
-`cargo test --lib` **607/607**（+16）· `cargo check --all-targets` **0 告警** ·
-`cargo fmt --check` 干净 · `pnpm typecheck` / `lint` exit 0（B25 改动时实测）·
-`check:channels` 193/172/171/22（无频道变化）。
+`cargo test --lib` **643/643**（+36）· `cargo check --all-targets` **0 告警** ·
+`cargo fmt --check` 干净 · `pnpm typecheck` / `lint` exit 0 · 定向 `vitest` 7/7 ·
+`check:channels` 193/172/171/22（无频道变化，G3a 为纯仓储层）。
 
 ---
 
@@ -82,40 +97,38 @@ SettingsModal / ClearProjectDataDialog）。GUI 已验：淡入 + 淡出 ✅。
 
 ### 1. 当前工作区状态
 
-**工作区干净**（G1 全链与 G2 开工清单均已提交并推送 `origin/master`；本份快照的 G2a 章节为待生成提交的一部分）：
+**跟踪文件干净**；仅 1 份未跟踪文档（`docs-fork/research/2026-10-10-b24-black-flash-investigation.md`，B24 暂缓中的排查记录，与 G3 无关）。G3a 以单提交落地：
 
 | Commit | 说明 |
 |---|---|
-| `fbb88307` | `feat(tauri): 批次 G1 作者原稿导入（dialog:select-novel-files + db:import-run-author-preview）` |
-| `75379748` | `docs(tauri): 第三十五次快照与频道盘点更新（批次 G1 收口）` |
-| `e2bb92cc` | `docs(tauri): 记录第十轮 GUI 冒烟（批次 G1 验收通过）` |
-| `8edd1b46` | `docs(tauri): G2 开工清单（状态机细分 G2a/G2b）与决策归档` |
-| `1a523707` | `feat(tauri): 批次 G2a 导入运行读面（3 频道 + 批次检查点单源）` |
-| `9d12514d` | `docs(tauri): 第三十六次快照与频道盘点更新（批次 G2a 收口）` |
-| `63f255b8` | `fix(tauri): 修复弹窗 ESC、窗口命令真实化与标题栏拖拽` |
-| `3f3486f5` | `docs(tauri): 第三十七次快照 —— 冒烟三项缺陷修复` |
-| `61ea32ad` | `fix(tauri): 统一弹窗进出场动画并修掉 0.4s 隐形延迟` |
-| 待生成 | `docs(tauri): 第三十八次快照 —— 弹窗动画统一与 B22/B23/B24 归档` |
+| `b4530e50` | `fix(tauri): ClearProjectDataDialog 纳入统一弹窗动画（B25 收口）` |
+| `1e0c1ce3` | `feat(tauri): G2b-6 复活 dialog:select-novel-files 的 reference 分支` |
+| `237f838a` | `feat(tauri): G2b-5 导入运行两频道（prepare-inspection / finalize-parsing）` |
+| `720337db` | `feat(tauri): G2b-4 prepare 两分支（author / reference）` |
+| `adb0e74e` | `feat(tauri): G2b-3 finalizeParsing 四态分类与准备检视` |
+| `ad7a77ea` | `fix(tauri): 导入弹窗重开或切换项目时复位会话状态` |
+| `a91d9f5c` | `chore(tauri): 对齐浏览器测试依赖并补浏览器测试配置` |
+| `c8c56ad9` | `feat(tauri): G3a 导入运行执行租约/批次推进/effect receipts 仓储层` |
+| 待生成 | `docs(tauri): 第四十次快照（批次 G3a 收口）` |
 
-- HEAD（写入本表时）：`9d12514d docs(tauri): 第三十六次快照与频道盘点更新（批次 G2a 收口）`
-- ⚠️ 上一份快照（2026-10-09）中**已过期的交接描述**（防照旧操作）：
-  1. 「未迁移 29（`db=19 mcp=9 dialog=1`）」「已注册命令 165」「`cargo test — 542/542`」→ 均已变为 **27 / 167 / 572**；
-  2. 「下一步 1：批次 G 从 G1 开始」→ **G1 已完成**，下一步是 G2；
-  3. 「G1 刻意偏离 4 项」→ 实际落地 **D1–D8 共 8 项**（新增 D7 排序、D8 大小写）；
-  4. 上一份快照的 §5 自检已冻结，**不得据其回填**本份数字。
+- HEAD（写入本表时）：`c8c56ad9 feat(tauri): G3a 导入运行执行租约/批次推进/effect receipts 仓储层`
+- ⚠️ 上一份快照（第三十九次）中**已过期的交接描述**（防照旧操作）：
+  1. 「`cargo test --lib` **607/607**」→ G3a 移植 36 例后实测为 **643/643**（未迁移频道数 **22** 不变，G3a 是纯仓储层）；
+  2. 「下一步 G3（执行租约 / 批次推进 / effect receipts 11 频道 + `db:import-global-facts-commit`）」→ **G3a 已完成**，下一步是 **G3b**（13 频道注册）；
+  3. 第三十九次快照的 §5 自检已冻结，**不得据其回填**本份数字。
 
 ### 2. 下一步（1-2-3）
 
-1. ~~GUI 冒烟（G1 验收剩余项）~~ ✅ **已完成**（第十轮，2026-10-10，3 项全部通过 —— 见「本次更新 §5」）。
-2. ~~批次 G2 开工清单~~ ✅ **已完成**（`8edd1b46`，含 G2a/G2b 细分）。~~G2a（读面 3 频道）~~ ✅ **已完成**（见第三十六次）。
-3. **批次 G2b（写面 2 频道 + 复活 `reference` 路径）**：按
-   [`docs-fork/plans/2026-10-10-g2-import-run-kickoff.md`](../plans/2026-10-10-g2-import-run-kickoff.md) §3.2 执行 ——
-   新建 `src/import/identity.rs`（无密钥版 `resolveEncodedSources`）+ `import_run_repository.rs` 续写
-   `begin_parsing` / `commit_parsed_source` / `fail_parsed_source` / `finalize_parsing` / `prepare` + 2 命令 +
-   2 前端登记 + 删除 `commands/import.rs` 的 `reference` 诚实错误早退。**开工前先读清单 §4 的 ~620 行**。
-4. **G3 / G4**：执行租约与批次推进 + effect receipts + `db:import-global-facts-commit`；
-   `kb:import-reference-text` 去占位 + 前端登记。
-5. **其它待办**：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项。
+1. **批次 G3b（13 频道注册）**：按
+   [`docs-fork/plans/2026-10-10-g3-import-run-kickoff.md`](../plans/2026-10-10-g3-import-run-kickoff.md) §4 执行 ——
+   `commands/db.rs` 新增 13 个 `#[tauri::command]` + 信封结构（读频道
+   `db:import-run-effect-receipt-get` 失败 reject，其余 `{ success: true, … }`；
+   写面错误按 MUTATING 规则带 `Error: ` 前缀，`mutating_error`）+ `lib.rs`
+   `invoke_handler` 注册 13 命令 + 前端 `ipc-client.ts` 门禁登记 + **D4**：
+   `completeBatch` 的 direct-stage 前置校验（`isImportRunDirectCheckpointStage`）
+   放在命令层（对齐基线 db-controller handler 前置断言）。
+2. **G4**：`kb:import-reference-text` 去占位 + 前端登记 + GUI 冒烟（未迁移 22 → 9 → 仅剩 mcp）。
+3. **其它待办**：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项、B24（整屏瞬黑，暂缓）。
 
 ### 3. 阻塞项与待授权项（**不得删除，须逐条确认后更新**）
 
@@ -139,13 +152,13 @@ SettingsModal / ClearProjectDataDialog）。GUI 已验：淡入 + 淡出 ✅。
 | B16 | `db/vector.rs` HNSW 墓碑测试偶发失败 | ✅ 已修（第三十四次） |
 | B17 | 批次 G schema | ✅ 已获批并落地 9 张表（`cca792cd`） |
 | **B18** | **`.epub` 导入依赖** | ⚠️ **新增（本次）**：需 `zip` 类 crate 解包，属 Ask first；G1 返回 D4 诚实错误，对话框仍列出 epub |
-| **B19** | **`reference`（参考语料）路径** | ⚠️ **新增（本次）**：依赖 G2 状态机；G1 返回诚实错误并登记为临时缺口 |
+| **B19** | **`reference`（参考语料）路径** | ✅ **已解除**（G2b-6 `1e0c1ce3`：`dialog:select-novel-files` 的 reference 分支复活，选择期即落地解析运行） |
 | **B20** | **D7 zh-CN 排序不等价** | ⚠️ **新增（本次）**：无 ICU 依赖，来源文件名排序用数字感知自然序近似；如需逐字对齐须 Ask first 引 ICU |
 | **B21** | **G1 GUI 冒烟** | ✅ **已解除（本次）**：第十轮冒烟 3 项全部通过（作者原稿预览 / reference 诚实错误 / epub 诚实错误），dev 日志无 error/panic |
 | **B22** | **两段式关窗的未保存内容确认未验证** | ⚠️ **新增（本次）**：`window:close` 现在会拦截并广播 `window:close-requested`，渲染层无 dirty 时直接 `proceed`；**dirty 分支（确认框 + cancel / 再次关窗）尚未实测**，需构造未保存内容后再验 |
 | **B23** | **手写弹层无退出动画** | ✅ **已解除（本次）**：`SettingsModal` 已改为延迟卸载 + 统一进出场（`.lk-dialog-backdrop` / `.lk-dialog-panel`），第十三轮实测有淡出 |
 | **B24** | **窗口最小/最大化后整屏瞬黑（闪烁）** | ⚠️ **新增（本次）·用户决定暂缓到专门批次**。现象：最小/最大化后鼠标在窗口内移动时**整屏瞬黑**（偶发）；**浏览器打开同一页面拖动不闪** → 壳层问题。已排查且排除：透明/effect 配置、常驻 `backdrop-filter`、resize 重渲染风暴、`backgroundColor` 缺失、`shadow:false`（实测无效已回滚）；事件日志无 TDR/dxgkrnl/DWM 错误。机器：AMD Radeon(2021‑11‑30 驱动) + RTX 3060 Laptop 混合显卡、单屏 2560×1440@**165Hz**、**FreeSync/VRR 开启**。候选方案：M3 给 `lorekeeper.exe` 指定单一 GPU ／ M4 临时 60Hz ／ A2 WebView2 `--disable-direct-composition` ／ M1 关 MPO（注册表，需审批+重启）／ M2 更新 AMD 驱动 |
-| **B25** | **`ClearProjectDataDialog` 未纳入统一动画** | ⚠️ **新增（本次）**：该弹窗是手写全屏弹层且**当前无任何进出场动画**（关闭是硬切）；纳入统一需把它 3 处 `onClose()` 包成 `requestClose` 并加延迟卸载（同 `SettingsModal` 做法，约 15 行） |
+| **B25** | **`ClearProjectDataDialog` 未纳入统一动画** | ✅ **已解除**（`b4530e50`：手写全屏弹层纳入统一进出场，GUI 已验淡入淡出） |
 
 ### 4. 红线提醒（每次接手都要过一遍）
 
@@ -169,13 +182,13 @@ SettingsModal / ClearProjectDataDialog）。GUI 已验：淡入 + 淡出 ✅。
 | 命令 | 工作目录 | 实测输出 |
 |---|---|---|
 | `node scripts/verify-channel-coverage.mjs --quiet` | `tauri-app/` | 契约 invoke 频道 **193**（事件频道 4）· 已注册命令 **172** → 覆盖 **171** · 未迁移 **22** `[db=13 mcp=9]` · 命令名与契约频道一一对应 ✅ |
-| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 607 passed; 0 failed; 0 ignored; 0 measured` |
+| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 643 passed; 0 failed; 0 ignored; 0 measured` |
 | `cargo check --all-targets` | `tauri-app/src-tauri/` | `Finished dev profile ... `（**0 告警**） |
 | `cargo fmt --check` | `tauri-app/src-tauri/` | 输出 **0 行**（干净） |
 | `pnpm typecheck` / `pnpm run lint` | `tauri-app/` | exit 0 / exit 0 |
 | `npx vitest run test/channel-migration-coverage.test.ts test/ipc-arg-struct-contract.test.ts` | `tauri-app/` | `Test Files 2 passed`，`Tests 7 passed` |
-| `git status --porcelain` | 仓库根 | **空**（G1 三提交 + G2 开工清单 + G2a 两提交均已推送 `origin/master`；本轮冒烟只改文档） |
-| `git log -1` | 仓库根 | `9d12514d docs(tauri): 第三十六次快照与频道盘点更新（批次 G2a 收口）` |
+| `git status --porcelain` | 仓库根 | 仅 1 份未跟踪文档 `docs-fork/research/2026-10-10-b24-black-flash-investigation.md`（B24 暂缓中的排查记录）；跟踪文件干净 |
+| `git log -1` | 仓库根 | `c8c56ad9 feat(tauri): G3a 导入运行执行租约/批次推进/effect receipts 仓储层` |
 | `pnpm tauri dev`（第十轮冒烟，G1） | `tauri-app/` | VITE `ready in 441 ms` · cargo `Finished dev profile in 47.50s` · `lorekeeper.exe` **90 MB** · 3 项人工验证全部 ✅ |
 | `pnpm tauri dev`（第十一轮冒烟，G2a） | `tauri-app/` | VITE `ready in 812 ms` · cargo `Finished dev profile in 42.46s` · `lorekeeper.exe` **45 MB** · 4 项人工验证全部 ✅（唯一 console.error 为预期的 G2b 频道未迁移） |
 | `pnpm tauri dev`（第十二轮冒烟，ESC/窗口修复） | `tauri-app/` | VITE `ready` · cargo 增量重建 · `lorekeeper.exe` **32 MB** · 4 项人工验证全部 ✅（窗口最小/最大化、标题栏拖拽、设置弹窗 ESC、关闭按钮） |
