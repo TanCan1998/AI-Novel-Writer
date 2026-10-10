@@ -31,16 +31,12 @@
   <img src="docs/assets/readme/hero-en-v2.png" alt="AI Novel Writer — a local-first desktop workspace for long-form fiction" width="100%" />
 </p>
 
-> ## v1.1.0
+> ## 1.2.0-Preview
 >
-> - **Source-grounded continuity material** — Author-provided character information, model-derived progress, and legacy data with unknown provenance are no longer presented as the same kind of fact; later writing prefers finalized source prose with an identifiable origin.
-> - **Layered chapter materials** — The current task, future plans, finalized history, and candidate drafts are shown separately, with adjacent source paragraphs retained when they carry causality, negation, or item transfers across sentences.
-> - **Reliable candidate context** — Review-draft batches continue from the exact saved draft versions and prose in the current run and label them as unfinalized.
-> - **Goal-by-goal review** — Each chapter event shows whether it is completed, unmet, or needs verification, alongside source excerpts, so preparation or a promise is not automatically treated as completion.
-> - **Author-controlled goal revision** — Unverified items are not passed checks, and unmet or unverified chapter goals enter revision only when the author explicitly includes them, reducing rework caused by model misjudgments.
-> - **Update, export, and notification fixes** — Update checks no longer repeat during a download, split Markdown exports use independent directories, and workflow-completion notifications keep the full title.
->
-> These changes reduce the risk that a mistaken summary or outdated state affects later chapters, but they do not replace author review or guarantee drift-free prose or perfect target-length compliance.
+> - Generate outlines and blueprints in batches, resume interrupted generation, and set a target length for each chapter.
+> - Continue the next chapter with the full previous chapter, or expand a short draft with the full current chapter.
+> - Manage more characters and relationships. For a new character, create a record, link an existing character, or defer the decision.
+> - Import older projects and restore backups as new copies while keeping the originals. Back up complete project archives.
 
 ### Features retained from 1.0.0
 
@@ -51,7 +47,7 @@
 - The Chinese long-form workflow connects blueprints, drafts, reviews, revisions, and final chapters.
 - Windows and macOS users can view and start the update intended for their computer.
 
-The 1.0.0 fixes for multi-draft saves, stale requests, source recovery, exports, and installation checks remain included; see the [bilingual 1.1.0 notes](.release/notes/v1.1.0.md) for each change. Official installers are published through [GitHub Releases](https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest).
+The 1.0.0 fixes for multi-draft saves, stale requests, source recovery, exports, and installation checks remain included. For this update, see the [1.2.0-Preview release notes](https://github.com/EthanYoQ/AI-Novel-Writer/releases/tag/v1.2.0-Preview). Official installers are published through [GitHub Releases](https://github.com/EthanYoQ/AI-Novel-Writer/releases/latest).
 
 > ## v0.9.0 feature baseline (historical release)
 >
