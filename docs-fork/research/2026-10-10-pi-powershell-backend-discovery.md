@@ -78,3 +78,27 @@ node -e "console.log(require('fs').existsSync(process.argv[1]))" $pkg    # true
 where.exe pwsh.exe                                                       # 第一行 = WindowsApps 别名
 $PSVersionTable.PSVersion                                                # 在 pi 的 powershell 工具里 = 5.1
 ```
+
+## 实测补充（2026-10-10）：本机 winget 会装回 MSIX，MSI 只能手工装
+
+- `winget install --id Microsoft.PowerShell -e --source winget --silent` → **exit 0，但装回的仍是 MSIX**：
+  `Get-AppxPackage` 又变回 present，`InstallLocation = C:\Program Files\WindowsApps\Microsoft.PowerShell_7.6.6.0_x64__8wekyb3d8bbwe`；
+  而 `C:\Program Files\PowerShell` 无目录、`%LOCALAPPDATA%\Programs\PowerShell` 不存在、WinGet Packages 无落点。
+- 先 `Remove-AppxPackage`（成功，`appx_after=gone`）再 `winget install` → **回到原状态**（无损害、也无进展）。
+- 结论：本机要让 pi 用上 pwsh 7，**只能走「用户 PATH 前置包目录」**（上文 workaround 1），
+  或手工下载 MSI + `msiexec /i`（需 UAC；`curl` 下载在本机失败且报错被环境的输出抑制吞掉，未能诊断）。
+- 干跑验证（仅改 `$env:PATH`、不碰注册表）：`where pwsh.exe` 第一行变为包内真实 `pwsh.exe`，
+  `existsSync(first) = true` ⇒ pi 的 `getPowerShellConfig()` **会返回 pwsh 7**。
+- ⚠️ 若真的写 PATH：必须保持 `REG_EXPAND_SZ`（否则会破坏 PATH 中 `%VAR%` 的展开）；
+  且目录名带版本号，**PS7 每次升级都会失效**。
+
+## 成本收益结论（为什么最终没做）
+
+| 方案 | 字节 / 行（同一条出错命令） |
+|---|---|
+| PS 5.1 + 裸写 `2>&1` | 293 B / 8 行 |
+| PS 5.1 + `2>&1 \| ForEach-Object { "$_" }` | **38 B / 2 行** |
+| pwsh 7 + `2>&1` | ~49 B / 1 行 |
+
+**改写法（38 B）严格优于换后端（~49 B）** ⇒ 为 token 而切 pwsh 7 不成立；
+切它的价值仅在「pwsh 7 不再把 stderr 包成 ErrorRecord，内容型过滤才真正可用」。
