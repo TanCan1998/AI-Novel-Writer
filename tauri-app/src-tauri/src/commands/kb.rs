@@ -10,7 +10,7 @@
 //! | `kb:import-folder` | [`kb_import_folder`] | 授权目录递归导入 |
 //! | `kb:import-text` | [`kb_import_text`] | 文本导入（可选向量） |
 //! | `kb:import-planning-text` | [`kb_import_planning_text`] | 文本导入（强制 FTS-only） |
-//! | `kb:import-reference-text` | [`kb_import_reference_text`] | **诚实化占位**（依赖批次 G） |
+//! | `kb:import-reference-text` | [`kb_import_reference_text`] | 参照章节导入（导入运行授权 + 幂等，批次 G4） |
 //! | `kb:search` | [`kb_search`] | 有向量配置走向量短路，否则文本支路 |
 //! | `kb:search-writing-context` | [`kb_search_writing_context`] | 上述 + 排除 `reference` |
 //! | `kb:search-with-scope` | [`kb_search_with_scope`] | 上述 + 章节范围 |
@@ -30,7 +30,8 @@
 //!    降级分支 `score` 由恒定 0.5 改为**真实词命中度**（用户 2026-10-09 决定）；
 //! 2. 嵌入空间距离度量统一为 **cosine**（`LocalVectorIndex` 用 `DistCosine`），
 //!    基线 LanceDB 侧为 `l2`；
-//! 3. `kb:import-reference-text` 依赖批次 G 的导入运行权威校验，**先注册但返回显式失败**；
+//! 3. `kb:import-reference-text` 的完整性判定剔除基线 `embeddingGenerations`
+//!    检查（向量由文件型 `LocalVectorIndex` 持有、不入 SQLite，见批次 G4 偏离 D-G4-1）；
 //! 4. 基线的 `vectors.json` 旧数据迁移（`LEGACY_VECTOR_MIGRATION_BLOCKED`）在双栈隔离后
 //!    不存在 `.vela` 项目目录互通，故本层不做迁移 barrier。
 
@@ -65,7 +66,8 @@ const DIALOG_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
 
 // ==================== 返回类型 ====================
 
-/// `kb:import-*` 返回（对齐契约 `{ success, docId?, chunkCount?, error?, errorCode? }`）
+/// `kb:import-*` 返回（对齐契约
+/// `{ success, docId?, chunkCount?, idempotent?, error?, errorCode? }`）
 #[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct KbImportResult {
@@ -74,6 +76,10 @@ pub struct KbImportResult {
     pub doc_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chunk_count: Option<i64>,
+    /// 幂等短路标记（仅参照导入使用；对齐契约 `idempotent?`，
+    /// 其余频道恒为 `None` 不序列化）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub idempotent: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -86,6 +92,7 @@ impl KbImportResult {
             success: true,
             doc_id: Some(doc_id),
             chunk_count: Some(chunk_count),
+            idempotent: None,
             error: None,
             error_code: None,
         }
@@ -96,6 +103,7 @@ impl KbImportResult {
             success: false,
             doc_id: None,
             chunk_count: None,
+            idempotent: None,
             error: Some(message.into()),
             error_code: None,
         }
@@ -106,6 +114,7 @@ impl KbImportResult {
             success: false,
             doc_id: None,
             chunk_count: None,
+            idempotent: None,
             error: Some(message.into()),
             error_code: Some(code.to_string()),
         }
@@ -979,19 +988,353 @@ pub async fn kb_import_folder(
     })
 }
 
-/// `kb:import-reference-text` —— **诚实化占位**（依赖批次 G 的导入运行权威校验）
+// ==================== 参照章节导入（批次 G4） ====================
+
+/// 参照导入展示名的字符预算（对齐基线
+/// `MAX_REFERENCE_IMPORT_DISPLAY_CHARACTERS`）。
+const MAX_REFERENCE_IMPORT_DISPLAY_CHARACTERS: usize = 160;
+
+/// 控制字符判定（对齐基线 `isControlCharacter`：C0 与 C1 控制字符）。
+fn is_control_character(character: char) -> bool {
+    let code = character as u32;
+    code <= 0x1f || (0x7f..=0x9f).contains(&code)
+}
+
+/// 参照章节展示名（对齐基线 `referenceImportDisplayName`：
+/// `第N章 <title>.txt` 的真实拼接，总长受 160 字符预算约束，
+/// 标题按字符截断；控制字符剔除后为空时用「无标题」）。
+///
+/// 章号必须为安全整数且 ≥ 1，否则返回 `Err`（基线抛错 →
+/// invoke 拒绝）。
+fn reference_import_display_name(chapter_number: i64, title: &str) -> Result<String, String> {
+    if chapter_number < 1 || chapter_number > 9_007_199_254_740_991 {
+        return Err("参照章节展示名的章号无效".to_string());
+    }
+    let prefix = format!("第{chapter_number}章 ");
+    let suffix = ".txt";
+    let title_budget = MAX_REFERENCE_IMPORT_DISPLAY_CHARACTERS
+        .saturating_sub(prefix.chars().count())
+        .saturating_sub(suffix.chars().count());
+    let filtered: String = title
+        .chars()
+        .filter(|character| !is_control_character(*character))
+        .collect();
+    let safe_title = filtered.trim();
+    let safe_title = if safe_title.is_empty() {
+        "无标题"
+    } else {
+        safe_title
+    };
+    let bounded_title: String = safe_title.chars().take(title_budget).collect();
+    Ok(format!("{prefix}{bounded_title}{suffix}"))
+}
+
+/// 参照导入幂等键校验（对齐基线 `importReferenceText`：去空白后
+/// 非空、长度 ≤ 512、匹配 `/^[\w:.-]+$/u`）。
+fn validate_reference_stable_key(stable_key: &str) -> Result<String, String> {
+    let trimmed = stable_key.trim();
+    let valid = !trimmed.is_empty()
+        && trimmed.len() <= 512
+        && trimmed.chars().all(|character| {
+            character.is_ascii_alphanumeric()
+                || character == '_'
+                || character == ':'
+                || character == '.'
+                || character == '-'
+        });
+    if valid {
+        Ok(trimmed.to_string())
+    } else {
+        Err("参照导入幂等键无效".to_string())
+    }
+}
+
+/// 参照文档清理（对齐基线 `removeDocFromStore`）：数据库侧删除
+/// （[`store::remove_document_stable_id`]）+ 物理向量索引清理
+/// （尽力而为；DB 侧先行，向量登记随块 id 一并清除）。
+///
+/// 返回 `Ok(false)` 表示 DB 侧清理后仍有残留（对齐基线
+/// 「无法安全清理」的失败形状）。
+async fn remove_reference_document(
+    state: &AppState,
+    project_root: &str,
+    doc_id: &str,
+) -> Result<bool, String> {
+    let (ids, spaces) = state.with_project_db(|conn| {
+        let ids = store::document_chunk_ids(conn, doc_id)?;
+        let spaces = hybrid::list_spaces(conn).map_err(|error| error.to_string())?;
+        Ok((ids, spaces))
+    })?;
+    let clean = state.with_project_db(|conn| store::remove_document_stable_id(conn, doc_id))?;
+    for space in spaces {
+        purge_vectors(state, project_root, space.generation, space.dimension, &ids).await;
+    }
+    Ok(clean)
+}
+
+/// `kb:import-reference-text` 核心编排（`#[tauri::command]` 外壳之下，
+/// 便于单元测试直接驱动）。
+///
+/// 平移自基线 `kb-controller.ts` 的 `kb:import-reference-text` +
+/// `knowledge-base.ts` 的 `importReferenceText` /
+/// `performReferenceTextImport`：解析导入运行冻结章节绑定 →
+/// 幂等短路（同绑定直接标记 `committed`）→ 残缺清理 →
+/// stable-id 重写（FTS 恒写，向量可选）→ 完整性复核 →
+/// 标记 `committed` → 登记知识库投影收据。
+async fn reference_import_inner(
+    state: &AppState,
+    chapter_number: i64,
+    run_id: &str,
+    execution_authority: Value,
+    project_session: Option<&ProjectSessionContext>,
+) -> Result<KbImportResult, String> {
+    // 基线经 `getCurrentProjectPath()` 取当前项目根（本频道契约无
+    // `expectedProjectPath` 参数），未打开项目即拒绝。
+    let project_root = state
+        .current_project_path()
+        .ok_or_else(|| "项目数据库未打开".to_string())?;
+    guard_read(state, &project_root, project_session)?;
+    if let Err(message) = preflight_or_error(&project_root) {
+        return Ok(KbImportResult::failure_code(
+            message,
+            "PROJECT_STORAGE_PATH_UNSUPPORTED",
+        ));
+    }
+    let authority: crate::repositories::import_run_repository::ImportRunExecutionAuthority =
+        serde_json::from_value(execution_authority)
+            .map_err(|error| format!("导入执行授权无效：{error}"))?;
+    // 授权解析失败 → 拒绝写入（基线：controller 层 throw → invoke 拒绝）。
+    let binding = state.with_project_db(|conn| {
+        crate::repositories::import_run_repository::resolve_reference_import_authority(
+            conn,
+            run_id,
+            &authority,
+            chapter_number,
+            crate::commands::epoch_millis_now() as i64,
+        )
+    })?;
+    let display_name = reference_import_display_name(chapter_number, &binding.title)?;
+    let stable_key = match validate_reference_stable_key(&binding.stable_key) {
+        Ok(key) => key,
+        Err(_) => return Ok(KbImportResult::failure("参照导入幂等键无效")),
+    };
+    let document_id = crate::import::parsing::sha256_hex(&format!("reference-import:{stable_key}"));
+    if binding.content.trim().is_empty() {
+        return Ok(KbImportResult::failure("文本内容为空"));
+    }
+
+    // 分块 + 三组哈希（内容 / 块集 / 幂等键）
+    let setup = embedding_setup();
+    let (chunk_size, chunk_overlap) = match setup.as_ref() {
+        Some(setup) => (setup.chunk_size, setup.chunk_overlap),
+        None => (500, 50),
+    };
+    let text_chunks = chunks::chunk_text(&binding.content, chunk_size, chunk_overlap);
+    let content_hash = crate::import::parsing::sha256_hex(&binding.content);
+    let chunk_set_hash = store::hash_canonical_chunk_set(&text_chunks);
+    let key_hash = crate::import::parsing::sha256_hex(&stable_key);
+    let expected_chunk_count = text_chunks.len() as i64;
+
+    // 幂等收据：任一业务列不符 → 拒绝；缺失 → 补写 `prepared`
+    let receipt = state
+        .with_project_db(|conn| store::read_reference_document(conn, &document_id, &key_hash))?;
+    if let Some(receipt) = receipt {
+        if receipt.document_id != document_id
+            || receipt.idempotency_key_hash != key_hash
+            || receipt.content_hash != content_hash
+            || receipt.chunk_set_hash != chunk_set_hash
+            || receipt.expected_chunk_count != expected_chunk_count
+            || receipt.corpus_kind != "reference"
+        {
+            return Ok(KbImportResult::failure("参照导入幂等键已绑定不同内容"));
+        }
+    } else {
+        state.with_project_db(|conn| {
+            store::upsert_reference_document(
+                conn,
+                &store::ReferenceDocumentReceipt {
+                    document_id: document_id.clone(),
+                    idempotency_key_hash: key_hash.clone(),
+                    content_hash: content_hash.clone(),
+                    chunk_set_hash: chunk_set_hash.clone(),
+                    expected_chunk_count,
+                    corpus_kind: "reference".to_string(),
+                    state: "prepared".to_string(),
+                },
+            )
+        })?;
+    }
+
+    // 完整性复核：完整且与期望一致 → 幂等短路（直接标记 committed）
+    let integrity = state.with_project_db(|conn| store::document_integrity(conn, &document_id))?;
+    if let Some(integrity) = integrity {
+        let consistent = integrity.complete
+            && integrity.corpus_kind == "reference"
+            && integrity.chunk_count == expected_chunk_count
+            && integrity.chunk_set_hash == chunk_set_hash;
+        if consistent && content_hash == binding.content_fingerprint {
+            state.with_project_db(|conn| {
+                store::mark_reference_document_state(conn, &document_id, "committed")
+            })?;
+            return Ok(KbImportResult {
+                success: true,
+                doc_id: Some(document_id),
+                chunk_count: Some(expected_chunk_count),
+                idempotent: Some(true),
+                error: None,
+                error_code: None,
+            });
+        }
+        // 残缺：先清理，清理失败则拒绝继续写入
+        if !remove_reference_document(state, &project_root, &document_id).await? {
+            return Ok(KbImportResult::failure("残缺参照文档无法安全清理"));
+        }
+    }
+
+    state.with_project_db(|conn| {
+        store::mark_reference_document_state(conn, &document_id, "prepared")
+    })?;
+
+    // 可选向量：失败降级 FTS-only；响应校验错误中止（对齐基线与
+    // `import_text_core` 的做法）
+    let mut generated: Option<Vec<Vec<f32>>> = None;
+    if let Some(setup) = setup.as_ref().filter(|setup| usable(setup)) {
+        match embed_texts(setup, &text_chunks).await {
+            Ok(vectors) => generated = Some(vectors),
+            Err(embedding::EmbeddingError::InvalidResponse { .. }) => {
+                return Ok(KbImportResult::failure("Embedding 响应无效，导入已中止"));
+            }
+            Err(_) => {
+                // 网络/其他错误：降级 FTS-only，不影响导入
+            }
+        }
+    }
+
+    // 写库：空间计划 + stable-id 重写（存在才删、复用 `insert_document`）
+    let (chunk_ids, plan) = {
+        let setup_fp = setup.as_ref().map(|setup| setup.fingerprint.clone());
+        let generated_dim = generated.as_ref().map(|vectors| {
+            vectors
+                .first()
+                .map(|vector| vector.len() as i64)
+                .unwrap_or(0)
+        });
+        state.with_project_db(|conn| {
+            let mut plan: Option<(i64, i64)> = None;
+            if let (Some(vectors), Some(fingerprint), Some(dimension)) =
+                (generated.as_ref(), setup_fp.as_ref(), generated_dim)
+            {
+                if !vectors.is_empty() {
+                    match plan_vector_space(conn, fingerprint, dimension)? {
+                        SpacePlan::Use {
+                            generation,
+                            dimension,
+                        } => plan = Some((generation, dimension)),
+                        SpacePlan::ReindexRequired { current } => {
+                            return Err(format!(
+                                "reindex_required: 嵌入空间与{current}不兼容；请先执行显式向量回填/重建，旧代际未被修改"
+                            ));
+                        }
+                    }
+                }
+            }
+            let meta = store::DocumentMeta {
+                file_path: "",
+                chapter_number: Some(chapter_number),
+                chapter_title: Some(binding.title.as_str()),
+                corpus_kind: "reference",
+            };
+            let ids = store::replace_document(
+                conn,
+                &document_id,
+                &display_name,
+                &text_chunks,
+                &meta,
+            )?;
+            Ok((ids, plan))
+        })?
+    };
+
+    // 向量落盘 + 代际激活
+    if let (Some(vectors), Some((generation, dimension))) = (generated.as_ref(), plan) {
+        if !chunk_ids.is_empty() {
+            write_vectors(
+                state,
+                &project_root,
+                generation,
+                dimension,
+                &chunk_ids,
+                vectors,
+            )
+            .await?;
+            state.with_project_db(|conn| {
+                hybrid::activate_generation(conn, generation).map_err(|error| error.to_string())
+            })?;
+        }
+    }
+
+    // 复核：完整性必须与期望一致，否则清理并失败
+    let committed_integrity =
+        state.with_project_db(|conn| store::document_integrity(conn, &document_id))?;
+    let committed_ok = committed_integrity
+        .as_ref()
+        .map(|integrity| {
+            integrity.complete
+                && integrity.corpus_kind == "reference"
+                && integrity.chunk_count == expected_chunk_count
+                && integrity.chunk_set_hash == chunk_set_hash
+        })
+        .unwrap_or(false);
+    if !committed_ok {
+        remove_reference_document(state, &project_root, &document_id).await?;
+        return Ok(KbImportResult::failure("参照文档完整性校验失败"));
+    }
+
+    state.with_project_db(|conn| {
+        store::mark_reference_document_state(conn, &document_id, "committed")
+    })?;
+
+    // 收据提交：失败即清理（「receipt 未提交即不留效果」取向）
+    if let Err(error) = state.with_project_db(|conn| {
+        crate::repositories::import_run_repository::commit_reference_import_receipt(
+            conn,
+            run_id,
+            &authority,
+            chapter_number,
+            &document_id,
+        )
+    }) {
+        remove_reference_document(state, &project_root, &document_id).await?;
+        return Ok(KbImportResult::failure(error));
+    }
+
+    Ok(KbImportResult {
+        success: true,
+        doc_id: Some(document_id),
+        chunk_count: Some(expected_chunk_count),
+        idempotent: Some(false),
+        error: None,
+        error_code: None,
+    })
+}
+
+/// `kb:import-reference-text`：导入运行授权下的参照章节文本导入。
 #[tauri::command]
 pub async fn kb_import_reference_text(
     state: State<'_, AppState>,
-    _chapter_number: i64,
-    _run_id: String,
-    _execution_authority: Value,
-    _project_session: Option<ProjectSessionContext>,
+    chapter_number: i64,
+    run_id: String,
+    execution_authority: Value,
+    project_session: Option<ProjectSessionContext>,
 ) -> Result<KbImportResult, String> {
-    let _ = state;
-    Ok(KbImportResult::failure(
-        "参照知识导入尚未迁移（依赖批次 G 的导入运行权威校验），当前未写入任何内容。",
-    ))
+    reference_import_inner(
+        state.inner(),
+        chapter_number,
+        &run_id,
+        execution_authority,
+        project_session.as_ref(),
+    )
+    .await
 }
 
 // ==================== 命令：检索 ====================
@@ -1572,5 +1915,208 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reference_import_display_name_budget_test() {
+        // 短标题：原样拼接
+        assert_eq!(
+            reference_import_display_name(1, "风起").unwrap(),
+            "第1章 风起.txt"
+        );
+        // 标题为空（或仅空白）→ 无标题
+        assert_eq!(
+            reference_import_display_name(3, "  ").unwrap(),
+            "第3章 无标题.txt"
+        );
+        // 控制字符剔除后再拼接
+        assert_eq!(
+            reference_import_display_name(2, "云\u{0}涌\u{7f}").unwrap(),
+            "第2章 云涌.txt"
+        );
+        // 160 字符预算：标题按字符截断，总长恰好 160
+        let long_title: String = "字".repeat(200);
+        let display = reference_import_display_name(12, &long_title).unwrap();
+        assert_eq!(
+            display.chars().count(),
+            MAX_REFERENCE_IMPORT_DISPLAY_CHARACTERS
+        );
+        let prefix = "第12章 ";
+        assert!(display.starts_with(prefix));
+        assert!(display.ends_with(".txt"));
+        let title_budget = MAX_REFERENCE_IMPORT_DISPLAY_CHARACTERS
+            - prefix.chars().count()
+            - ".txt".chars().count();
+        let title_part: String = display
+            .chars()
+            .skip(prefix.chars().count())
+            .take(title_budget)
+            .collect();
+        assert_eq!(title_part.chars().count(), title_budget);
+        assert!(title_part.chars().all(|character| character == '字'));
+        // 章号无效（< 1 或非安全整数）→ 拒绝
+        assert!(reference_import_display_name(0, "甲").is_err());
+        assert!(reference_import_display_name(9_007_199_254_740_992, "甲").is_err());
+    }
+
+    #[test]
+    fn reference_import_stable_key_validation_test() {
+        assert_eq!(
+            validate_reference_stable_key("  reference:abc  ").unwrap(),
+            "reference:abc"
+        );
+        assert_eq!(
+            validate_reference_stable_key(&format!("k:{}", "x".repeat(510)))
+                .unwrap()
+                .len(),
+            512
+        );
+        // 空 / 纯空白 / 超长 / 含非法字符 → 拒绝
+        assert!(validate_reference_stable_key("").is_err());
+        assert!(validate_reference_stable_key("   ").is_err());
+        assert!(validate_reference_stable_key(&"k".repeat(513)).is_err());
+        assert!(validate_reference_stable_key("a/b").is_err());
+        assert!(validate_reference_stable_key("a b").is_err());
+        assert!(validate_reference_stable_key("a\u{4e2d}").is_err());
+    }
+
+    /// 建一个带真实项目库与活跃会话的测试状态（对齐
+    /// `commands::db` 测试的 `activated_state`）。
+    fn activated_state(name: &str) -> (AppState, String, ProjectSessionContext) {
+        let root = std::env::temp_dir().join(format!(
+            "anw-kb-cmd-{name}-{}",
+            crate::project_access::random_uuid_v4()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        let root_text = root.to_string_lossy().to_string();
+
+        let state = AppState::new();
+        let lease = crate::state::ActiveProject {
+            project_id: crate::project_access::random_uuid_v4(),
+            lease_id: crate::project_access::random_uuid_v4(),
+            root_path: root_text.clone(),
+        };
+        let session = ProjectSessionContext {
+            project_id: lease.project_id.clone(),
+            lease_id: lease.lease_id.clone(),
+            project_path: lease.root_path.clone(),
+        };
+        state.activate_project(lease).unwrap();
+        (state, root_text, session)
+    }
+
+    #[tokio::test]
+    async fn reference_import_idempotent_replay_test() {
+        let (state, root, session) = activated_state("kb-ref-replay");
+        let content = "参照章节正文：春江潮水连海平，海上明月共潮生。";
+        let content_hash = crate::import::parsing::sha256_hex(content);
+        let run_id = "kb-ref-replay-run";
+        let owner = "renderer-a".to_string();
+        let epoch = 7i64;
+        let now = crate::commands::epoch_millis_now() as i64;
+        state
+            .with_project_db(|conn| {
+                conn.execute(
+                    "INSERT INTO import_runs (
+                        id, purpose, root_run_id, effect_namespace,
+                        source_fingerprint, manifest_fingerprint, locale,
+                        stage, status, total_chapters, manifest_chapter_count,
+                        execution_owner, execution_epoch, lease_expires_at
+                     ) VALUES (
+                        ?1, 'reference', ?2, 'reference', ?3, ?4,
+                        'zh-CN', 'knowledge', 'running', 1, 1,
+                        ?5, ?6, ?7
+                     )",
+                    rusqlite::params![
+                        run_id,
+                        run_id,
+                        format!("src-{run_id}"),
+                        format!("manifest-{run_id}"),
+                        owner,
+                        epoch,
+                        now + 60_000,
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+                conn.execute(
+                    "INSERT INTO import_run_chapters (
+                        run_id, chapter_number, source_id, source_chapter_number,
+                        title, content_fingerprint, content_size, content_snapshot
+                     ) VALUES (?1, 1, 'src-1', 1, '风起', ?2, ?3, ?4)",
+                    rusqlite::params![run_id, content_hash, content.len() as i64, content,],
+                )
+                .map_err(|error| error.to_string())?;
+                Ok(())
+            })
+            .unwrap();
+        let authority = json!({ "owner": owner, "epoch": epoch });
+
+        // 首次导入：非幂等写入
+        let first = reference_import_inner(&state, 1, run_id, authority.clone(), Some(&session))
+            .await
+            .expect("首次导入应成功");
+        assert!(first.success);
+        assert_eq!(first.idempotent, Some(false));
+        assert_eq!(first.error, None);
+        let doc_id = first.doc_id.clone().expect("应返回 docId");
+        let chunk_count = first.chunk_count.expect("应返回 chunkCount");
+        assert!(chunk_count >= 1);
+
+        // 幂等重放：同绑定二次调用 → idempotent == true
+        let second = reference_import_inner(&state, 1, run_id, authority.clone(), Some(&session))
+            .await
+            .expect("幂等重放应成功");
+        assert!(second.success);
+        assert_eq!(second.idempotent, Some(true));
+        assert_eq!(second.doc_id.as_deref(), Some(doc_id.as_str()));
+        assert_eq!(second.chunk_count, Some(chunk_count));
+
+        // 无重复块：kb_chunks / kb_fts 行数均等于块数
+        let (chunk_rows, fts_rows, receipt_state) = state
+            .with_project_db(|conn| {
+                let chunk_rows: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM kb_chunks WHERE doc_id = ?1",
+                        [&doc_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(|error| error.to_string())?;
+                let fts_rows: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM kb_fts WHERE doc_id = ?1",
+                        [&doc_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(|error| error.to_string())?;
+                let receipt_state: String = conn
+                    .query_row(
+                        "SELECT state FROM import_reference_documents WHERE document_id = ?1",
+                        [&doc_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok((chunk_rows, fts_rows, receipt_state))
+            })
+            .unwrap();
+        assert_eq!(chunk_rows, chunk_count);
+        assert_eq!(fts_rows, chunk_count);
+        assert_eq!(receipt_state, "committed");
+
+        // 知识库投影收据已登记
+        let receipt_rows: i64 = state
+            .with_project_db(|conn| {
+                conn.query_row(
+                    "SELECT COUNT(*) FROM import_run_knowledge_receipts
+                     WHERE run_id = ?1 AND chapter_number = 1",
+                    [run_id],
+                    |row| row.get(0),
+                )
+                .map_err(|error| error.to_string())
+            })
+            .unwrap();
+        assert_eq!(receipt_rows, 1);
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
