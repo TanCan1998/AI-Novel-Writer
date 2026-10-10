@@ -30,9 +30,9 @@
 | `pnpm typecheck` / `lint` | exit 0 / exit 0 ✅ |
 | 定向 `vitest` | **7/7**（2 文件：契约覆盖 / 入参结构体契约）✅ |
 | 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅** / **批次 G2a ✅（本次）** / **批次 G2b ✅（1–6 步全部完成）** / **批次 G3a ✅** / **批次 G3b ✅（本次）** |
-| 当前阶段 | **批次 G3b 频道注册完成**（导入运行状态机 13 频道全部落地：执行租约 5 / 批次推进 4 / effect receipts 3 / 全局事实提交 1；未迁移 **22 → 9**，仅剩 mcp 9）。下一步 **G4**（`kb:import-reference-text` 去占位 + 前端登记 + GUI 冒烟）→ 之后仅剩 H4（mcp 9，暂缓）。其它待办：B13（导航防护）、B14（真 Windows 自更新）、上游合并专项、B24（整屏瞬黑，暂缓） |
+| 当前阶段 | **批次 G4 代码已收口**（`kb:import-reference-text` 去占位 + 前端登记，提交 `94a1fe6a` + `5c4fd26e`；未迁移仍为 **9**，仅剩 mcp 9）——G3b 遗留的 13 频道状态机（执行租约 5 / 批次推进 4 / effect receipts 3 / 全局事实提交 1）亦已落地。**⚠️ G4 的 GUI 冒烟（导入参照章节链路）待做**（用户决定稍后）→ 之后仅剩 H4（mcp 9，暂缓）。其它待办：B13（导航防护）、B14（真 Windows 自更新）、上游合并专项、B24（整屏瞬黑，暂缓） |
 | 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、`tauri-plugin-opener 2.7.0`、`windows-sys 0.61`（`[target.'cfg(windows)'.dependencies]`，仅 lock 提级，**0 新下载**；Ask first 已批准 2026-10-10）。**G2a 零新依赖**，**G3a 零新依赖**（仓储层平移，无 Cargo.toml 改动），**G3b 零新依赖**（命令层平移，无 Cargo.toml 改动）。向量层 `hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio`；FTS5 由 `libsqlite3-sys` bundled 提供 |
-| GUI 冒烟 | ✅ 自 2026-10-07 起 **十三轮**。**第十三轮（2026-10-10，弹窗动画统一）**：设置弹窗明显变快（修复前实为“静置 400ms + 播 220ms”）、四类弹窗进出场一致、Radix 弹窗仍居中且尺寸正常 ✅。**第十二轮（2026-10-10，冒烟发现的三项缺陷修复）**：① 弹窗 **ESC 关闭**（根因：Radix `DismissableLayer` 仅在 `index === layers.length-1` 时注册 ESC，而 Radix 关闭后仍保留 `DialogContent` 挂载——实测 `layers.length=7`，可见弹窗永远不是最高层）；② **窗口命令真实化**（批次 A 四个命令原为假成功骨架）；③ **标题栏拖拽**（`-webkit-app-region` 在 WebView2 无效 → 补 `data-tauri-drag-region`）。4 项人工验证全部 ✅。近三轮：第十一轮（G2a）、第十轮（G1）、第九轮（H 前三项 + B12） |
+| GUI 冒烟 | ✅ 自 2026-10-07 起 **十三轮**。⏳ **第十四轮（G4 参照章节链路）待做**：① 作者原稿全链路回归；② 参考语料选 `.md` → 应得 `preparation` 而非诚实错误，重选应得 `exact-duplicate`；③ `importReference` 成功写库并记「参照章节 N 已进入知识库」（重复显示「（已存在）」）。**第十三轮（2026-10-10，弹窗动画统一）**：设置弹窗明显变快（修复前实为“静置 400ms + 播 220ms”）、四类弹窗进出场一致、Radix 弹窗仍居中且尺寸正常 ✅。**第十二轮（2026-10-10，冒烟发现的三项缺陷修复）**：① 弹窗 **ESC 关闭**（根因：Radix `DismissableLayer` 仅在 `index === layers.length-1` 时注册 ESC，而 Radix 关闭后仍保留 `DialogContent` 挂载——实测 `layers.length=7`，可见弹窗永远不是最高层）；② **窗口命令真实化**（批次 A 四个命令原为假成功骨架）；③ **标题栏拖拽**（`-webkit-app-region` 在 WebView2 无效 → 补 `data-tauri-drag-region`）。4 项人工验证全部 ✅。近三轮：第十一轮（G2a）、第十轮（G1）、第九轮（H 前三项 + B12） |
 | 双栈隔离 | **L0/L1/L2/L3 全部独立**：安装标识 / `~/.lorekeeper` / `<root>/.lore/`（库 `.lore/lorekeeper.db`、KB 向量 `.lore/kb/`）。基线为 `~/.vela` / `<root>/.vela/`。**两栈项目目录刻意不互通**（`ee40aaab`） |
 | Rust 工具链 | rustc/cargo **1.99.0 stable-msvc** @ `D:\Environment\rust\`（脚本内须显式设 `RUSTUP_HOME` / `CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
 
@@ -163,7 +163,7 @@ handler 前置断言，D4）。恢复 D1–D3 需用户确认。
 
 ### 1. 当前工作区状态
 
-**跟踪文件干净**；仅 1 份未跟踪文档（`docs-fork/research/2026-10-10-b24-black-flash-investigation.md`，B24 暂缓中的排查记录，与 G3 无关）。G3a / G3b 各以单提交落地：
+**跟踪文件干净**（唯一未跟踪项为 `docs-fork/todo.md`，按约定永不入库）；`docs-fork/research/2026-10-10-b24-black-flash-investigation.md`（B24 暂缓中的排查记录）已补提交 `2f28d4a9` 入库。G3a / G3b / G4 均以单提交落地：
 
 | Commit | 说明 |
 |---|---|
@@ -177,8 +177,15 @@ handler 前置断言，D4）。恢复 D1–D3 需用户确认。
 | `c8c56ad9` | `feat(tauri): G3a 导入运行执行租约/批次推进/effect receipts 仓储层` |
 | `461c087c` | `docs(tauri): 第四十次快照（批次 G3a 收口）` |
 | `f31446ec` | `feat(tauri): G3b 导入运行执行租约/批次推进/effect receipts（13 频道注册）` |
+| `40123891` | `docs(tauri): 扩写第四十次快照（批次 G3b 收口）` |
+| `94a1fe6a` | `feat(tauri): G4-1 参照文档幂等存储层（哈希/完整性/stable-id 重写）` |
+| `5c4fd26e` | `feat(tauri): G4-2 kb:import-reference-text 去占位真实化` |
+| `7eeea498` | `docs(tauri): G4 收口登记与刻意偏离 D-G4-1` |
+| `c0a0c5c2` | `docs(fork): 子代理编排验证开工清单（PiDeck 子代理面板）` |
+| `2f28d4a9` | `docs(fork): B24 整屏瞬黑排查记录` |
 
-- HEAD（写入本表时）：`f31446ec feat(tauri): G3b 导入运行执行租约/批次推进/effect receipts（13 频道注册）`
+- HEAD（写入本行时）：`2f28d4a9 docs(fork): B24 整屏瞬黑排查记录`
+- **推送状态（2026-10-10）**：`origin/master` 曾落后 10 个提交（末个远端为 `03c9f230`），本轮补提交后**已全部推送**（`03c9f230..2f28d4a9`，`ahead 0 / behind 0`）。
 - ⚠️ 旧快照中**已过期的交接描述**（防照旧操作）：
   1. 第三十九次「`cargo test --lib` **607/607**」→ G3a 移植 36 例后为 643，G3b 再 +2 命令层测试后实测为 **645/645**；
   2. 第三十九次「下一步 G3（执行租约 / 批次推进 / effect receipts 11 频道 + `db:import-global-facts-commit`）」→ **G3a（仓储层）与 G3b（频道注册）均已完成**，下一步是 **G4**；
@@ -187,8 +194,9 @@ handler 前置断言，D4）。恢复 D1–D3 需用户确认。
 
 ### 2. 下一步（1-2-3）
 
-1. **批次 G4 ✅ 已完成**（2026-10-10，提交 `94a1fe6a` + `5c4fd26e`）：`kb:import-reference-text` 去占位真实化（G4-1 存储层 `db/kb/store.rs` 参照文档幂等 seam + G4-2 命令层 `commands/kb.rs`）；为占位频道真实化，未改变未迁移计数（仍为 9，仅剩 mcp）。
-2. **其它待办**：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项、B24（整屏瞬黑，暂缓）。
+1. **批次 G4 ✅ 代码已完成**（2026-10-10，提交 `94a1fe6a` + `5c4fd26e`）：`kb:import-reference-text` 去占位真实化（G4-1 存储层 `db/kb/store.rs` 参照文档幂等 seam + G4-2 命令层 `commands/kb.rs`）；为占位频道真实化，未改变未迁移计数（仍为 9，仅剩 mcp）。**⚠️ G4 的 GUI 冒烟（导入参照章节链路）仍未做**（用户决定稍后）：清单为 ① 作者原稿全链路回归；② 参考语料选 `.md` → 应得 `preparation`（classification + 预览）而非诚实错误，同一文件重选应得 `exact-duplicate`；③ 工作流跑到 `importReference` 时应成功写库并打日志「参照章节 N 已进入知识库」，重复运行显示「（已存在）」。
+2. **子代理编排通道已验**（开工清单 [`docs-fork/plans/2026-10-10-subagent-pideck-kickoff.md`](../plans/2026-10-10-subagent-pideck-kickoff.md) §8）：`lorekeeper-task` + `bash` 端到端可用（子代理返回 `c0a0c5c2` 与编排者一致）；PiDeck 面板出条目已确认；`toolUses`/`tokens` 实时跳动**未取得界面证据**。
+3. **其它待办**：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项、B24（整屏瞬黑，暂缓）。
 
 **刻意偏离登记（批次 G4）**：**D-G4-1** —— `tauri-app/src-tauri/src/db/kb/store.rs::document_integrity` 的 `complete` **只反映 canonical 完整性**（文档行唯一 + 块序列严格 `0..n` + `total_chunks`/`corpus_kind` 自洽），**不含基线的 `embeddingGenerations` 检查**（基线 `electron/vector-store.ts:1464-1470`：`complete = canonicalComplete && embeddingGenerations.every(g => g.status === 'building' || g.complete)`）。原因：Tauri 侧向量由文件型 `LocalVectorIndex` 持有、不入 SQLite，无法在 SQL 层复现代际检查。恢复需用户确认。
 

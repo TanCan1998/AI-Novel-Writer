@@ -87,3 +87,20 @@ Agent(
 - 测试**数量增加**（不是"总数没变但说加了测试"）
 - `git status` **只有 Target 文件被改**
 - `docs/` 上游镜像零改动；无新增依赖；未碰 `schema.rs`
+
+---
+
+## 8. 验证结果（2026-10-10 执行）
+
+派发方式：`Agent(subagent_type: "lorekeeper-task", name: "probe-1", run_in_background: true)`，提示词即 §5 原文（未改一字）。
+
+| §3 待验项 | 结论 |
+|---|---|
+| ① PiDeck 子代理面板实时出条目 | ✅ 通过（用户界面确认出现 `probe-1` 条目） |
+| ② `toolUses` / `tokens` 实时跳动 | ⚠️ **未观察到**（用户未确认界面跳动；后端统计有值：`Tool uses: 1` / `23.7k token`） |
+| ③ 子代理 `bash` 在 Windows 可执行 | ✅ **通过**（`git rev-parse --short HEAD` → `c0a0c5c2`，与编排者终端输出逐字一致） |
+| ④ `subagent_type: "lorekeeper-task"` 端到端 | ✅ **通过**（25.9s / 1 tool use，按其系统提示词行事、零文件改动） |
+
+- **§4 兜底方案不触发**：`bash` 可用 → `.pi/agents/lorekeeper-task.md` 的 `tools:` 维持原样（含 `bash`），子代理可自主自检。
+- 编排者独立复验：`git status` 无新增改动（子代理零写入）；`.pi/` 由 `.gitignore:59` 忽略，未污染仓库。
+- 遗留：② 的界面跳动未取得界面证据，如需补证可再派一次探针并在派发瞬间盯面板。
