@@ -2,7 +2,7 @@
 
 > 2026-10-10 产出（开工前调研，**只写文档、未写任何代码**）。
 > 基线评估：[`2026-10-09-h3-h4-dependency-evaluation.md`](../research/2026-10-09-h3-h4-dependency-evaluation.md) §2（H4 基线事实）/ §2.2（信任模型 (a)/(b)）/ §2.3（工作量）/ §4 第 3 条（待确认问题）。
-> ⚠️ **未决项：§4 信任模型 (a)/(b) 需用户确认后才能开工**——本清单不做最终决定、不标记「已批准」。
+> ✅ **未决项已解除（2026-10-10 用户确认）：§4 信任模型选 (a) `std::process::Command` + 自研守卫（零新依赖）。** 本清单现在可直接执行；实施进度与新增偏离见下文 §5 末的「实施记录」。
 > 本清单目标：下次会话可以**不再调研**，直接按 §7 的任务队列实现。
 
 ## 1. 目标与范围
@@ -99,6 +99,13 @@
 - **D-H4-2（待用户确认）**：`initializeSession` 的 `clientInfo.name` 基线硬编码 `'vela'`（`mcp-manager.ts:363-380`）。建议照抄基线（协议层 server 通常不校验 clientInfo）；若改 `'lorekeeper'` 属协议可见行为变更，需登记。
 - **D-H4-3（实现时确认）**：基线 `windowsHide: true`（:264）→ Windows 下 `Command::creation_flags(CREATE_NO_WINDOW)`，Unix 无等价物（无需处理）。
 - 其余**照抄基线、无偏离**：全部错误文案（`MCP 配置损坏，未加载任何服务器` / `MCP 配置损坏或无法读取，未加载任何服务器` / `MCP 配置加载失败` / `MCP 服务器连接失败` / `MCP 服务器未配置或配置尚未加载` / `stdio 模式需要 command 参数` / `服务器 <id> 未连接` / `MCP 请求超时: <method>` / `连接已断开` / `MCP error`）、10s 超时、`protocolVersion: '2024-11-05'`、`\n` 分帧、`{jsonrpc:'2.0', id, method, params: params ?? {}}` 请求体。
+- **D-H4-4（实施中新增，2026-10-10 · 第四十二次）**：`lib.rs` 的 `generate_handler!` 注册**推迟到 Task 6/7**（Task 1 不注册）。根因：`tauri-app/test/channel-migration-coverage.test.ts:110` 断言 `migrated-channels.ts` 与 `lib.rs` 注册命令**精确相等**，中途注册立即变红；且中途 `--emit` 重生成会让「未迁移 0」提前变绿、掩盖桩实现。收口时还需适配 `:125-128` 的「已迁移集合是契约真子集」断言（未迁移归零后必须改写）。
+- **D-H4-5（实施中新增，2026-10-10 · 第四十二次）**：`load_config` 成功分支的 `servers` 摘要数组为 **id 字典序**（`BTreeMap`），基线 `Object.entries` 为**文件顺序**；管理器内部 `servers` / `loaded_configs` 两表同样用 `BTreeMap`（基线 `Map` 为插入序）。渲染层仅列表展示，取确定性序。
+
+### 5.1 实施记录（2026-10-10）
+
+- **Task 1 + Task 2 已完成**（第四十二次快照有完整登记）：新增 `mcp/{mod,types,config}.rs` + `commands/mcp.rs`，`state.rs` 装配 `mcp` 字段与 `mcp_manager()`，`commands/mod.rs` 登记；`lib.rs` **仅**加 `pub mod mcp;` 模块声明（未注册命令，D-H4-4）。`mcp_load_config` / `mcp_get_config_path` 真实实现；其余 7 命令返回契约类型占位（`'MCP 传输尚未实现'`）。自检：`cargo fmt --check` exit 0 / `cargo check --all-targets` **0 告警** / `cargo test --lib` **670 passed, 0 failed**（655 + 15）。
+- **收口前必办**：删除 `commands/mcp.rs::manager_or_transient` 的临时实例回退（否则 `load_config` 写入的 `loaded_configs` 随调用丢弃）与 `state.rs` / `commands/mod.rs` 的 `#[allow(dead_code)]` / `#[allow(unused_imports)]` 临时豁免；`D-H4-2` 按「照抄基线 `'vela'`」执行（`initializeSession` 在 Task 3）。
 
 ## 6. 风险与未决问题
 
@@ -119,6 +126,7 @@
 **Task 1：类型镜像 + 管理器骨架 + AppState 装配**
 - **Target**：`tauri-app/src-tauri/src/mcp/mod.rs`、`tauri-app/src-tauri/src/mcp/types.rs`（新增）；`tauri-app/src-tauri/src/state.rs`（加 `mcp: Mutex<Option<Arc<McpManager>>>` + getter，对齐 `update_service()` :127 范式）；`tauri-app/src-tauri/src/commands/mod.rs`（`pub mod mcp` + `pub use mcp::*`）；`tauri-app/src-tauri/src/lib.rs`（`generate_handler!` 追加 9 命令）
 - **Prompt 要点**：镜像 §2 全部类型（`#[serde(rename_all = "camelCase")]`，字段逐字对齐 `tauri-app/src/shared/ipc-channels.ts:1142-1195`）；管理器持有 `servers` / `loaded_configs` 两张表（对齐 `mcp-manager.ts:100-117`）；本卡**不实现传输**（Task 3 落地）
+> ⚠️ **实施修正（2026-10-10 · 第四十二次）**：本卡的 `lib.rs` 部分**不执行**——`generate_handler!` 注册推迟到 Task 6/7（D-H4-4），本批 `lib.rs` 只加 `pub mod mcp;` 模块声明。
 - **自检**：`cargo check --all-targets`（0 告警）
 
 **Task 2：配置读写 + `mcp:load-config` / `mcp:get-config-path`**
