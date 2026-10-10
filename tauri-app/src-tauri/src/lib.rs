@@ -47,8 +47,8 @@ pub mod writing_skills;
 pub mod update;
 
 // 批次 H（H4-2）：MCP 连接管理器（`mcp:*` 9 频道——类型镜像 +
-// 管理器骨架 + 配置层；传输层 Task 3 落地）。`generate_handler!`
-// 注册随 Task 6/7 收口，覆盖统计口径「未迁移 mcp=9」本轮不变。
+// 管理器 + 传输层均已落地，本轮在 `generate_handler!` 完成
+// 全部 9 个命令的注册）。
 pub mod mcp;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -264,6 +264,16 @@ pub fn run() {
             commands::update_open_release,
             commands::update_defer_reminder,
             commands::update_quit_and_install,
+            // 批次 H（H4-2）：MCP（mcp:* 9 频道）
+            commands::mcp_load_config,
+            commands::mcp_connect,
+            commands::mcp_disconnect,
+            commands::mcp_disconnect_all,
+            commands::mcp_list_tools,
+            commands::mcp_list_resources,
+            commands::mcp_call_tool,
+            commands::mcp_get_servers_status,
+            commands::mcp_get_config_path,
             // 批次 D1：LLM 模型管理（7 频道）
             commands::llm_list_models,
             commands::llm_save_model,

@@ -70,13 +70,8 @@ pub struct AppState {
     /// 为 `None` 时代表更新运行时**未装配**（理论上不发生），命令层会回退为
     /// `disabled` + `UPDATES_DISABLED` 信封。
     pub(crate) update: Mutex<Option<std::sync::Arc<crate::update::UpdateService>>>,
-    /// 批次 H（H4-2）：MCP 连接管理器（进程内存态）。
-    ///
-    /// 本轮（Task 1/2）尚未在 `lib.rs` 的 `setup` 装配（装配随
-    /// Task 4/6 收口），`mcp_manager()` 恒为 `None`；命令层经
-    /// `commands/mcp.rs` 的 `manager_or_transient` 回退临时实例。
-    #[allow(dead_code)] // 批次 H（H4-2）：装配随 Task 4/6 收口后移除
-    pub(crate) mcp: Mutex<Option<std::sync::Arc<crate::mcp::McpManager>>>,
+    /// 批次 H（H4-2）：MCP 连接管理器（进程内存态，随 `AppState` 常驻）。
+    pub(crate) mcp: Mutex<std::sync::Arc<crate::mcp::McpManager>>,
 }
 
 impl AppState {
@@ -101,7 +96,7 @@ impl AppState {
             ),
             writing_skill_inspections: Mutex::new(std::collections::HashMap::new()),
             update: Mutex::new(None),
-            mcp: Mutex::new(None),
+            mcp: Mutex::new(std::sync::Arc::new(crate::mcp::McpManager::new())),
         }
     }
 
@@ -136,10 +131,15 @@ impl AppState {
         self.update.lock().ok().and_then(|guard| guard.clone())
     }
 
-    /// 批次 H（H4-2）：当前 MCP 管理器（未装配 → `None`）
-    #[allow(dead_code)] // 批次 H（H4-2）：装配随 Task 4/6 收口后移除
-    pub(crate) fn mcp_manager(&self) -> Option<std::sync::Arc<crate::mcp::McpManager>> {
-        self.mcp.lock().ok().and_then(|guard| guard.clone())
+    /// 批次 H（H4-2）：当前 MCP 管理器。
+    ///
+    /// 锁中毒时恢复内部数据（`into_inner`），不因其它路径的
+    /// panic 丢失已装配实例。
+    pub(crate) fn mcp_manager(&self) -> std::sync::Arc<crate::mcp::McpManager> {
+        self.mcp
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
 
     /// 登记最新打开/创建请求令牌

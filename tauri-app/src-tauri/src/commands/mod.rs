@@ -25,9 +25,7 @@ mod llm; // 批次 D1：LLM 模型管理（配置读写 7 频道）
 mod llm_execution; // 批次 D2：LLM 生成执行（租约 2 频道）
 mod llm_generation; // 批次 D2-b：LLM 生成 / 流式 / 取消（3 频道 + 3 事件）
 mod llm_management; // 批次 D2-c：连通性探测 + 模型发现（llm:* 收口 2 频道）
-#[allow(dead_code)]
-// 批次 H（H4-2）：9 个命令随 Task 6/7 注册 `generate_handler!`；注册前暂免 dead_code
-pub mod mcp; // 批次 H（H4-2）：MCP（mcp:* 9 频道——骨架 + 配置层，传输 Task 3 落地）
+pub mod mcp; // 批次 H（H4-2）：MCP（mcp:* 9 频道，传输层已落地并注册）
 mod model_provider_resource; // 批次 A：模型资源
 mod official_homepage; // 批次 A：官方主页
 pub mod project; // 批次 B：项目生命周期
@@ -50,7 +48,6 @@ pub use llm::*;
 pub use llm_execution::*;
 pub use llm_generation::*;
 pub use llm_management::*;
-#[allow(unused_imports)] // 批次 H（H4-2）：命令随 Task 6/7 注册后本再导出被消费，告警自然消除
 pub use mcp::*;
 pub use model_provider_resource::*;
 pub use official_homepage::*;

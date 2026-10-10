@@ -230,6 +230,12 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   // 批次 H（H3）：应用更新（update:* 6 频道；仅 defer-reminder 带参）
   'update:defer-reminder': ['days'],
 
+  // 批次 H（H4-2）：MCP（mcp:* 9 频道；仅 connect/disconnect/call-tool 带参，
+  // 参数名与契约 `MCPChannels` 及 Rust 签名逐字一致）
+  'mcp:connect': ['serverId'],
+  'mcp:disconnect': ['serverId'],
+  'mcp:call-tool': ['serverId', 'toolName', 'args'],
+
   // 批次 E 第一部分补登记（E 收尾时补齐，测试 channel-migration-coverage 断言）
   'db:recovery-candidate-record': ['request', 'expectedProjectPath'],
   'db:recovery-candidate-list': ['expectedProjectPath'],

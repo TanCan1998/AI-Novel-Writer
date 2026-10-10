@@ -8,7 +8,7 @@ import { readNormalizedSource } from './source-contract'
  * 本测试重算同样的映射并比对，保证：
  *   1. 生成物不会过期（迁移新频道后忘了重新生成 → 测试失败）；
  *   2. 生成物不会被手改（手改会与 lib.rs / 契约不一致 → 测试失败）；
- *   3. 未迁移频道仍能被识别（集合不是「全量契约」）。
+ *   3. 未迁移频道至此归零（集合等于全量契约 invoke 频道）。
  */
 
 /** 契约里的 invoke 频道（按所属 interface 名排除事件频道）。
@@ -122,12 +122,15 @@ describe('channel migration coverage', () => {
     expect(unresolved).toEqual([])
   })
 
-  it('已迁移集合是契约的真子集（仍存在未迁移频道）', () => {
+  it('已迁移集合等于契约 invoke 频道全集（未迁移归零）', () => {
     const invoke = collectInvokeChannels()
     expect(MIGRATED_CHANNELS.size).toBeGreaterThan(0)
-    expect(MIGRATED_CHANNELS.size).toBeLessThan(invoke.size)
+    expect(MIGRATED_CHANNELS.size).toBe(invoke.size)
     for (const channel of MIGRATED_CHANNELS) {
       expect(invoke.has(channel), `${channel} 不在契约 invoke 频道中`).toBe(true)
+    }
+    for (const channel of invoke) {
+      expect(MIGRATED_CHANNELS.has(channel), `${channel} 尚未迁移`).toBe(true)
     }
   })
 
@@ -212,6 +215,16 @@ describe('channel migration coverage', () => {
     expect(MIGRATED_CHANNELS.has('update:open-release')).toBe(true)
     expect(MIGRATED_CHANNELS.has('update:defer-reminder')).toBe(true)
     expect(MIGRATED_CHANNELS.has('update:quit-and-install')).toBe(true)
+    // 批次 H（H4-2）：MCP（mcp:* 9 频道全部迁移）
+    expect(MIGRATED_CHANNELS.has('mcp:load-config')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('mcp:connect')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('mcp:disconnect')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('mcp:disconnect-all')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('mcp:list-tools')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('mcp:list-resources')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('mcp:call-tool')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('mcp:get-servers-status')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('mcp:get-config-path')).toBe(true)
   })
 
   /**
