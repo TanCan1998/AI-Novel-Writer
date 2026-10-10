@@ -46,6 +46,11 @@ pub mod writing_skills;
 // 批次 H（H3）：应用更新域（update:* 6 频道 + update:state 事件）。
 pub mod update;
 
+// 批次 H（H4-2）：MCP 连接管理器（`mcp:*` 9 频道——类型镜像 +
+// 管理器骨架 + 配置层；传输层 Task 3 落地）。`generate_handler!`
+// 注册随 Task 6/7 收口，覆盖统计口径「未迁移 mcp=9」本轮不变。
+pub mod mcp;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
