@@ -11,6 +11,7 @@ import {
 } from '../architecture.command'
 import { createWorkflowRuntimeDependencies } from './workflow-generation-runtime.fixture'
 import { clearProjectCustomPrompts } from '../../../prompt-templates'
+import { installTauriInternals, type TauriInternalsHandle } from '../../../../../test/helpers/tauri-internals'
 
 const projectPath = 'C:\\novels\\世界观恢复测试'
 const otherProjectPath = 'C:\\novels\\另一本书'
@@ -96,42 +97,32 @@ let currentPremise: string
 let formalWorldbuilding: string
 let formalWrites: string[]
 let partialWriteCount: number
+let tauriInternals: TauriInternalsHandle
 
-function installIpc(): void {
-  vi.stubGlobal('window', {
-    aiNovelAPI: {
-      invoke: vi.fn(async (channel: string, ...args: unknown[]) => {
-        if (channel === 'prompt:load-global') return { templates: [], diagnostics: [] }
-        if (channel === 'fs:check-exists') return false
-        if (channel === 'db:project-core-get') {
-          return { premise: currentPremise, worldbuilding: formalWorldbuilding }
+function installIpc(): TauriInternalsHandle {
+  return installTauriInternals({
+    commands: {
+      prompt_load_global: { templates: [], diagnostics: [] },
+      fs_check_exists: false,
+      db_project_core_get: () => ({ premise: currentPremise, worldbuilding: formalWorldbuilding }),
+      fs_read_json: (args: Record<string, unknown>) => {
+        expect(args.filePath).toBe(`${projectPath}/.lore/partial_arch.json`)
+        return { success: true, data: structuredClone(partialFile) }
+      },
+      fs_write_json: (args: Record<string, unknown>) => {
+        expect(args.filePath).toBe(`${projectPath}/.lore/partial_arch.json`)
+        partialWriteCount += 1
+        partialFile = structuredClone(args.data as Record<string, unknown>)
+        return { success: true }
+      },
+      db_project_core_update: (args: Record<string, unknown>) => {
+        const update = args.data as { worldbuilding?: string }
+        if (typeof update.worldbuilding === 'string') {
+          formalWorldbuilding = update.worldbuilding
+          formalWrites.push(update.worldbuilding)
         }
-        if (channel === 'fs:read-json') {
-          expect(args[0]).toBe(`${projectPath}/.lore/partial_arch.json`)
-          return { success: true, data: structuredClone(partialFile) }
-        }
-        if (channel === 'fs:write-json') {
-          expect(args[0]).toBe(`${projectPath}/.lore/partial_arch.json`)
-          partialWriteCount += 1
-          partialFile = structuredClone(args[1] as Record<string, unknown>)
-          return { success: true }
-        }
-        if (channel === 'db:project-core-update') {
-          const update = args[0] as { worldbuilding?: string }
-          if (typeof update.worldbuilding === 'string') {
-            formalWorldbuilding = update.worldbuilding
-            formalWrites.push(update.worldbuilding)
-          }
-          return { success: true }
-        }
-        throw new Error(`未预期的 IPC 通道：${channel}`)
-      }),
-      on: vi.fn(),
-      once: vi.fn(),
-      send: vi.fn(),
-      setZoomLevel: vi.fn(),
-      setZoomFactor: vi.fn(),
-      getZoomLevel: vi.fn(),
+        return { success: true }
+      },
     },
   })
 }
@@ -152,10 +143,11 @@ beforeEach(() => {
       novelConfig,
     } as never,
   })
-  installIpc()
+  tauriInternals = installIpc()
 })
 
 afterEach(() => {
+  tauriInternals.uninstall()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   useLLMStore.setState({

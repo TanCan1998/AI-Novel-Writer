@@ -4,6 +4,9 @@ import { useProjectStore } from '../../../../stores/project-store'
 import type { StepCallbacks, WorkflowContext } from '../../../../stores/workflow-store'
 import { AnalyzeWritingStyleCommand as RuntimeAnalyzeWritingStyleCommand } from '../analyze-style.command'
 import { workflowRuntimeDependencies } from './workflow-generation-runtime.fixture'
+import { installTauriInternals, type TauriInternalsHandle } from '../../../../../test/helpers/tauri-internals'
+
+let tauriInternals: TauriInternalsHandle
 
 class AnalyzeWritingStyleCommand extends RuntimeAnalyzeWritingStyleCommand {
   constructor(...args: ConstructorParameters<typeof RuntimeAnalyzeWritingStyleCommand>) {
@@ -28,23 +31,14 @@ const context: WorkflowContext = {
 }
 
 function stubIpcInvoke(updateResult: { success: boolean; error?: string } = { success: true }) {
-  const invoke = vi.fn((channel: string) => {
-    if (channel === 'prompt:load-global') return Promise.resolve({ templates: [], diagnostics: [] })
-    if (channel === 'db:project-core-update') return Promise.resolve(updateResult)
-    return Promise.resolve(null)
-  })
-  vi.stubGlobal('window', {
-    aiNovelAPI: {
-      invoke,
-      on: vi.fn(),
-      once: vi.fn(),
-      send: vi.fn(),
-      setZoomLevel: vi.fn(),
-      setZoomFactor: vi.fn(),
-      getZoomLevel: vi.fn(),
+  tauriInternals = installTauriInternals({
+    commands: {
+      prompt_load_global: { templates: [], diagnostics: [] },
+      fs_check_exists: false,
+      db_project_core_update: updateResult,
     },
   })
-  return invoke
+  return tauriInternals.invoke
 }
 
 beforeEach(() => {
@@ -78,6 +72,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  tauriInternals?.uninstall()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   useProjectStore.setState({ currentProject: null })
@@ -98,10 +93,17 @@ describe('AnalyzeWritingStyleCommand with imported samples', () => {
     expect(result).toBe('节奏偏快，动作描写密集，对话短促有压迫感。')
     expect(useProjectStore.getState().currentProject?.novelConfig.writingStyle).toBe(result)
     expect(invoke).toHaveBeenCalledWith(
-      'db:project-core-update',
-      { writingStyle: result },
-      context.projectPath,
-      context.projectSession,
+      'db_project_core_update',
+      {
+        data: { writingStyle: result },
+        expectedProjectPath: context.projectPath,
+        projectSession: expect.objectContaining({
+          projectId: 'project-1',
+          leaseId: 'lease-project-1',
+          projectPath: 'C:\\tmp\\vela-style-test',
+        }),
+      },
+      undefined,
     )
   })
 
@@ -122,10 +124,9 @@ describe('AnalyzeWritingStyleCommand with imported samples', () => {
     expect(persistWritingStyle).toHaveBeenCalledOnce()
     expect(persistWritingStyle).toHaveBeenCalledWith(result)
     expect(invoke).not.toHaveBeenCalledWith(
-      'db:project-core-update',
+      'db_project_core_update',
       expect.anything(),
-      expect.anything(),
-      expect.anything(),
+      undefined,
     )
   })
 
@@ -168,7 +169,7 @@ describe('AnalyzeWritingStyleCommand with imported samples', () => {
     await command.execute({ step: {}, context, callbacks })
 
     expect(callLLM.mock.calls[0][0]).toContain('雨声很急')
-    expect(invoke).not.toHaveBeenCalledWith('db:draft-get-max-finalized-chapter')
+    expect(invoke).not.toHaveBeenCalledWith('db_draft_get_max_finalized_chapter')
   })
 
   it('does not update in-memory writing style when DB persistence fails', async () => {
@@ -186,22 +187,11 @@ describe('AnalyzeWritingStyleCommand with imported samples', () => {
 
   it('does not apply the persisted result to a newly switched project', async () => {
     let resolveSave: ((value: { success: boolean }) => void) | undefined
-    const invoke = vi.fn((channel: string) => {
-      if (channel === 'prompt:load-global') return Promise.resolve({ templates: [], diagnostics: [] })
-      if (channel === 'db:project-core-update') {
-        return new Promise<{ success: boolean }>((resolve) => { resolveSave = resolve })
-      }
-      return Promise.resolve(null)
-    })
-    vi.stubGlobal('window', {
-      aiNovelAPI: {
-        invoke,
-        on: vi.fn(),
-        once: vi.fn(),
-        send: vi.fn(),
-        setZoomLevel: vi.fn(),
-        setZoomFactor: vi.fn(),
-        getZoomLevel: vi.fn(),
+    tauriInternals = installTauriInternals({
+      commands: {
+        prompt_load_global: { templates: [], diagnostics: [] },
+        fs_check_exists: false,
+        db_project_core_update: () => new Promise<{ success: boolean }>((resolve) => { resolveSave = resolve }),
       },
     })
     const command = new AnalyzeWritingStyleCommand({

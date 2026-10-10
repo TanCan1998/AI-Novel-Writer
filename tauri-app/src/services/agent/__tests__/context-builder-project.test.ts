@@ -16,8 +16,12 @@ import {
   loadProjectCustomPrompts,
   saveProjectCustomPrompt,
 } from '../../prompt-templates'
+import { installTauriInternals, type TauriInternalsHandle } from '../../../../test/helpers/tauri-internals'
+
+let tauriInternals: TauriInternalsHandle
 
 afterEach(() => {
+  tauriInternals?.uninstall()
   vi.unstubAllGlobals()
   useEditorStore.setState({ tabs: [], activeTabId: null })
   useLocaleStore.setState({ locale: 'zh-CN' })
@@ -170,29 +174,25 @@ describe('agent context project isolation', () => {
         novelConfig: { writingLanguage: 'en-US' },
       } as never,
     })
-    vi.stubGlobal('window', {
-      aiNovelAPI: {
-        invoke: vi.fn(async (channel: string) => {
-          if (channel === 'prompt:load-global') return { templates: [], diagnostics: [] }
-          if (channel === 'fs:check-exists') return true
-          if (channel === 'fs:list-dir') return [{
-            name: 'assistant_writing_identity.en-US.json',
-            path: 'C:\\novels\\cold-start\\.lore\\prompts\\assistant_writing_identity.en-US.json',
-            isDir: false,
-          }]
-          if (channel === 'fs:read-file') return {
-            success: true,
-            content: JSON.stringify({
-              ...builtin,
-              writingLanguage: 'en-US',
-              systemRole: 'You are the cold-start continuity editor.',
-            }),
-          }
-          throw new Error(`Unexpected IPC channel: ${channel}`)
-        }),
+    tauriInternals = installTauriInternals({
+      commands: {
+        prompt_load_global: { templates: [], diagnostics: [] },
+        fs_check_exists: true,
+        fs_list_dir: [{
+          name: 'assistant_writing_identity.en-US.json',
+          path: 'C:\\novels\\cold-start\\.lore\\prompts\\assistant_writing_identity.en-US.json',
+          isDir: false,
+        }],
+        fs_read_file: {
+          success: true,
+          content: JSON.stringify({
+            ...builtin,
+            writingLanguage: 'en-US',
+            systemRole: 'You are the cold-start continuity editor.',
+          }),
+        },
       },
     })
-
     const prompt = await buildAgentSystemPrompt('fast', {
       projectSession: {
         projectId: 'cold-start',
@@ -222,14 +222,12 @@ describe('agent context project isolation', () => {
         novelConfig: { writingLanguage: 'en-US' },
       } as never,
     })
-    vi.stubGlobal('window', {
-      aiNovelAPI: {
-        invoke: vi.fn(async (channel: string) => {
-          if (channel === 'prompt:load-global') return { templates: [], diagnostics: [] }
-          if (channel === 'fs:check-exists') return false
-          if (channel === 'fs:mkdir' || channel === 'fs:write-file') return { success: true }
-          throw new Error(`Unexpected IPC channel: ${channel}`)
-        }),
+    tauriInternals = installTauriInternals({
+      commands: {
+        prompt_load_global: { templates: [], diagnostics: [] },
+        fs_check_exists: false,
+        fs_mkdir: { success: true },
+        fs_write_file: { success: true },
       },
     })
     await loadProjectCustomPrompts(projectSession)

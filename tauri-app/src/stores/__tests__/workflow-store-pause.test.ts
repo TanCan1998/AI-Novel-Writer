@@ -7,6 +7,7 @@ import { useLocaleStore } from '../locale-store'
 import { createBoundedCompletionError } from '../../services/workflows/bounded-completion'
 import { PromptBudgetExceededError } from '../../services/generation/generation-harness'
 import { SourceDraftChangedError } from '../../services/workflows/source-draft-changed'
+import { installTauriInternals, type TauriInternalsHandle } from '../../../test/helpers/tauri-internals'
 
 const projectPath = 'C:\\test-project'
 
@@ -18,17 +19,14 @@ function frozenSession(leaseId = 'lease-test-project') {
   }
 }
 
+let tauriInternals: TauriInternalsHandle
+
 beforeEach(() => {
   // 工作流夹具显式提供桌面桥接；未知调用仍拒绝，避免掩盖真实 IPC 缺失。
-  vi.stubGlobal('window', {
-    aiNovelAPI: {
-      invoke: vi.fn(async (channel: string) => {
-        if (channel === 'skills:list-user') return []
-        if (channel === 'fs:check-exists') return false
-        throw new Error(`测试未配置桌面调用：${channel}`)
-      }),
-      on: vi.fn(() => () => {}),
-      once: vi.fn(),
+  tauriInternals = installTauriInternals({
+    commands: {
+      skills_list_user: [],
+      fs_check_exists: false,
     },
   })
   useWorkflowStore.setState({
@@ -801,5 +799,6 @@ describe('workflow pause at a safe step boundary', () => {
 })
 
 afterEach(() => {
+  tauriInternals.uninstall()
   vi.unstubAllGlobals()
 })

@@ -6,7 +6,9 @@ import type { CharacterRosterEntry } from '../../../../shared/character-roster'
 import type { StepCallbacks, WorkflowContext } from '../../../../stores/workflow-store'
 import { InferGlobalSettingsCommand as RuntimeInferGlobalSettingsCommand } from '../import-novel.command'
 import { workflowRuntimeDependencies } from './workflow-generation-runtime.fixture'
+import { installTauriInternals, type TauriInternalsHandle } from '../../../../../test/helpers/tauri-internals'
 
+let tauriInternals: TauriInternalsHandle
 class InferGlobalSettingsCommand extends RuntimeInferGlobalSettingsCommand {
   constructor() { super(workflowRuntimeDependencies) }
 }
@@ -105,23 +107,19 @@ function withMissingEndpoint(name = '韩烁') {
 }
 
 function stubIpcInvoke(handler: (channel: string, ...args: unknown[]) => unknown) {
-  const invoke = vi.fn((channel: string, ...args: unknown[]) => Promise.resolve(
-    channel === 'prompt:load-global' ? { templates: [], diagnostics: [] }
-      : channel === 'fs:check-exists' && String(args[0]).endsWith('/.lore/prompts') ? false
-        : handler(channel, ...args),
-  ))
-  vi.stubGlobal('window', {
-    aiNovelAPI: {
-      invoke,
-      on: vi.fn(),
-      once: vi.fn(),
-      send: vi.fn(),
-      setZoomLevel: vi.fn(),
-      setZoomFactor: vi.fn(),
-      getZoomLevel: vi.fn(),
-    },
-  })
-  return invoke
+  const commands: Record<string, (args: Record<string, unknown>) => unknown> = {
+    prompt_load_global: () => ({ templates: [], diagnostics: [] }),
+    fs_check_exists: (args) =>
+      String(args.filePath).endsWith('/.lore/prompts')
+        ? false
+        : handler('fs:check-exists', args.filePath, args.expectedProjectPath),
+    kb_search: (args) => handler('kb:search', args.query, args.topK, args.expectedProjectPath),
+    db_character_roster_read: (args) => handler('db:character-roster-read', args.expectedProjectPath),
+    db_import_global_facts_commit: (args) =>
+      handler('db:import-global-facts-commit', args.request, args.expectedProjectPath),
+  }
+  tauriInternals = installTauriInternals({ commands })
+  return tauriInternals.invoke
 }
 
 function stubSuccessfulImportIpc() {
@@ -198,6 +196,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  tauriInternals?.uninstall()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
   useProjectStore.setState({ currentProject: null })
@@ -228,8 +227,8 @@ describe('InferGlobalSettingsCommand relationship endpoint recovery', () => {
       .rejects.toThrow(/角色卡|8|补卡校正/)
 
     expect(generateStream).toHaveBeenCalledOnce()
-    expect(invoke.mock.calls.map(([channel]) => channel)).not.toContain('db:import-global-facts-commit')
-    expect(invoke.mock.calls.map(([channel]) => channel)).not.toContain('db:character-roster-read')
+    expect(invoke.mock.calls.map(([command]) => command)).not.toContain('db_import_global_facts_commit')
+    expect(invoke.mock.calls.map(([command]) => command)).not.toContain('db_character_roster_read')
   })
 
   it('adds only missing endpoint cards from a strict delta through one bounded correction before the atomic global-facts commit', async () => {
@@ -243,21 +242,24 @@ describe('InferGlobalSettingsCommand relationship endpoint recovery', () => {
     expect(generateStream).toHaveBeenCalledTimes(2)
     expect(callbacks.log).toHaveBeenCalledWith(expect.stringContaining('受限补卡校正'))
     expect(invoke).toHaveBeenLastCalledWith(
-      'db:import-global-facts-commit',
+      'db_import_global_facts_commit',
       expect.objectContaining({
-        expectedRosterRevision: 7,
-        characterEntries: [
-          expect.objectContaining({
-            name: '陆舟',
-            relationships: [{ target: '韩烁', relation: '旧债牵连' }],
-          }),
-          expect.objectContaining({ name: '苏绾' }),
-          expect.objectContaining({ name: '顾岩' }),
-          expect.objectContaining({ name: '韩烁', relationships: [] }),
-        ],
+        request: expect.objectContaining({
+          expectedRosterRevision: 7,
+          characterEntries: [
+            expect.objectContaining({
+              name: '陆舟',
+              relationships: [{ target: '韩烁', relation: '旧债牵连' }],
+            }),
+            expect.objectContaining({ name: '苏绾' }),
+            expect.objectContaining({ name: '顾岩' }),
+            expect.objectContaining({ name: '韩烁', relationships: [] }),
+          ],
+        }),
+        expectedProjectPath: 'C:\\tmp\\vela-import-test',
+        projectSession: expect.objectContaining({ projectId: 'project-1' }),
       }),
-      'C:\\tmp\\vela-import-test',
-      expect.objectContaining({ projectId: 'project-1' }),
+      undefined,
     )
   })
 
@@ -282,8 +284,8 @@ describe('InferGlobalSettingsCommand relationship endpoint recovery', () => {
       .rejects.toThrow(/受限补卡校正|delta|保留原有/)
 
     expect(generateStream).toHaveBeenCalledTimes(2)
-    expect(invoke.mock.calls.map(([channel]) => channel)).toEqual([
-      'kb:search', 'kb:search', 'kb:search', 'kb:search',
+    expect(invoke.mock.calls.map(([command]) => command)).toEqual([
+      'kb_search', 'kb_search', 'kb_search', 'kb_search',
     ])
   })
 
@@ -301,8 +303,8 @@ describe('InferGlobalSettingsCommand relationship endpoint recovery', () => {
       .rejects.toThrow(/受限补卡校正|额外字段/)
 
     expect(generateStream).toHaveBeenCalledTimes(2)
-    expect(invoke.mock.calls.map(([channel]) => channel)).toEqual([
-      'kb:search', 'kb:search', 'kb:search', 'kb:search',
+    expect(invoke.mock.calls.map(([command]) => command)).toEqual([
+      'kb_search', 'kb_search', 'kb_search', 'kb_search',
     ])
   })
 
@@ -321,8 +323,8 @@ describe('InferGlobalSettingsCommand relationship endpoint recovery', () => {
       .rejects.toThrow(/受限补卡校正|新增角色/)
 
     expect(generateStream).toHaveBeenCalledTimes(2)
-    expect(invoke.mock.calls.map(([channel]) => channel)).toEqual([
-      'kb:search', 'kb:search', 'kb:search', 'kb:search',
+    expect(invoke.mock.calls.map(([command]) => command)).toEqual([
+      'kb_search', 'kb_search', 'kb_search', 'kb_search',
     ])
   })
 
@@ -342,8 +344,8 @@ describe('InferGlobalSettingsCommand relationship endpoint recovery', () => {
       .rejects.toThrow(/重复|缺失/)
 
     expect(generateStream).toHaveBeenCalledTimes(2)
-    expect(invoke.mock.calls.map(([channel]) => channel)).toEqual([
-      'kb:search', 'kb:search', 'kb:search', 'kb:search',
+    expect(invoke.mock.calls.map(([command]) => command)).toEqual([
+      'kb_search', 'kb_search', 'kb_search', 'kb_search',
     ])
   })
 })
