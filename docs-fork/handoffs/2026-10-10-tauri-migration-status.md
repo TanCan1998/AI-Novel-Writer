@@ -11,7 +11,7 @@
 
 ---
 
-## 快照（最后更新：2026-10-10 · 第四十三次）
+## 快照（最后更新：2026-10-10 · 第四十四次）
 
 > 本表只填**最新一次自检的实测值**。改表前必须重跑对应命令，不得沿用旧数字、不得估算。
 > 本轮实测命令与输出见下方「[§5 自检记录](#5-自检记录2026-10-10-实测)」。
@@ -21,28 +21,62 @@
 | 仓库 / 分支 | **`TanCan1998/Lorekeeper`**（`EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork）· `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
 | 已注册命令 | **194** |
-| 覆盖 invoke 频道 | **193**（契约总数 193，事件频道 **5**） |
-| 未迁移 invoke 频道 | **0**（`db=0 mcp=0`）✅ |
+| 覆盖 invoke 频道 | **193**（契约 invoke 总数 **290**，事件频道 **7**） |
+| 未迁移 invoke 频道 | **97**（**上游新增频道**，合并前为 0；按域见下 §1） |
 | orphan | **空** ✅ |
-| `cargo test --lib` | **689/689** ✅（第四十三次：670 + H4 Task 3/4 新增 14 + Task 7 补强 5） |
+| `cargo test --lib` | **694/694** ✅（第四十四次：689 + 项目目录授权域 5） |
 | `cargo fmt --check` | **干净（0 差异）** ✅ |
 | `cargo check --all-targets` | **0 告警** ✅ |
-| `pnpm typecheck` / `lint` | exit 0 / exit 0 ✅ |
-| 定向 `vitest` | **7/7**（2 文件：契约覆盖 / 入参结构体契约）✅ |
-| 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅** / **批次 G2a ✅** / **批次 G2b ✅（1–6 步全部完成）** / **批次 G3a ✅** / **批次 G3b ✅** / **批次 G4 ✅（代码收口）** / **B13 ✅** / **H4 ✅（本次）** |
-| 当前阶段 | **H4 已收口（第四十三次）**：mcp 9 频道全部真实化并注册，**未迁移 invoke 9 → 0**（`db=0 mcp=0`）、已注册命令 **194** → 覆盖 **193**、自检 **689/689**。提交 `a2348a79`（stdio 传输层 + 连接状态机）+ `14d224d9`（注册 9 命令 + 前端登记 + `--emit` + 断言适配）+ P2 收尾（非 UTF-8 行不再断连、`drop_stale_servers` 去 TOCTOU + 5 例单测）。前序：**G4 代码已收口**（`94a1fe6a` + `5c4fd26e`）、**B13 已关闭**（`ef76662b`）。**⚠️ G4 的 GUI 冒烟（导入参照章节链路）仍待做**（用户决定稍后）；**B22 两段式关窗 dirty 分支仍待 GUI 实测**。其它待办：B14（真 Windows 自更新）、**上游合并专项（H4 收口后立即执行）**、B24（整屏瞬黑，暂缓） |
+| `pnpm typecheck` / `lint` | **exit 0（tsc 0 错误）** / exit 0 ✅ |
+| 定向 `vitest` | **6/6**（`test/channel-migration-coverage.test.ts`）✅ |
+| 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅** / **批次 G2a ✅** / **批次 G2b ✅（1–6 步全部完成）** / **批次 G3a ✅** / **批次 G3b ✅** / **批次 G4 ✅（代码收口）** / **B13 ✅** / **H4 ✅** / **上游 master 合并 ✅（本次）** |
+| 当前阶段 | **上游 master 合并已收口（第四十四次）**：merge 提交 `7bab3727`（0 冲突）+ `7e1ed75e`（CI 忽略上游作者）+ `36b80d6e`（契约镜像 290/7、闭包补建、授权域适配、fast-check devDependency），已 ff 合并到 `master` 并推送。**未迁移 invoke 0 → 97**（上游新增频道）。自检：cargo **694/694**、契约 290（事件 7）/ 已注册 194 → 覆盖 193 / 未迁移 97、`--emit` 无 diff、vitest 频道 6/6、eslint 0、**tsc 0 错误**。前序：**H4 已收口**（`a2348a79` + `14d224d9`）、**G4 代码已收口**、**B13 已关闭**。**⚠️ G4 的 GUI 冒烟（导入参照章节链路）仍待做**（用户决定稍后）；**B22 两段式关窗 dirty 分支仍待 GUI 实测**。新开待办：**97 频道迁移批次**、**测试桩现代化批次**（约 70 文件仍用 `window.velaAPI`/`aiNovelAPI`，合并前既存）。其它待办：B14（真 Windows 自更新）、B24（整屏瞬黑，暂缓） |
 | 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、`tauri-plugin-opener 2.7.0`、`windows-sys 0.61`（`[target.'cfg(windows)'.dependencies]`，仅 lock 提级，**0 新下载**；Ask first 已批准 2026-10-10）。**G2a 零新依赖**，**G3a 零新依赖**（仓储层平移，无 Cargo.toml 改动），**G3b 零新依赖**（命令层平移，无 Cargo.toml 改动）。向量层 `hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio`；FTS5 由 `libsqlite3-sys` bundled 提供 |
 | GUI 冒烟 | ✅ 自 2026-10-07 起 **十三轮**。⏳ **第十四轮（G4 参照章节链路）待做**：① 作者原稿全链路回归；② 参考语料选 `.md` → 应得 `preparation` 而非诚实错误，重选应得 `exact-duplicate`；③ `importReference` 成功写库并记「参照章节 N 已进入知识库」（重复显示「（已存在）」）。**第十三轮（2026-10-10，弹窗动画统一）**：设置弹窗明显变快（修复前实为“静置 400ms + 播 220ms”）、四类弹窗进出场一致、Radix 弹窗仍居中且尺寸正常 ✅。**第十二轮（2026-10-10，冒烟发现的三项缺陷修复）**：① 弹窗 **ESC 关闭**（根因：Radix `DismissableLayer` 仅在 `index === layers.length-1` 时注册 ESC，而 Radix 关闭后仍保留 `DialogContent` 挂载——实测 `layers.length=7`，可见弹窗永远不是最高层）；② **窗口命令真实化**（批次 A 四个命令原为假成功骨架）；③ **标题栏拖拽**（`-webkit-app-region` 在 WebView2 无效 → 补 `data-tauri-drag-region`）。4 项人工验证全部 ✅。近三轮：第十一轮（G2a）、第十轮（G1）、第九轮（H 前三项 + B12） |
 | 双栈隔离 | **L0/L1/L2/L3 全部独立**：安装标识 / `~/.lorekeeper` / `<root>/.lore/`（库 `.lore/lorekeeper.db`、KB 向量 `.lore/kb/`）。基线为 `~/.vela` / `<root>/.vela/`。**两栈项目目录刻意不互通**（`ee40aaab`） |
 | Rust 工具链 | rustc/cargo **1.99.0 stable-msvc** @ `D:\Environment\rust\`（脚本内须显式设 `RUSTUP_HOME` / `CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
 
-<sub>*命令与频道差额：**185 命令**中 1 个为阶段 0 骨架（`app_health_check`，不对应任何契约频道），其余 **184** 与 invoke 频道一一对应。</sub>
+<sub>*命令与频道差额：**194 命令**中 1 个为阶段 0 骨架（`app_health_check`，不对应任何契约频道），其余 **193** 与 invoke 频道一一对应。</sub>
 
 ---
 
-## 本次更新（2026-10-10 · 第四十三～四十次）
+## 本次更新（2026-10-10 · 第四十四～四十次）
 
-### 1. H4 收口 ✅ Task 3+4 + Task 6+7（mcp 9 频道全部真实化；未迁移 9 → 0）
+### 1. 上游 master 合并 ✅ 与 tauri-app 镜像适配（第四十四次，本次）
+
+**合并执行**：上游 tip `21d67211`（`fix(startup): restore installed startup and prepare 1.2.1-Preview (#343)`）；`git rev-list --left-right --count origin/master...upstream/master` = `160 509`；两侧相对共同祖先 `992b3f5f` 都改过的文件**仅 `README.md`**（上游改 1018 / fork 改 694）。按用户决定走**临时分支**：`git switch -c chore/merge-upstream-20261010` → `git merge upstream/master --no-ff` → **0 冲突**（`1018 files changed, 209574 insertions(+), 13350 deletions(-)`，merge 提交 **`7bab3727`**）。
+
+**上游把契约拆成模块合成**：根 `src/shared/ipc-channels.ts` 1159 → **1326 行**，`AllInvokeChannels` 改为 28 个 `*Channels` 模块的交叉类型（`AllEventChannels = GenerationOwnerEvents & LLMStreamEvents & UpdateStateEvents & WindowEvents`）。tauri-app 侧据此重建镜像，并裁入 15 个上游新增 shared 模块（`generation-owner-contract` / `character-proposal` / `finalized-character-generation` / `review-revision-generation` / `agent-generation` / `import-generation` / `editor-inline-generation` / `finalization-generation` / `graph-generation` / `legacy-roster-generation` / `character-avatar` / `cloud-backup` / `project-overview` / `startup-contract` / `review-cycle`）；镜像改写 3 条规则：`'../../electron/repositories/*'` → `'@baseline/repositories/*'`（8 处）、`~/.vela` → `~/.lorekeeper`、追加 G1 的 `FinalizationChannels`（`finalization:commit` / `finalization:retry`）。
+
+**新增脚本单源**：`tauri-app/scripts/channel-contract.mjs`（跟随相对 import 递归收频道，供 `scripts/verify-channel-coverage.mjs` 与 `test/channel-migration-coverage.test.ts` 共用）——合并前脚本只扫单一文件，不改会在模块拆分后骤降并报大量 orphan。契约口径由 193 → **290 invoke（事件 7）**。
+
+**镜像收敛**：201 个「仅上游漂移」副本按字节刷新；33 个上游新增/改动文件三方合并落地；28 个文件共 52 处冲突由 3 个子代理并行消解（A 19/6 文件、B 18/10 文件、C 16/12 文件），B 组 30 分钟硬超时后由我方接管（其中 `ipc-client.ts` / `finalization-client.ts` 半成品破坏已从 dry-run 工件 `ours` 版恢复，并把上游新 `isProjectScopedChannel` 并入）；上游已删的 3 个副本（`DiffViewer.tsx` / `MonacoDiffViewer.tsx` / `vela-protocol.ts`）已删；**按需补建 48 个上游文件**（闭包复制，含 `components/layout/v2/*`、`components/startup/RendererStartup.tsx`、`test/helpers/canonical-project-fixture.ts`）。
+
+**路径口径对撞（上游 `.ai-novel` vs fork `.lore`）**：上游把项目目录常量化（`CANONICAL_PROJECT_DIRECTORY = '.ai-novel'`）与 fork 的 `.lore` 直接冲突 → 一律取 **fork 口径**：`tauri-app/src/shared/project-format.ts` 覆写 `CANONICAL_PROJECT_DIRECTORY = '.lore'`（4 个引用点自动一致），所有路径字面量/测试期望同步；上游 `.ai-novel` 措辞不采纳。
+
+**契约语义漂移审计（自建 3 个临时脚本比对合并前后频道块）**：去注释后 13 处差异，其中 **3 处为真实漂移**（项目目录授权域，见下），7 处为「频道块边界串味」（频道行未变），另 5 处为**可选字段增量**（`project:recent-list` 的 `previewCapabilityId?`/`projectId?`、`db:project-core-synopsis-commit` 的 `receipt?`、`db:revision-merge` 的 `chapterNumber`/`version`/`reviewCycle?`、`db:review-create` 的 `reviewCycleId?`、`db:post-process-create-run` 的 `finalizedSource?`）→ 登记为 follow-up（见阻塞项 B27）。
+
+**未迁移频道 0 → 97**（上游新增，按域：generation=21 / agent-generation=8 / cloud-backup=8 / legacy-roster=7 / character-proposal=6 / finalization-generation=5 / finalized-character=5 / graph-generation=5 / project=5 / character-avatar=4 / dialog=4 / editor-inline=4 / review-revision=4 / kb=3 / startup=3 / db=2 / import-generation=2 / character-identity=1），下一批次已开（见交接 §2）。
+
+### 2. 项目目录授权域适配（3 个漂移频道，本次）
+
+上游把「选目录」从返回路径改为**主进程签发的目录授权**：
+
+| 频道 | 合并前 | 合并后（已适配） |
+|---|---|---|
+| `dialog:select-folder` | `args: []`，返回 `string \| null` | `args: [purpose: 'project-create' \| 'project-open']`，返回 `ProjectDirectoryGrant \| null` |
+| `project:create` | `CreateProjectConfig.path` | `CreateProjectConfig.parentGrantId` |
+| `project:open` | `args[0] = projectPath: string` | `args[0] = target: string \| { grantId }` |
+
+- `tauri-app/src-tauri/src/external_grant.rs`：`GrantOperation` 新增 `ProjectCreate` / `ProjectOpen` / `LegacyImport`（中文 `label()`：「创建项目」/「打开项目」/「导入旧版项目」）+ `PROJECT_DIRECTORY_GRANT_TTL`（10 分钟）；新增跨用途隔离单测。
+- `tauri-app/src-tauri/src/commands/project.rs`：`dialog_select_folder(app, purpose)` 返回 `Result<Option<ProjectDirectoryGrant>, String>`（`purpose` 非法 → `项目目录授权用途无效`；标题「选择项目保存位置」/「选择项目目录」；保留 async + 阻塞选择器回程）；`project_create` 改读 `config.parentGrantId` 并经 `resolve_project_grant_directory(..., ProjectCreate, consume=false)` 解析；`project_open` 首参改 `target`（字符串透传 / 对象取 `grantId` 走 `ProjectOpen`）；新增 5 例单测（含 `project_create_inner` 全流程落盘 `.lore/project.json` + `.lore/lorekeeper.db`）。
+- `tauri-app/src/services/ipc-client.ts`：`'project:open': ['target','requestToken','rendererProjectPath']`，并补上 `'dialog:select-folder': ['purpose']`。
+
+### 3. 类型检查与测试桩过渡（本次）
+
+- 新建 `tauri-app/src/tauri-globals.d.ts`：为尚未现代化的旧测试桩声明可选 `Window.aiNovelAPI?` / `Window.velaAPI?`（根 `electron/electron-env.d.ts` 的全局声明在 `tauri-app/tsconfig.json`（`include: ["src"]`）范围内不可见）——**仅过渡，业务与新增代码不得依赖**。
+- **测试债务（合并前既存、非本轮回归）**：tauri-app 约 **70 个测试文件**仍用 `window.velaAPI` / `window.aiNovelAPI` 桩，而运行时走 `@tauri-apps/api/core` 的 `invoke`（读 `window.__TAURI_INTERNALS__`）；抽样 6 文件 → 5 failed / 1 passed（`TypeError: Cannot read properties of undefined (reading 'invoke')`）。需单开「测试桩现代化」批次（登记 B26）。
+- `fast-check`：上游 `chapter-materials.test.ts` 的属性测试需要（根已声明 `^4.10.1`）；按用户「按推荐执行」决定，向 `tauri-app/package.json` 增加 devDependency `fast-check@^4.10.1` 后 `pnpm install`（解析 **4.10.2**），tsc 由 5 错 → **0 错**，该测试 55/55 通过。
 
 落盘（提交 `a2348a79` + `14d224d9`）：
 
@@ -59,7 +93,7 @@
 
 **刻意偏离（第四十三次登记，详见开工清单 §5 / §5.1）**：D-H4-6（`McpServerRuntime` 删 `Clone` 改持 `Arc`）；D-H4-7（同步模型 4 条等价替换：阻塞式请求-响应、stdin 写失败立即可报 `连接已断开`、进程退出状态动态反映、`connect` I/O 不持表锁 + `Arc::ptr_eq` 校验）；D-H4-8（`as_i64` 只认数字 id，字符串 id 响应被忽略——请求 id 恒为自增数字，基线 `Map.get` 不会遇到此形态）；D-H4-9（`write_all` 无写超时，子进程不读 stdin 时写可阻塞，与基线同样可能挂起）。
 
-### 2. H4 起步 ✅ Task 1+2（mcp 类型镜像 / 管理器骨架 / 配置层；**刻意不注册命令**）
+### 4. H4 起步 ✅ Task 1+2（mcp 类型镜像 / 管理器骨架 / 配置层；**刻意不注册命令**）
 
 用户 2026-10-10 定下 H4 前提：信任模型 **(a) `std::process::Command` + 自研守卫（零新依赖）**；顺序 **先 H4 收口，再合并上游**；合并方式 `git merge upstream/master --no-ff`。
 
@@ -81,7 +115,7 @@
 
 **待下批（Task 3..7）**：stdio 传输层（`mcp/transport.rs`，`std::process::Command` + 自研守卫）→ 连接状态机 → `call-tool` / `list-tools` / `list-resources` → 前端登记 + 注册 + `--emit` + 测试适配 → 单测补强。**收口前必须删除**：`commands/mcp.rs::manager_or_transient` 的临时实例回退（否则状态不共享），以及 `state.rs` / `commands/mod.rs` 的 `#[allow(...)]` 临时豁免。
 
-### 3. B13 ✅ 渲染层导航防护收口（提交 `ef76662b`）
+### 5. B13 ✅ 渲染层导航防护收口（提交 `ef76662b`）
 
 HEAD 自 `01d0f6e2` 前进到 `bdd9d3c3`，含两个提交：`ef76662b`
 `feat(tauri): 新增 B13 渲染层导航防护插件` 与 `bdd9d3c3`
@@ -101,13 +135,13 @@ B13 已关闭（基线 `preventRendererNavigation` + 新窗口拦截的 Tauri �
 `cargo test --lib` 由 652 增至 **655**（+3：`allows_app_origins_test` /
 `rejects_foreign_and_dangerous_urls_test` / `official_homepage_matches_exactly_test`）。
 
-### 4. H4（mcp 9 频道）开工清单已产出（第四十一次）—— 前提已于第四十二次确认
+### 6. H4（mcp 9 频道）开工清单已产出（第四十一次）—— 前提已于第四十二次确认
 
 - 开工清单：`docs-fork/plans/2026-10-10-h4-mcp-kickoff.md`（提交 `bdd9d3c3`）；
 - 仍**待用户确认**开工清单 §4 信任模型：(a) `std::process::Command` + 自研守卫
   vs (b) `tauri-plugin-shell`——**确认后才能开工**（未迁移仍为 **9**，仅剩 `mcp=9`）。
 
-### 5. 刻意偏离（D-B13-1 / D-B22-1 / D-B22-2，第四十一次登记）
+### 7. 刻意偏离（D-B13-1 / D-B22-1 / D-B22-2，第四十一次登记）
 
 - **D-B13-1**：`navigation_guard::init` 为非泛型
   `pub fn init() -> TauriPlugin<tauri::Wry>`，而非 `init<R: Runtime>()`。
@@ -122,14 +156,14 @@ B13 已关闭（基线 `preventRendererNavigation` + 新窗口拦截的 Tauri �
   无对应概念（已在 `tauri-app/src-tauri/src/commands/window.rs` 头注释记录：
   `CloseRequested` 只对存活窗口触发，故仅保留 `approved` 一条放行条件）。
 
-### 6. 第四十一次本轮验证事实
+### 8. 第四十一次本轮验证事实
 
 - **B22 两段式关窗的端到端仍需 GUI 人工实测，本轮未做、不得写成已通过**：
   OS 关闭按钮 / Alt+F4、保存并退出 / 放弃并退出 / 取消三按钮、
   脏状态与 workflow 运行中分支、approved 后二次 close 放行、
   WebView2 事件竞态。
 
-### 7. 自检（第四十一次实测，2026-10-10）
+### 9. 自检（第四十一次实测，2026-10-10）
 
 - `pnpm typecheck` → exit 0；`pnpm run lint` → exit 0
   （`eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0`）；
@@ -297,10 +331,13 @@ handler 前置断言，D4）。恢复 D1–D3 需用户确认。
 | `bdd9d3c3` | `docs(tauri): 新增 H4（mcp 9 频道）开工清单` |
 | `a2348a79` | `feat(tauri): H4 Task 3+4——mcp stdio 传输层与连接状态机` |
 | `14d224d9` | `feat(tauri): H4 Task 6+7——注册 9 个 mcp 命令并归零未迁移频道` |
-- HEAD（写入本轮时）：`14d224d9 feat(tauri): H4 Task 6+7——注册 9 个 mcp 命令并归零未迁移频道`
+| `7bab3727` | `Merge remote-tracking branch 'upstream/master' into chore/merge-upstream-20261010`（**0 冲突**，1018 文件） |
+| `7e1ed75e` | `chore(ci): commit 消息检查在 push 事件同样忽略上游作者` |
+| `36b80d6e` | `chore(tauri): 同步上游 master 合并——契约镜像/闭包补建与项目目录授权域适配` |
+- HEAD（写入本轮时）：`36b80d6e chore(tauri): 同步上游 master 合并——契约镜像/闭包补建与项目目录授权域适配`
 - **推送状态（2026-10-10）**：`origin/master` 曾落后 10 个提交（末个远端为 `03c9f230`），本轮补提交后**已全部推送**（`03c9f230..2f28d4a9`，`ahead 0 / behind 0`）。
 - **推送状态（2026-10-10）**：上一轮已推送至 `2f28d4a9`；本轮两提交（`ef76662b` + `bdd9d3c3`）**尚未推送**（`git status -sb`：`master...origin/master [ahead 2]`）。
-- **推送状态（2026-10-10 · 第四十三次）**：H4 Task 3+4 与 Task 6+7 两提交（`a2348a79` + `14d224d9`）**尚未推送**（`git rev-list --left-right --count origin/master...HEAD` = `0 2`）；按用户决定「H4 收口后一次性提交并推送」处理。
+- **推送状态（2026-10-10 · 第四十四次）**：合并与适配三提交（`7bab3727` + `7e1ed75e` + `36b80d6e`）已 **ff 合并到 `master` 并推送**（`dfa32d3e..36b80d6e`）；`git rev-list --left-right --count origin/master...HEAD` = `0 0` ✅。推送前 `node scripts/check-commit-msg.mjs --range dfa32d3e..HEAD --ignore-author 257484394+EthanYoQ@users.noreply.github.com` → 3/3 合规（不带 `--ignore-author` 会报 16 条上游作者历史提交不合规，CI 侧已由 `7e1ed75e` 统一忽略）。
   1. 第三十九次「`cargo test --lib` **607/607**」→ G3a 移植 36 例后为 643，G3b 再 +2 命令层测试后实测为 **645/645**；
   2. 第三十九次「下一步 G3（执行租约 / 批次推进 / effect receipts 11 频道 + `db:import-global-facts-commit`）」→ **G3a（仓储层）与 G3b（频道注册）均已完成**，下一步是 **G4**；
   3. 第四十次 G3a 版「下一步 **G3b**（13 频道注册）」→ **G3b 已完成**（提交 `f31446ec`，未迁移 22 → 9）；
@@ -314,7 +351,8 @@ handler 前置断言，D4）。恢复 D1–D3 需用户确认。
 2. **子代理编排通道已验**（开工清单 [`docs-fork/plans/2026-10-10-subagent-pideck-kickoff.md`](../plans/2026-10-10-subagent-pideck-kickoff.md) §8）：`lorekeeper-task` + `bash` 端到端可用（子代理返回 `c0a0c5c2` 与编排者一致）；PiDeck 面板出条目已确认；`toolUses`/`tokens` 实时跳动**未取得界面证据**。
 3. **其它待办**：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项、B24（整屏瞬黑，暂缓）。
 3. **B13 ✅ 已关闭**（`ef76662b`）；**H4 待用户确认**开工清单 §4 信任模型（(a) `std::process::Command` + 自研守卫 vs (b) `tauri-plugin-shell`）后开工。其它待办：B14（真 Windows 自更新）、上游合并专项、B24（整屏瞬黑，暂缓）。
-4. **H4 已收口（第四十三次）**：Task 3+4（stdio 传输层 + 连接状态机）与 Task 6+7（注册 9 命令 + 前端登记 + `--emit` + 断言适配）均已落地（提交 `a2348a79` + `14d224d9`），**未迁移 invoke 0**；Task 7 的 P2 必修项与 5 例单测补强亦已完成（自检 **689/689**）。收口后立即执行 **上游合并 `git merge upstream/master --no-ff`**（上游 tip `21d67211`，分叉 `509 150`，共同祖先 `992b3f5f`，唯一冲突文件 `README.md`；实测上游 mcp 基线仅 +1 行 `assertGlobalDataReady()`（Tauri 侧不适用）、mcp 9 契约两版逐字一致；上游契约 **+14 频道、0 删除** → 合并后未迁移将为 **23**）。
+4. **H4 已收口（第四十三次）**：Task 3+4（stdio 传输层 + 连接状态机）与 Task 6+7（注册 9 命令 + 前端登记 + `--emit` + 断言适配）均已落地（提交 `a2348a79` + `14d224d9`），**未迁移 invoke 0**；Task 7 的 P2 必修项与 5 例单测补强亦已完成（自检 **689/689**）。
+5. **上游 master 合并已收口（第四十四次，本次）**：`7bab3727`（0 冲突）+ `7e1ed75e` + `36b80d6e`，已 ff 合并并推送。下一步是 **开新批次迁移 97 个上游新增频道**（一次性清单：重跑 `cd tauri-app && node scripts/verify-channel-coverage.mjs`，会打印完整清单；按域计数：generation=21 / agent-generation=8 / cloud-backup=8 / legacy-roster=7 / character-proposal=6 / finalization-generation=5 / finalized-character=5 / graph-generation=5 / project=5 / character-avatar=4 / dialog=4 / editor-inline=4 / review-revision=4 / kb=3 / startup=3 / db=2 / import-generation=2 / character-identity=1），并同步另开「**测试桩现代化**」批次（B26）。
 **刻意偏离登记（批次 G4）**：**D-G4-1** —— `tauri-app/src-tauri/src/db/kb/store.rs::document_integrity` 的 `complete` **只反映 canonical 完整性**（文档行唯一 + 块序列严格 `0..n` + `total_chunks`/`corpus_kind` 自洽），**不含基线的 `embeddingGenerations` 检查**（基线 `electron/vector-store.ts:1464-1470`：`complete = canonicalComplete && embeddingGenerations.every(g => g.status === 'building' || g.complete)`）。原因：Tauri 侧向量由文件型 `LocalVectorIndex` 持有、不入 SQLite，无法在 SQL 层复现代际检查。恢复需用户确认。
 
 ### 3. 阻塞项与待授权项（**不得删除，须逐条确认后更新**）
@@ -346,7 +384,9 @@ handler 前置断言，D4）。恢复 D1–D3 需用户确认。
 | **B23** | **手写弹层无退出动画** | ✅ **已解除（本次）**：`SettingsModal` 已改为延迟卸载 + 统一进出场（`.lk-dialog-backdrop` / `.lk-dialog-panel`），第十三轮实测有淡出 |
 | **B24** | **窗口最小/最大化后整屏瞬黑（闪烁）** | ⚠️ **新增（本次）·用户决定暂缓到专门批次**。现象：最小/最大化后鼠标在窗口内移动时**整屏瞬黑**（偶发）；**浏览器打开同一页面拖动不闪** → 壳层问题。已排查且排除：透明/effect 配置、常驻 `backdrop-filter`、resize 重渲染风暴、`backgroundColor` 缺失、`shadow:false`（实测无效已回滚）；事件日志无 TDR/dxgkrnl/DWM 错误。机器：AMD Radeon(2021‑11‑30 驱动) + RTX 3060 Laptop 混合显卡、单屏 2560×1440@**165Hz**、**FreeSync/VRR 开启**。候选方案：M3 给 `lorekeeper.exe` 指定单一 GPU ／ M4 临时 60Hz ／ A2 WebView2 `--disable-direct-composition` ／ M1 关 MPO（注册表，需审批+重启）／ M2 更新 AMD 驱动 |
 | **B25** | **`ClearProjectDataDialog` 未纳入统一动画** | ✅ **已解除**（`b4530e50`：手写全屏弹层纳入统一进出场，GUI 已验淡入淡出） |
-
+| **B26** | **tauri-app 测试桩未现代化** | ⚠️ **新增（第四十四次）**：约 **70 个测试文件**仍用 `window.velaAPI` / `window.aiNovelAPI` 桩，而运行时读 `window.__TAURI_INTERNALS__.invoke`（`@tauri-apps/api/core`）→ 抽样 6 文件 5 failed / 1 passed（`TypeError: Cannot read properties of undefined (reading 'invoke')`）。**合并前既存、非回归**（合并前 `ipc-client.ts` 已是 `@tauri-apps/api/core` 且 `tauri-app/package.json` 未被合并改动）。过渡声明 `tauri-app/src/tauri-globals.d.ts` 仅为过类型检查，**应整体换成 `__TAURI_INTERNALS__` 桩**。需单开批次 |
+| **B27** | **上游可选字段增量漂移（5 处）** | ⚠️ **新增（第四十四次）**：`project:recent-list`（`previewCapabilityId?` / `projectId?`）、`db:project-core-synopsis-commit`（`receipt?`）、`db:revision-merge`（`chapterNumber` / `version` / `reviewCycle?`）、`db:review-create`（`reviewCycleId?`）、`db:post-process-create-run`（`finalizedSource?`）；均为**可选字段**，不影响现有调用面，登记为 follow-up（类型级新增字段如 `GlobalConfig.outlineTargetUnits` / `ModelConfig.capabilitySources?` 同属） |
+| **B28** | **`.ai-novel` 常量保留（有意）** | ℹ️ **新增（第四十四次）**：`tauri-app/src/shared/project-storage.ts:7,9` 的 `PROJECT_MIGRATION_JOURNAL = '.ai-novel-migration/journal.json'` 与 `STORAGE_ENVIRONMENT`（含 `AI_NOVEL_VELA_HOME`）为上游常量表，该文件为**纯类型 + 纯函数**（运行时无环境变量读取），仅 `MIGRATION_IDS` / `MainReady` / `AppearanceProfile` / `mayHydrateAppearance` 等被引用；与根镜像逐字节一致 → **保留待上游同步**，登记备查（**不属运行时红线违反**） |
 ### 4. 红线提醒（每次接手都要过一遍）
 
 - 🚫 Tauri 侧**禁止**读 `AI_NOVEL_VELA_HOME`、**禁止**回退 `~/.vela`、**禁止**写 `.vela/vela.db`。
@@ -368,14 +408,15 @@ handler 前置断言，D4）。恢复 D1–D3 需用户确认。
 
 | 命令 | 工作目录 | 实测输出 |
 |---|---|---|
-| `node scripts/verify-channel-coverage.mjs --quiet` | `tauri-app/` | 契约 invoke 频道 **193**（事件频道 **5**）· 已注册命令 **185** → 覆盖 **184** · 未迁移 **9** `[db=0 mcp=9]` · 命令名与契约频道一一对应 ✅ |
-| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 655 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 47.91s`（第四十一次重测） |
+| `node scripts/verify-channel-coverage.mjs` | `tauri-app/` | 契约 invoke 频道 **290**（事件频道 **7**）· 已注册命令 **194** → 覆盖 **193** · 未迁移 **97** `[generation=21 agent-generation=8 cloud-backup=8 legacy-roster=7 character-proposal=6 finalization-generation=5 finalized-character=5 graph-generation=5 project=5 character-avatar=4 dialog=4 editor-inline=4 review-revision=4 kb=3 startup=3 db=2 import-generation=2 character-identity=1]` · 命令名与契约频道一一对应 ✅ |
+| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. **694 passed; 0 failed**; 0 ignored; 0 measured; 0 filtered out; finished in 49.58s`（第四十四次重测） |
 | `cargo check --all-targets` | `tauri-app/src-tauri/` | `Finished dev profile ... `（**0 告警**） |
 | `cargo fmt --check` | `tauri-app/src-tauri/` | 输出 **0 行**（干净） |
-| `pnpm typecheck` / `pnpm run lint` | `tauri-app/` | exit 0 / exit 0 |
-| `npx vitest run test/channel-migration-coverage.test.ts test/ipc-arg-struct-contract.test.ts` | `tauri-app/` | `Test Files 2 passed`，`Tests 7 passed` |
+| `pnpm typecheck` / `pnpm run lint` / `npx eslint .` | `tauri-app/` | exit 0（**tsc 0 错误**） / exit 0 / exit 0 |
+| `npx vitest run test/channel-migration-coverage.test.ts` | `tauri-app/` | `Test Files 1 passed`，`Tests 6 passed`（合并前为 1 failed / 5 passed） |
+| `node scripts/verify-channel-coverage.mjs --emit` + `git status --porcelain -- src/shared/migrated-channels.ts` | `tauri-app/` | `src/shared/migrated-channels.ts 已是最新（193 个频道）`；status 无输出（无 diff） |
 | `git status --porcelain` | 仓库根 | 跟踪文件改动：仅本快照 + 并行子任务项（`docs-fork/plans/tauri-migration-channel-inventory.md`、`.gitignore` 等，非 Task E-1 改动）；未跟踪：`docs-fork/todo.md`（按约定永不入库）+ 并行子任务产出 |
-| `git log -1` | 仓库根 | `bdd9d3c3 docs(tauri): 新增 H4（mcp 9 频道）开工清单` |
+| `git log -1` | 仓库根 | `36b80d6e chore(tauri): 同步上游 master 合并——契约镜像/闭包补建与项目目录授权域适配` |
 | `pnpm tauri dev`（第十轮冒烟，G1） | `tauri-app/` | VITE `ready in 441 ms` · cargo `Finished dev profile in 47.50s` · `lorekeeper.exe` **90 MB** · 3 项人工验证全部 ✅ |
 | `pnpm tauri dev`（第十一轮冒烟，G2a） | `tauri-app/` | VITE `ready in 812 ms` · cargo `Finished dev profile in 42.46s` · `lorekeeper.exe` **45 MB** · 4 项人工验证全部 ✅（唯一 console.error 为预期的 G2b 频道未迁移） |
 | `pnpm tauri dev`（第十二轮冒烟，ESC/窗口修复） | `tauri-app/` | VITE `ready` · cargo 增量重建 · `lorekeeper.exe` **32 MB** · 4 项人工验证全部 ✅（窗口最小/最大化、标题栏拖拽、设置弹窗 ESC、关闭按钮） |
