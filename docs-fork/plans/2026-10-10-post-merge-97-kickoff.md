@@ -75,19 +75,31 @@
 | `ipc-channels.ts` | 14 | `dialog:select-legacy-project`、`project:import-legacy-copy`、`project:peek-overview`、`project:overview-current`、`project:archive-export`、`project:archive-restore`、`dialog:select-project-archive-export`、`dialog:select-project-archive`、`dialog:select-project-restore-target`、`db:project-core-commit-generated`、`db:review-cycle-get`、`kb:read-document-copy`、`kb:save-document-copy`、`kb:reindex-document-copy` |
 | `startup-contract.ts` | 3 | `startup:get-state`、`startup:skin-snapshot`、`startup:appearance-ack` |
 
-## 2. 分批规划（初步，待 §4 回填定稿）
+## 2. 分批规划（定稿 2026-10-10，R1–R4 回填）
 
-| 分批 | 内容 | 频道数 | 依赖 / 风险 |
-|---|---|---|---|
-| **I-1** | 启动态 3 + 项目归档/旧版导入/概览/文档副本 14 | 17 | 与已迁移面最近；涉及归档格式与 `.vela` 口径冲突、外部文件授权；**新表**：`review_cycles` 等（`db:review-cycle-get`） |
-| **I-2** | generation owner 核心 21 + 事件 2 | 23 | **最大块**；其余派生域多依赖其对外接口面；**新表**：`generation_roots/runs/attempts/artifacts` |
-| **I-3** | 派生 generation 40（agent / editor-inline / finalization / graph / legacy-roster / finalized-character / import / review-revision） | 40 | 复用 I-2 的执行框架；逐域可再拆子批 |
-| **I-4** | 角色身份/提案/头像 11 | 11 | **新表**：`character_identity_*` 7 张 + `character_avatar_*` 2 张；头像需图片处理能力评估 |
-| **I-5** | 云端备份 8 | 8 | 凭据存储与远端协议需专项评估（可能需新 crate/插件）；**新表/候选**：`import_effect_ledger` 等 |
+**依赖图（顺序依据）**：
+- **共同前置**：m01 generation 账本四表 + m02 `characters` 重建（`character_id` PK）+ 六辅助表 + `generation_run_repository` + owner 脚手架 —— generation 核心（21）、角色身份/提案（7）、派生 generation（40）全部依赖（R1-D-8 / R2-D-1 / R2-D-2）。
+- m03 三表 = review-revision（4）+ `db:review-cycle-get` 前置（R2-D-3 / R4 §3）。
+- `assertSourcesCurrent`/`withGenerationAgentChildEffect`（B3）= `db:project-core-commit-generated` 前置（R4 §1-10）。
+- `exportPortableProject`/`restorePortableProject`（B7）= `cloud-backup:restore-copy` 硬前置（R3-D-9）。
+- m05 两表 = 头像 4 频道前置；`import_legacy_identity_bridge`/`text_metric_versions` 刻意不建（schema.rs:1314 断言），sanitize/legacy-import 的 `DELETE FROM` 需条件化（B7）。
 
-**顺序建议（初步）**：I-1（近场、铺开新表流程）→ I-2 → I-3 → I-4 → I-5；
-最终顺序与每批内部拆分以 §4 调研结论与我方复验为准。
+| 批次 | 频道 | 内容（文件面） | 前置 | 决策点 |
+|---|---|---|---|---|
+| **B1 生成域基座** | 0 | **W1**：schema.rs +m01 四表；新建 `repositories/generation_run_repository.rs`。**W2**：schema.rs +m02 六表 + `characters` 重建为 m02 形态；适配 `character_repository.rs`/`character_roster_repository.rs`/`finalized_continuity_repository.rs`/`project_clear_repository.rs`。**W3**：新建 `services/main_generation_owner.rs` 骨架（per-database owner 缓存 + authorizedOwner 门控 + 错误映射 + suspendForProjectClose 钩子 + 事件 emit 接线点） | 无 | m02 直接 CREATE 基线（已定，不建迁移运行时） |
+| **B2 角色身份/提案 + generation 读面** | 14 | 新建 `commands/character_proposal.rs`（7 命令：proposal 6 + `character-identity:read`）、`repositories/character_identity_repository.rs`、`services/character_proposal.rs`；`commands/generation.rs` 读面 7 命令（G1）；owner 读面方法 | B1 | — |
+| **B3 generation 写面 + 执行面 + 事件** | 13 + 2 事件 | G2 纯逻辑层 `services/generation_{source_binding,plan,hash}.rs`；G3 写面 9 命令；G4 执行 4 命令；事件 emit `generation:snapshot`/`generation:reasoning`；`services/draft_effects.rs` | B2 | D-3 方案 (c) service 层直调（已定）；D-2 广播+客户端过滤（已定） |
+| **B4 知识源** | 1 | `services/knowledge_source.rs` 重写（FTS5+HNSW+jieba 方案 B 等价语义）+ `generation:prepare-draft-context` | B2 | D-1 方案 B 等价语义（已定，登记刻意偏离） |
+| **B5 角色头像** | 4 | schema.rs +m05 两表；新建 `repositories/character_asset_repository.rs`、`services/character_asset.rs`、`services/avatar_image.rs`、`commands/character_avatar.rs` | B1 | **Ask first**：image crate（nativeImage 压缩替代） |
+| **B6 派生 generation** | 40 | 按 R2-G1..G8 八个子批：import 2 / legacy-roster 7 / review-revision 4 / finalized-character 5 / finalization-gen 5 / graph 5 / editor-inline 4 / agent 8 | B1+B2+B3 | D-5 类型化入口（定）；D-11 错误码白名单复刻 Electron 映射（定）；D-4 contextId 进程内存态不持久化（定） |
+| **B7 归档/旧版导入/启动态/文档副本** | 17 | schema.rs +m03 三表 +m04 `import_effect_ledger`；sanitize/legacy-import 条件化 DELETE；手写 ZIP（STORED）+ CRC32；`external_grant.rs` 新增 4 用途变体；startup 三频道（trusted-sender 等价）；kb document-copy 3 频道 | B1+B2+B3 | **Ask first**：zip/crc32fast crate、VACUUM INTO 替代 better-sqlite3 在线 backup、trusted-sender 等价物 |
+| **B8 云备份** | 8 | 新建 `src/cloud_backup/{mod,webdav,credential,binding}.rs` + `commands/cloud_backup.rs` | B7 | **Ask first**：safeStorage 替代（windows-sys DPAPI / keyring / session-only）、XML crate（quick-xml / roxmltree） |
 
+**schema 扩展登记**（整批授权范围内）：B1 追加 m01 四表 + m02 六表 + `characters` 重建；B5 追加 m05 两表；B7 追加 m03 三表 + m04 一表。`import_legacy_identity_bridge`/`text_metric_versions`/`import_runs_stage_v3` 不建（维持历史决策）。
+
+**上游版本号事实**：上游 `CURRENT_DESKTOP_SCHEMA_VERSION = 7`（desktop-registry.ts:16），m01–m05 是版本 7 内的「installed lane」迁移，不 bump 版本号 → Tauri 侧无版本常量需改，portable 归档 schemaVersion=7 兼容。
+
+**B1 内部波次**：W1 串行（纯增量，验收 694 绿）→ W2 ∥ W3 并行（文件面不重叠：W2 改 5 个现有文件、W3 建新文件；W3 验证降级为 `cargo check`，`cargo test` 由编排者在 W2 收口后统一跑，避免半成品干扰）。
 ## 3. 数据库 schema 扩展授权（**已有**）
 
 - **用户 2026-10-10 决策（ask 卡 `schema_auth`）＝ 「整批授权」**：按上游 `electron/migrations/m01–m05` **逐批按需**向
@@ -115,8 +127,7 @@
 前端调用点 / Rust 移植建议与子批次 / 风险与刻意偏离候选（D-*）。
 
 **回填任务**：4 份报告回来后，把 §2 的分批细化（每批的 Rust 文件面、命令签名要点、表清单、D-* 候选）
-并据此派发实现子代理。
-
+**✅ 已回填（2026-10-10）**：§2 定稿 B1–B8 与依赖图；B1 三波次（W1 串行 → W2∥W3 并行）启动中，实现子代理 runId 见当日快照。
 ## 5. 硬约束与验收口径（每批通用）
 
 - **一次一批**：每批由子代理实现（`tokendance/ling-3.1-flash`），编排者独立复验后才提交；禁子代理跑 `git add/commit`。
