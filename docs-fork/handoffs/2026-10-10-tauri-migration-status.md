@@ -187,11 +187,10 @@ handler 前置断言，D4）。恢复 D1–D3 需用户确认。
 
 ### 2. 下一步（1-2-3）
 
-1. **批次 G4**：`kb:import-reference-text` 去占位 + 前端登记 + GUI 冒烟
-   （按
-   [`docs-fork/plans/2026-10-10-g3-import-run-kickoff.md`](../plans/2026-10-10-g3-import-run-kickoff.md)
-   §5 执行；G3b 后未迁移仅剩 mcp 9，G4 为占位频道真实化，不改变未迁移计数）。
+1. **批次 G4 ✅ 已完成**（2026-10-10，提交 `94a1fe6a` + `5c4fd26e`）：`kb:import-reference-text` 去占位真实化（G4-1 存储层 `db/kb/store.rs` 参照文档幂等 seam + G4-2 命令层 `commands/kb.rs`）；为占位频道真实化，未改变未迁移计数（仍为 9，仅剩 mcp）。
 2. **其它待办**：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项、B24（整屏瞬黑，暂缓）。
+
+**刻意偏离登记（批次 G4）**：**D-G4-1** —— `tauri-app/src-tauri/src/db/kb/store.rs::document_integrity` 的 `complete` **只反映 canonical 完整性**（文档行唯一 + 块序列严格 `0..n` + `total_chunks`/`corpus_kind` 自洽），**不含基线的 `embeddingGenerations` 检查**（基线 `electron/vector-store.ts:1464-1470`：`complete = canonicalComplete && embeddingGenerations.every(g => g.status === 'building' || g.complete)`）。原因：Tauri 侧向量由文件型 `LocalVectorIndex` 持有、不入 SQLite，无法在 SQL 层复现代际检查。恢复需用户确认。
 
 ### 3. 阻塞项与待授权项（**不得删除，须逐条确认后更新**）
 
