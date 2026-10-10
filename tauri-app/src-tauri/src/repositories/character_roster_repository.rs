@@ -15,7 +15,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -1714,12 +1714,23 @@ pub fn commit(
     payload: &serde_json::Value,
 ) -> Result<CharacterRosterCommitReceipt, String> {
     migrate_character_roster_schema(conn).map_err(|error| error.to_string())?;
-    let request = normalize_request(payload)?;
-    let request_payload_hash = payload_hash(&request)?;
-
     let tx = conn
         .unchecked_transaction()
         .map_err(|error| error.to_string())?;
+    let receipt = commit_in_transaction(&tx, payload)?;
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(receipt)
+}
+
+/// 事务体内的提交逻辑（批次 G3a 抽取）：供 [`commit`] 与
+/// `import_global_facts_repository` 的跨仓原子事务复用。
+/// 错误提前返回时 `tx` drop 即回滚，与基线 `db.transaction()` 语义一致。
+pub(crate) fn commit_in_transaction(
+    tx: &Transaction<'_>,
+    payload: &serde_json::Value,
+) -> Result<CharacterRosterCommitReceipt, String> {
+    let request = normalize_request(payload)?;
+    let request_payload_hash = payload_hash(&request)?;
 
     let existing_operation: Option<String> = tx
         .query_row(
@@ -1902,7 +1913,6 @@ pub fn commit(
         &projection_hash,
         &fact_hash,
     )?;
-    tx.commit().map_err(|error| error.to_string())?;
     Ok(CharacterRosterCommitReceipt {
         operation_id: request.operation_id.clone(),
         payload_hash: request_payload_hash,

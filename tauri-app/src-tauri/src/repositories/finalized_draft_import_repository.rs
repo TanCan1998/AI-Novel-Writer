@@ -8,7 +8,7 @@
 //! 行数组按 `chapter ASC, version ASC, id ASC`，元素键序 = JS 对象插入序
 //! （draftId, chapterNumber, version, bodyHash）。
 
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -552,6 +552,38 @@ pub fn commit(
     project_root: &str,
     request: &FinalizedDraftImportRequest,
 ) -> Result<FinalizedDraftImportReceipt, String> {
+    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
+    let receipt = commit_in_transaction(&tx, project_root, request)?;
+    tx.commit().map_err(|e| e.to_string())?;
+    Ok(receipt)
+}
+
+/// 基线 `FinalizedDraftImportRepository.getCommittedOperation`：
+/// 已提交操作的权威回读（含章节事实核对）；用于 effect receipt
+/// 的已提交权威校验（批次 G3a）。
+pub fn get_committed_operation(
+    conn: &Connection,
+    operation_id: &str,
+    chapters: &[FinalizedDraftImportChapter],
+) -> Result<Option<FinalizedDraftImportReceipt>, String> {
+    let normalized_operation_id = require_non_empty_operation_id(operation_id)?;
+    let chapters = normalize_chapters(chapters)?;
+    let Some(row) = get_operation_row(conn, &normalized_operation_id)? else {
+        return Ok(None);
+    };
+    let receipt = parse_stored_receipt(&row)?;
+    verify_stored_facts(conn, &receipt, &chapters)?;
+    Ok(Some(receipt))
+}
+
+/// 事务体内的提交逻辑（批次 G3a 抽取）：供 [`commit`] 与
+/// `import_run_repository::commit_effect_receipt` 的跨仓原子事务复用。
+/// 错误返回时 `tx` drop 即回滚，与基线 `db.transaction()` 语义一致。
+pub(crate) fn commit_in_transaction(
+    tx: &Transaction<'_>,
+    project_root: &str,
+    request: &FinalizedDraftImportRequest,
+) -> Result<FinalizedDraftImportReceipt, String> {
     let operation_id = require_non_empty_operation_id(&request.operation_id)?;
     let chapters = normalize_chapters(&request.chapters)?;
     let mut normalized_request = request.clone();
@@ -559,13 +591,12 @@ pub fn commit(
     let payload_hash = request_payload_hash(&normalized_request, &chapters);
     let accepted_payload_hashes = request_payload_hash_candidates(&normalized_request, &chapters);
 
-    let tx = conn.unchecked_transaction().map_err(|e| e.to_string())?;
-    if let Some(existing) = get_operation_row(conn, &operation_id)? {
+    if let Some(existing) = get_operation_row(tx, &operation_id)? {
         if !accepted_payload_hashes.contains(&existing.payload_hash) {
             return Err("定稿导入 operationId 已绑定不同载荷".to_string());
         }
         let receipt = parse_stored_receipt(&existing)?;
-        verify_stored_facts(conn, &receipt, &chapters)?;
+        verify_stored_facts(tx, &receipt, &chapters)?;
         return Ok(FinalizedDraftImportReceipt {
             idempotent: true,
             ..receipt
@@ -582,11 +613,11 @@ pub fn commit(
         }
     }
     if let Some(expected_authority) = &request.expected_authority_fingerprint {
-        let current_authority = sequence_from_rows(authority_rows(conn)?).authority_fingerprint;
+        let current_authority = sequence_from_rows(authority_rows(tx)?).authority_fingerprint;
         if *expected_authority != current_authority {
             return Err("项目权威章节已变化，原稿预览已过期".to_string());
         }
-        let preview = preview(conn, &chapters)?;
+        let preview = preview(tx, &chapters)?;
         if preview.classification != "ready" {
             return Err("原稿章节不能形成连续且无冲突的权威正文".to_string());
         }
@@ -673,7 +704,6 @@ pub fn commit(
         ],
     )
     .map_err(|e| e.to_string())?;
-    tx.commit().map_err(|e| e.to_string())?;
     Ok(receipt)
 }
 

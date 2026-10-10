@@ -793,6 +793,30 @@ pub fn create_tables(conn: &Connection) -> SqlResult<()> {
     conn.execute_batch(CREATE_KB_FTS)?;
     migrate_project_core_legacy_columns(conn)?;
     migrate_character_roster_schema(conn)?;
+    fence_import_run_execution_leases(conn)?;
+    Ok(())
+}
+
+/// 打开项目库即围栏导入运行执行租约（批次 G3a，平移基线
+/// `electron/database.ts` `createTables` 的会话边界迁移）。
+///
+/// 基线原注：Opening a project database is a process/session boundary.
+/// Any persisted running owner belonged to the previous handle and must be
+/// fenced before a new renderer can resume the run.
+/// Tauri 侧 `ProjectDatabase::open`（由 `activate_project` 在打开/切换
+/// 项目时调用，与基线 `initProjectDatabase` 同为「打开项目」入口，而非
+/// 每个命令），故对齐基线在同一位置执行；命令层经 `with_project_db`
+/// 复用已打开连接，不重复触发。
+fn fence_import_run_execution_leases(conn: &Connection) -> SqlResult<()> {
+    conn.execute_batch(
+        "UPDATE import_runs
+         SET execution_owner = '',
+             execution_epoch = execution_epoch + 1,
+             lease_expires_at = 0,
+             updated_at = datetime('now')
+         WHERE status = 'running'
+           AND (execution_owner <> '' OR lease_expires_at <> 0)",
+    )?;
     Ok(())
 }
 

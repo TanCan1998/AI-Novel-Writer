@@ -10,7 +10,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 
 use crate::db::schema::ensure_blueprint_commit_schema;
@@ -372,7 +372,7 @@ fn canonical_json(value: &serde_json::Value) -> Result<String, String> {
 }
 
 /// 幂等键：对规范 JSON 取 SHA-256（对齐 `commitPayloadHash`）
-fn commit_payload_hash(request: &BlueprintCommitRangeRequest) -> Result<String, String> {
+pub(crate) fn commit_payload_hash(request: &BlueprintCommitRangeRequest) -> Result<String, String> {
     let payload = serde_json::json!({
         "mode": request.mode,
         "startChapter": request.start_chapter,
@@ -976,117 +976,162 @@ pub fn commit_range(
     let tx = conn
         .unchecked_transaction()
         .map_err(|error| format!("开启事务失败：{error}"))?;
+    let receipt = commit_range_in_transaction(&tx, request, payload_hash)?;
+    tx.commit()
+        .map_err(|error| format!("提交蓝图失败：{error}"))?;
+    Ok(receipt)
+}
 
-    let outcome: Result<BlueprintCommitRangeReceipt, String> = (|| {
-        if let Some(existing) = read_commit_operation(&tx, &request.operation_id)? {
-            if existing.payload_hash != payload_hash {
-                return Err("操作 ID 已被用于不同的蓝图提交，已拒绝覆盖".to_string());
-            }
-            return receipt_from_existing_operation(&tx, &existing, payload_hash);
-        }
+/// 只读回读已提交的范围操作及其当前绑定的范围/同步证据
+/// （对齐基线 `getCommittedRangeOperation`；`idempotent: false`，
+/// 与 [`commit_range`] 的幂等分支刻意不同——读回不声明幂等）。
+pub fn get_committed_range_operation(
+    conn: &Connection,
+    operation_id: &str,
+) -> Result<Option<BlueprintCommitRangeReceipt>, String> {
+    if operation_id.trim().is_empty() {
+        return Err("蓝图提交缺少操作 ID".to_string());
+    }
+    ensure_blueprint_commit_schema(conn).map_err(|error| error.to_string())?;
+    let Some(existing) = read_commit_operation(conn, operation_id)? else {
+        return Ok(None);
+    };
+    let character_sync_input = read_character_sync_input(&existing)?;
+    let persisted = read_exact_range(
+        conn,
+        &existing.mode,
+        &existing.operation_id,
+        existing.start_chapter,
+        existing.end_chapter,
+    )?;
+    let snapshot = snapshot_with_character_sync_facts(&persisted, &character_sync_input);
+    let character_sync_operation =
+        read_character_sync_operation(conn, &character_sync_operation_id(&existing.operation_id))?
+            .ok_or_else(|| "蓝图提交缺少可恢复的角色同步操作".to_string())?;
+    assert_authoritative_character_sync_completion(conn, &character_sync_operation)?;
+    Ok(Some(BlueprintCommitRangeReceipt {
+        mode: existing.mode,
+        operation_id: existing.operation_id,
+        payload_hash: existing.payload_hash,
+        idempotent: false,
+        start_chapter: existing.start_chapter,
+        end_chapter: existing.end_chapter,
+        chapter_numbers: snapshot
+            .iter()
+            .map(|blueprint| blueprint.chapter_number)
+            .collect(),
+        snapshot,
+        character_sync_input,
+        character_sync_operation,
+    }))
+}
 
-        if request.mode == COMMIT_MODE_FULL {
-            tx.execute(
-                "DELETE FROM blueprints WHERE chapter_number < ?1 OR chapter_number > ?2",
-                rusqlite::params![request.start_chapter, request.end_chapter],
-            )
-            .map_err(|error| format!("清理范围外蓝图失败：{error}"))?;
+/// 事务体内的范围提交逻辑（批次 G3a 抽取）：供 [`commit_range`] 与
+/// `import_run_repository::commit_effect_receipt` 的跨仓原子事务复用。
+/// 错误返回时 `tx` drop 即回滚，与基线 `db.transaction()` 语义一致。
+pub(crate) fn commit_range_in_transaction(
+    tx: &Transaction<'_>,
+    request: &BlueprintCommitRangeRequest,
+    payload_hash: String,
+) -> Result<BlueprintCommitRangeReceipt, String> {
+    if let Some(existing) = read_commit_operation(tx, &request.operation_id)? {
+        if existing.payload_hash != payload_hash {
+            return Err("操作 ID 已被用于不同的蓝图提交，已拒绝覆盖".to_string());
         }
-        for blueprint in &request.blueprints {
-            upsert_with(&tx, blueprint)?;
-        }
+        return receipt_from_existing_operation(tx, &existing, payload_hash);
+    }
 
-        let persisted = read_exact_range(
-            &tx,
-            &request.mode,
-            &request.operation_id,
+    if request.mode == COMMIT_MODE_FULL {
+        tx.execute(
+            "DELETE FROM blueprints WHERE chapter_number < ?1 OR chapter_number > ?2",
+            rusqlite::params![request.start_chapter, request.end_chapter],
+        )
+        .map_err(|error| format!("清理范围外蓝图失败：{error}"))?;
+    }
+    for blueprint in &request.blueprints {
+        upsert_with(tx, blueprint)?;
+    }
+
+    let persisted = read_exact_range(
+        tx,
+        &request.mode,
+        &request.operation_id,
+        request.start_chapter,
+        request.end_chapter,
+    )?;
+
+    let expected_by_chapter: HashMap<i64, &BlueprintData> = request
+        .blueprints
+        .iter()
+        .map(|blueprint| (blueprint.chapter_number, blueprint))
+        .collect();
+    for saved in &persisted {
+        let matches = expected_by_chapter
+            .get(&saved.chapter_number)
+            .map(|expected| same_persisted_blueprint(saved, expected))
+            .unwrap_or(false);
+        if !matches {
+            return Err(format!(
+                "蓝图提交回读不一致：第 {} 章",
+                saved.chapter_number
+            ));
+        }
+    }
+
+    let character_sync_input: Vec<BlueprintData> = request.blueprints.clone();
+    let serialized_input = serde_json::to_string(&character_sync_input)
+        .map_err(|error| format!("序列化角色同步输入失败：{error}"))?;
+    tx.execute(
+        "INSERT INTO blueprint_commit_operations
+         (operation_id, payload_hash, mode, start_chapter, end_chapter, character_sync_input)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        rusqlite::params![
+            request.operation_id,
+            payload_hash,
+            request.mode,
             request.start_chapter,
             request.end_chapter,
-        )?;
+            serialized_input,
+        ],
+    )
+    .map_err(|error| format!("写入蓝图提交记录失败：{error}"))?;
 
-        let expected_by_chapter: HashMap<i64, &BlueprintData> = request
-            .blueprints
-            .iter()
-            .map(|blueprint| (blueprint.chapter_number, blueprint))
-            .collect();
-        for saved in &persisted {
-            let matches = expected_by_chapter
-                .get(&saved.chapter_number)
-                .map(|expected| same_persisted_blueprint(saved, expected))
-                .unwrap_or(false);
-            if !matches {
-                return Err(format!(
-                    "蓝图提交回读不一致：第 {} 章",
-                    saved.chapter_number
-                ));
-            }
-        }
-
-        let character_sync_input: Vec<BlueprintData> = request.blueprints.clone();
-        let serialized_input = serde_json::to_string(&character_sync_input)
-            .map_err(|error| format!("序列化角色同步输入失败：{error}"))?;
-        tx.execute(
-            "INSERT INTO blueprint_commit_operations
-             (operation_id, payload_hash, mode, start_chapter, end_chapter, character_sync_input)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![
-                request.operation_id,
-                payload_hash,
-                request.mode,
-                request.start_chapter,
-                request.end_chapter,
-                serialized_input,
-            ],
-        )
-        .map_err(|error| format!("写入蓝图提交记录失败：{error}"))?;
-
-        let sync_operation_id = character_sync_operation_id(&request.operation_id);
-        tx.execute(
-            "INSERT INTO blueprint_character_sync_operations
-             (operation_id, blueprint_commit_operation_id, blueprint_commit_payload_hash,
-              start_chapter, end_chapter, character_sync_input)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![
-                sync_operation_id,
-                request.operation_id,
-                payload_hash,
-                request.start_chapter,
-                request.end_chapter,
-                serialized_input,
-            ],
-        )
-        .map_err(|error| format!("写入蓝图角色同步操作失败：{error}"))?;
-
-        let snapshot = snapshot_with_character_sync_facts(&persisted, &character_sync_input);
-        let character_sync_operation = read_character_sync_operation(&tx, &sync_operation_id)?
-            .ok_or_else(|| "蓝图提交未创建可恢复的角色同步操作".to_string())?;
-
-        Ok(BlueprintCommitRangeReceipt {
-            mode: request.mode.clone(),
-            operation_id: request.operation_id.clone(),
+    let sync_operation_id = character_sync_operation_id(&request.operation_id);
+    tx.execute(
+        "INSERT INTO blueprint_character_sync_operations
+         (operation_id, blueprint_commit_operation_id, blueprint_commit_payload_hash,
+          start_chapter, end_chapter, character_sync_input)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        rusqlite::params![
+            sync_operation_id,
+            request.operation_id,
             payload_hash,
-            idempotent: false,
-            start_chapter: request.start_chapter,
-            end_chapter: request.end_chapter,
-            chapter_numbers: snapshot
-                .iter()
-                .map(|blueprint| blueprint.chapter_number)
-                .collect(),
-            snapshot,
-            character_sync_input,
-            character_sync_operation,
-        })
-    })();
+            request.start_chapter,
+            request.end_chapter,
+            serialized_input,
+        ],
+    )
+    .map_err(|error| format!("写入蓝图角色同步操作失败：{error}"))?;
 
-    match outcome {
-        Ok(receipt) => {
-            tx.commit()
-                .map_err(|error| format!("提交蓝图失败：{error}"))?;
-            Ok(receipt)
-        }
-        // `tx` drop 即回滚
-        Err(error) => Err(error),
-    }
+    let snapshot = snapshot_with_character_sync_facts(&persisted, &character_sync_input);
+    let character_sync_operation = read_character_sync_operation(tx, &sync_operation_id)?
+        .ok_or_else(|| "蓝图提交未创建可恢复的角色同步操作".to_string())?;
+
+    Ok(BlueprintCommitRangeReceipt {
+        mode: request.mode.clone(),
+        operation_id: request.operation_id.clone(),
+        payload_hash,
+        idempotent: false,
+        start_chapter: request.start_chapter,
+        end_chapter: request.end_chapter,
+        chapter_numbers: snapshot
+            .iter()
+            .map(|blueprint| blueprint.chapter_number)
+            .collect(),
+        snapshot,
+        character_sync_input,
+        character_sync_operation,
+    })
 }
 
 #[cfg(test)]
