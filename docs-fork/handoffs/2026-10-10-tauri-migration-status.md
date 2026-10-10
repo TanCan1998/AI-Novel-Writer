@@ -20,29 +20,91 @@
 |---|---|
 | 仓库 / 分支 | **`TanCan1998/Lorekeeper`**（`EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork）· `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 已注册命令 | **172** |
-| 覆盖 invoke 频道 | **171**（契约总数 193，事件频道 4） |
-| 未迁移 invoke 频道 | **22**（`db=13 mcp=9`） |
+| 已注册命令 | **185** |
+| 覆盖 invoke 频道 | **184**（契约总数 193，事件频道 4） |
+| 未迁移 invoke 频道 | **9**（`db=0 mcp=9`） |
 | orphan | **空** ✅ |
-| `cargo test --lib` | **643/643** ✅ |
+| `cargo test --lib` | **645/645** ✅ |
 | `cargo fmt --check` | **干净（0 差异）** ✅ |
 | `cargo check --all-targets` | **0 告警** ✅ |
 | `pnpm typecheck` / `lint` | exit 0 / exit 0 ✅ |
 | 定向 `vitest` | **7/7**（2 文件：契约覆盖 / 入参结构体契约）✅ |
-| 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅** / **批次 G2a ✅（本次）** / **批次 G2b ✅（1–6 步全部完成）** / **批次 G3a ✅（本次）** |
-| 当前阶段 | **批次 G3a 仓储层完成**（执行租约 / 批次推进 / effect receipts / 全局事实台账的全部仓储 seam 落地，13 频道所需的仓储依赖齐备）。下一步 **G3b**（13 频道注册：`commands/db.rs` 13 个 `#[tauri::command]` + `lib.rs` `invoke_handler` + 前端门禁登记，未迁移 22 → 9，仅剩 mcp 9）→ **G4**（`kb:import-reference-text` 去占位 + 前端登记 + GUI 冒烟）。其它待办：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项、B24（整屏瞬黑，暂缓） |
-| 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、`tauri-plugin-opener 2.7.0`、`windows-sys 0.61`（`[target.'cfg(windows)'.dependencies]`，仅 lock 提级，**0 新下载**；Ask first 已批准 2026-10-10）。**G2a 零新依赖**，**G3a 零新依赖**（仓储层平移，无 Cargo.toml 改动）。向量层 `hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio`；FTS5 由 `libsqlite3-sys` bundled 提供 |
+| 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅** / **批次 G2a ✅（本次）** / **批次 G2b ✅（1–6 步全部完成）** / **批次 G3a ✅** / **批次 G3b ✅（本次）** |
+| 当前阶段 | **批次 G3b 频道注册完成**（导入运行状态机 13 频道全部落地：执行租约 5 / 批次推进 4 / effect receipts 3 / 全局事实提交 1；未迁移 **22 → 9**，仅剩 mcp 9）。下一步 **G4**（`kb:import-reference-text` 去占位 + 前端登记 + GUI 冒烟）→ 之后仅剩 H4（mcp 9，暂缓）。其它待办：B13（导航防护）、B14（真 Windows 自更新）、上游合并专项、B24（整屏瞬黑，暂缓） |
+| 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、`tauri-plugin-opener 2.7.0`、`windows-sys 0.61`（`[target.'cfg(windows)'.dependencies]`，仅 lock 提级，**0 新下载**；Ask first 已批准 2026-10-10）。**G2a 零新依赖**，**G3a 零新依赖**（仓储层平移，无 Cargo.toml 改动），**G3b 零新依赖**（命令层平移，无 Cargo.toml 改动）。向量层 `hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio`；FTS5 由 `libsqlite3-sys` bundled 提供 |
 | GUI 冒烟 | ✅ 自 2026-10-07 起 **十三轮**。**第十三轮（2026-10-10，弹窗动画统一）**：设置弹窗明显变快（修复前实为“静置 400ms + 播 220ms”）、四类弹窗进出场一致、Radix 弹窗仍居中且尺寸正常 ✅。**第十二轮（2026-10-10，冒烟发现的三项缺陷修复）**：① 弹窗 **ESC 关闭**（根因：Radix `DismissableLayer` 仅在 `index === layers.length-1` 时注册 ESC，而 Radix 关闭后仍保留 `DialogContent` 挂载——实测 `layers.length=7`，可见弹窗永远不是最高层）；② **窗口命令真实化**（批次 A 四个命令原为假成功骨架）；③ **标题栏拖拽**（`-webkit-app-region` 在 WebView2 无效 → 补 `data-tauri-drag-region`）。4 项人工验证全部 ✅。近三轮：第十一轮（G2a）、第十轮（G1）、第九轮（H 前三项 + B12） |
 | 双栈隔离 | **L0/L1/L2/L3 全部独立**：安装标识 / `~/.lorekeeper` / `<root>/.lore/`（库 `.lore/lorekeeper.db`、KB 向量 `.lore/kb/`）。基线为 `~/.vela` / `<root>/.vela/`。**两栈项目目录刻意不互通**（`ee40aaab`） |
 | Rust 工具链 | rustc/cargo **1.99.0 stable-msvc** @ `D:\Environment\rust\`（脚本内须显式设 `RUSTUP_HOME` / `CARGO_HOME`）。`tauri-plugin-dialog 2.8.1` 要求 **rustc ≥ 1.90**（CI 最低版本需相应抬高） |
 
-<sub>*命令与频道差额：**172 命令**中 1 个为阶段 0 骨架（`app_health_check`，不对应任何契约频道），其余 **171** 与 invoke 频道一一对应。</sub>
+<sub>*命令与频道差额：**185 命令**中 1 个为阶段 0 骨架（`app_health_check`，不对应任何契约频道），其余 **184** 与 invoke 频道一一对应。</sub>
 
 ---
 
-## 本次更新（第四十次：批次 G3a 收口）
+## 本次更新（第四十次：批次 G3b 收口）
 
-### 1. G3a ✅ 仓储层（13 频道的全部仓储 seam）
+### 1. G3b ✅ 频道注册（13 频道，未迁移 22 → 9）
+
+提交 `f31446ec`（5 文件，+770/−3）按开工清单 §4
+完成命令层注册。仓储层（G3a，`c8c56ad9`）提供的全部
+seam 在本层接上 IPC：
+
+- **执行租约 5 频道**：`db:import-run-start-resume` /
+  `renew-execution` / `restart` / `request-cancel` /
+  `cancel-at-boundary`——`start_or_resume` / `renew_execution`
+  传 `now_ms()` + `DEFAULT_EXECUTION_LEASE_MS`（15 min）；
+  `restart` 传 `now_ms()`；`request_cancel` /
+  `cancel_at_boundary` 无时间参数（仓储内部取当前时间）
+- **批次推进 4 频道**：`complete-batch` / `advance-stage` /
+  `fail` / `complete`——仓储内部取当前时间，命令层不传
+- **effect receipts 3 频道**：`effect-receipt-get`（**读频道**，
+  失败直接 reject，无 `{success}` 信封，对齐基线 handler）/
+  `effect-receipt-prepare`（传 `now_ms()`）/
+  `effect-receipt-commit`（`project_root` 取
+  `expected_project_path`，对齐基线仓储内部
+  `getCurrentProjectPath()`；跨仓原子事务）
+- **全局事实 1 频道**：`db:import-global-facts-commit`——
+  `ImportGlobalFactsRepository::commit`（事务：幂等重放或
+  核心台账 + roster 提交）
+- **D4 落地**：`completeBatch` 的 direct-stage 前置校验
+  （`is_import_run_direct_checkpoint_stage`：仅 `knowledge` /
+  `author-publish` / `author-postprocess` / `refresh`）在
+  命令层实现并先于仓储调用，对齐基线 db-controller handler
+  前置断言；`'parsing'` 等非 direct stage 返回
+  `该导入阶段不接受直接 checkpoint`（经 `mutating_error` 包装）
+- **命令层自算时间**：仓储 `now_ms()` 为私有，命令层自带
+  `import_run_now_ms()` helper（SystemTime 毫秒）
+- **信封结构**：7 个 camelCase `#[serde(rename_all =
+  "camelCase")]` 响应结构体（`ImportRunStartResumeResult` /
+  `ImportRunRenewExecutionResult` / `ImportRunRunMutationResult`
+  / `ImportRunCompleteBatchResult`（含 `newlyCompleted` /
+  `cancelApplied`）/ `ImportRunEffectReceiptPrepareResult` /
+  `ImportRunEffectReceiptCommitResult` / `ImportGlobalFactsCommitResult`），
+  `Option` 字段全部 `skip_serializing_if`，与契约返回结构一致
+- **每命令** `command + _inner` 双函数模式：命令函数供
+  `invoke_handler` 注册（`map_err(mutating_error)`，写面带
+  `Error: ` 前缀），`_inner` 供测试直调（错误无前缀）
+- **前端门禁**：`ipc-client.ts` 的 `CHANNEL_ARG_NAMES` 登记
+  13 频道参数名（如 `complete-batch` =
+  `['runId','stage','batchId','execution','expectedProjectPath']`）；
+  `migrated-channels.ts` 生成物经 `check:channels:emit` 重新
+  生成（184 频道）；`channel-migration-coverage.test.ts` 的
+  迁移状态断言同步更新（G3 频道由「仍未迁移」改为已迁移）
+- **新增命令层测试 2 例**：D4 拒绝（非 direct stage +
+  MUTATING 包装断言 + 缺会话拒绝）、start-resume 签发租约 →
+  running + 同一执行器 renew 顺延 + 缺会话拒绝（经 reference
+  通道 `prepare-inspection` 落地 'prepared' 可恢复运行）
+
+**GUI 冒烟**：本轮无新增冒烟轮次——13 频道均为导入执行器
+内部状态机 seam，前端调用方（导入执行 UI）属后续批次，当前无
+用户可触达路径；覆盖由单元测试（仓储 36 例 + 命令层 2 例）
+与频道契约测试保证。
+
+### 2. 前置：G3a ✅ 仓储层（已收口，提交 `c8c56ad9`）
+
+（第四十次快照 G3a 章节原文保留——13 频道的全部仓储 seam，
+8 文件 +5202/−861，移植测试 36 例。）
+
+### 3. G3a 仓储层细节（13 频道的全部仓储 seam）
 
 提交 `c8c56ad9`（8 文件，+5202/−861）平移基线
 `electron/repositories/import-run-repository.ts`（2551 行）与
@@ -77,7 +139,7 @@
 state-machine 5 / receipt 12 例 22 用例，含 committed 回放、离线伪造拒绝、
 失败关闭、键-载荷绑定、过期租约围栏、全局事实台账哈希校验）。
 
-### 2. 刻意偏离（D1–D4，见开工清单 §2）
+### 4. 刻意偏离（D1–D4，见开工清单 §2）
 
 `adoptLegacyCompletedRun` 不移植（双栈隔离下 `.lore` 无 legacy 运行）；全局事实
 台账懒建表（不改 `db/schema.rs`，G schema 刻意固定 9 表）；`canonicalize` 键排序
@@ -85,11 +147,15 @@ state-machine 5 / receipt 12 例 22 用例，含 committed 回放、离线伪造
 （`isImportRunDirectCheckpointStage`）留在命令层 G3b（对齐基线 db-controller
 handler 前置断言，D4）。恢复 D1–D3 需用户确认。
 
-### 3. 自检（本轮）
+### 5. 自检（本轮，G3b）
 
-`cargo test --lib` **643/643**（+36）· `cargo check --all-targets` **0 告警** ·
-`cargo fmt --check` 干净 · `pnpm typecheck` / `lint` exit 0 · 定向 `vitest` 7/7 ·
-`check:channels` 193/172/171/22（无频道变化，G3a 为纯仓储层）。
+`cargo test --lib` **645/645**（G3a +36 后再 +2 命令层）·
+`cargo check --all-targets` **0 告警** · `cargo fmt --check` 干净 ·
+`pnpm typecheck` / `lint` exit 0 · 定向 `vitest` **7/7** ·
+`check:channels` 193 契约 / **185 命令 / 184 覆盖 / 未迁移 9**
+（仅剩 `mcp=9`）· 提交消息检查 + pre-commit gitleaks 无命中。
+
+（G3a 轮自检：643/643、193/172/171/22，无频道变化——纯仓储层。）
 
 ---
 
@@ -97,7 +163,7 @@ handler 前置断言，D4）。恢复 D1–D3 需用户确认。
 
 ### 1. 当前工作区状态
 
-**跟踪文件干净**；仅 1 份未跟踪文档（`docs-fork/research/2026-10-10-b24-black-flash-investigation.md`，B24 暂缓中的排查记录，与 G3 无关）。G3a 以单提交落地：
+**跟踪文件干净**；仅 1 份未跟踪文档（`docs-fork/research/2026-10-10-b24-black-flash-investigation.md`，B24 暂缓中的排查记录，与 G3 无关）。G3a / G3b 各以单提交落地：
 
 | Commit | 说明 |
 |---|---|
@@ -109,26 +175,23 @@ handler 前置断言，D4）。恢复 D1–D3 需用户确认。
 | `ad7a77ea` | `fix(tauri): 导入弹窗重开或切换项目时复位会话状态` |
 | `a91d9f5c` | `chore(tauri): 对齐浏览器测试依赖并补浏览器测试配置` |
 | `c8c56ad9` | `feat(tauri): G3a 导入运行执行租约/批次推进/effect receipts 仓储层` |
-| 待生成 | `docs(tauri): 第四十次快照（批次 G3a 收口）` |
+| `461c087c` | `docs(tauri): 第四十次快照（批次 G3a 收口）` |
+| `f31446ec` | `feat(tauri): G3b 导入运行执行租约/批次推进/effect receipts（13 频道注册）` |
 
-- HEAD（写入本表时）：`c8c56ad9 feat(tauri): G3a 导入运行执行租约/批次推进/effect receipts 仓储层`
-- ⚠️ 上一份快照（第三十九次）中**已过期的交接描述**（防照旧操作）：
-  1. 「`cargo test --lib` **607/607**」→ G3a 移植 36 例后实测为 **643/643**（未迁移频道数 **22** 不变，G3a 是纯仓储层）；
-  2. 「下一步 G3（执行租约 / 批次推进 / effect receipts 11 频道 + `db:import-global-facts-commit`）」→ **G3a 已完成**，下一步是 **G3b**（13 频道注册）；
-  3. 第三十九次快照的 §5 自检已冻结，**不得据其回填**本份数字。
+- HEAD（写入本表时）：`f31446ec feat(tauri): G3b 导入运行执行租约/批次推进/effect receipts（13 频道注册）`
+- ⚠️ 旧快照中**已过期的交接描述**（防照旧操作）：
+  1. 第三十九次「`cargo test --lib` **607/607**」→ G3a 移植 36 例后为 643，G3b 再 +2 命令层测试后实测为 **645/645**；
+  2. 第三十九次「下一步 G3（执行租约 / 批次推进 / effect receipts 11 频道 + `db:import-global-facts-commit`）」→ **G3a（仓储层）与 G3b（频道注册）均已完成**，下一步是 **G4**；
+  3. 第四十次 G3a 版「下一步 **G3b**（13 频道注册）」→ **G3b 已完成**（提交 `f31446ec`，未迁移 22 → 9）；
+  4. 第三十九次快照的 §5 自检已冻结，**不得据其回填**本份数字。
 
 ### 2. 下一步（1-2-3）
 
-1. **批次 G3b（13 频道注册）**：按
-   [`docs-fork/plans/2026-10-10-g3-import-run-kickoff.md`](../plans/2026-10-10-g3-import-run-kickoff.md) §4 执行 ——
-   `commands/db.rs` 新增 13 个 `#[tauri::command]` + 信封结构（读频道
-   `db:import-run-effect-receipt-get` 失败 reject，其余 `{ success: true, … }`；
-   写面错误按 MUTATING 规则带 `Error: ` 前缀，`mutating_error`）+ `lib.rs`
-   `invoke_handler` 注册 13 命令 + 前端 `ipc-client.ts` 门禁登记 + **D4**：
-   `completeBatch` 的 direct-stage 前置校验（`isImportRunDirectCheckpointStage`）
-   放在命令层（对齐基线 db-controller handler 前置断言）。
-2. **G4**：`kb:import-reference-text` 去占位 + 前端登记 + GUI 冒烟（未迁移 22 → 9 → 仅剩 mcp）。
-3. **其它待办**：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项、B24（整屏瞬黑，暂缓）。
+1. **批次 G4**：`kb:import-reference-text` 去占位 + 前端登记 + GUI 冒烟
+   （按
+   [`docs-fork/plans/2026-10-10-g3-import-run-kickoff.md`](../plans/2026-10-10-g3-import-run-kickoff.md)
+   §5 执行；G3b 后未迁移仅剩 mcp 9，G4 为占位频道真实化，不改变未迁移计数）。
+2. **其它待办**：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项、B24（整屏瞬黑，暂缓）。
 
 ### 3. 阻塞项与待授权项（**不得删除，须逐条确认后更新**）
 
@@ -181,14 +244,14 @@ handler 前置断言，D4）。恢复 D1–D3 需用户确认。
 
 | 命令 | 工作目录 | 实测输出 |
 |---|---|---|
-| `node scripts/verify-channel-coverage.mjs --quiet` | `tauri-app/` | 契约 invoke 频道 **193**（事件频道 4）· 已注册命令 **172** → 覆盖 **171** · 未迁移 **22** `[db=13 mcp=9]` · 命令名与契约频道一一对应 ✅ |
-| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 643 passed; 0 failed; 0 ignored; 0 measured` |
+| `node scripts/verify-channel-coverage.mjs --quiet` | `tauri-app/` | 契约 invoke 频道 **193**（事件频道 4）· 已注册命令 **185** → 覆盖 **184** · 未迁移 **9** `[db=0 mcp=9]` · 命令名与契约频道一一对应 ✅ |
+| `cargo test --lib` | `tauri-app/src-tauri/` | `test result: ok. 645 passed; 0 failed; 0 ignored; 0 measured` |
 | `cargo check --all-targets` | `tauri-app/src-tauri/` | `Finished dev profile ... `（**0 告警**） |
 | `cargo fmt --check` | `tauri-app/src-tauri/` | 输出 **0 行**（干净） |
 | `pnpm typecheck` / `pnpm run lint` | `tauri-app/` | exit 0 / exit 0 |
 | `npx vitest run test/channel-migration-coverage.test.ts test/ipc-arg-struct-contract.test.ts` | `tauri-app/` | `Test Files 2 passed`，`Tests 7 passed` |
 | `git status --porcelain` | 仓库根 | 仅 1 份未跟踪文档 `docs-fork/research/2026-10-10-b24-black-flash-investigation.md`（B24 暂缓中的排查记录）；跟踪文件干净 |
-| `git log -1` | 仓库根 | `c8c56ad9 feat(tauri): G3a 导入运行执行租约/批次推进/effect receipts 仓储层` |
+| `git log -1` | 仓库根 | `f31446ec feat(tauri): G3b 导入运行执行租约/批次推进/effect receipts（13 频道注册）` |
 | `pnpm tauri dev`（第十轮冒烟，G1） | `tauri-app/` | VITE `ready in 441 ms` · cargo `Finished dev profile in 47.50s` · `lorekeeper.exe` **90 MB** · 3 项人工验证全部 ✅ |
 | `pnpm tauri dev`（第十一轮冒烟，G2a） | `tauri-app/` | VITE `ready in 812 ms` · cargo `Finished dev profile in 42.46s` · `lorekeeper.exe` **45 MB** · 4 项人工验证全部 ✅（唯一 console.error 为预期的 G2b 频道未迁移） |
 | `pnpm tauri dev`（第十二轮冒烟，ESC/窗口修复） | `tauri-app/` | VITE `ready` · cargo 增量重建 · `lorekeeper.exe` **32 MB** · 4 项人工验证全部 ✅（窗口最小/最大化、标题栏拖拽、设置弹窗 ESC、关闭按钮） |
