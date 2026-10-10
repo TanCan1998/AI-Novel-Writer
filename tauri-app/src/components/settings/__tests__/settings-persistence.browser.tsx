@@ -1,17 +1,23 @@
 import { act } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 
 import { useLayoutStore } from '../../../stores/layout-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import SettingsModal from '../SettingsModal'
 
+import {
+  installTauriInternals,
+  type TauriInternalsHandle,
+} from '../../../../test/helpers/tauri-internals'
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 let root: Root
 let container: HTMLDivElement
-let invoke: ReturnType<typeof vi.fn>
+let tauriInternals: TauriInternalsHandle
+let configGetResult: unknown
+let configSetResult: () => unknown
 
 async function renderSection(section: 'proxy' | 'editor') {
   useLayoutStore.setState({ settingsSection: section })
@@ -20,14 +26,13 @@ async function renderSection(section: 'proxy' | 'editor') {
 
 beforeEach(() => {
   useLocaleStore.setState({ locale: 'zh-CN' })
-  invoke = vi.fn(async (channel: string) => {
-    if (channel === 'config:get') return { autoOpenNextChapterAfterFinalize: false }
-    if (channel === 'config:set') return { success: true }
-    throw new Error(`Unexpected IPC channel: ${channel}`)
-  })
-  Object.defineProperty(window, 'aiNovelAPI', {
-    configurable: true,
-    value: { invoke },
+  configGetResult = { autoOpenNextChapterAfterFinalize: false }
+  configSetResult = () => ({ success: true })
+  tauriInternals = installTauriInternals({
+    commands: {
+      config_get: () => configGetResult,
+      config_set: () => configSetResult(),
+    },
   })
   container = document.createElement('div')
   document.body.append(container)
@@ -37,7 +42,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount())
   container.remove()
-  Reflect.deleteProperty(window, 'aiNovelAPI')
+  tauriInternals.uninstall()
 })
 
 describe('settings persistence truthfulness', () => {
@@ -45,11 +50,8 @@ describe('settings persistence truthfulness', () => {
     ['business failure', () => Promise.resolve({ success: false, error: 'disk full' })],
     ['transport rejection', () => Promise.reject(new Error('IPC unavailable'))],
   ] as const)('does not report proxy settings as saved after a %s', async (_label, failure) => {
-    invoke.mockImplementation(async (channel: string) => {
-      if (channel === 'config:get') return { proxy: { enabled: false, type: 'http', host: '', port: 7890 } }
-      if (channel === 'config:set') return failure()
-      throw new Error(`Unexpected IPC channel: ${channel}`)
-    })
+    configGetResult = { proxy: { enabled: false, type: 'http', host: '', port: 7890 } }
+    configSetResult = failure
     await renderSection('proxy')
 
     await act(async () => page.getByRole('button', { name: '保存代理配置' }).click())
@@ -59,11 +61,8 @@ describe('settings persistence truthfulness', () => {
   })
 
   it('rolls back the auto-open-next setting when persistence fails', async () => {
-    invoke.mockImplementation(async (channel: string) => {
-      if (channel === 'config:get') return { autoOpenNextChapterAfterFinalize: false }
-      if (channel === 'config:set') return { success: false, error: 'read only' }
-      throw new Error(`Unexpected IPC channel: ${channel}`)
-    })
+    configGetResult = { autoOpenNextChapterAfterFinalize: false }
+    configSetResult = () => ({ success: false, error: 'read only' })
     await renderSection('editor')
     const toggle = page.getByRole('switch', { name: '定稿后打开下一章' })
     await expect.element(toggle).not.toBeChecked()

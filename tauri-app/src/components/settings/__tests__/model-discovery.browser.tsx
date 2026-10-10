@@ -10,21 +10,15 @@ import { useLLMStore } from '../../../stores/llm-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import SettingsModal from '../SettingsModal'
 
+import {
+  installTauriInternals,
+  type TauriInternalsHandle,
+} from '../../../../test/helpers/tauri-internals'
 const originalLayoutState = useLayoutStore.getState()
 const originalLLMState = useLLMStore.getState()
 const originalLocaleState = useLocaleStore.getState()
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-
-interface TestVelaApi {
-  invoke: ReturnType<typeof vi.fn>
-  on: () => () => void
-  once: () => void
-  send: () => void
-  setZoomLevel: () => void
-  setZoomFactor: () => void
-  getZoomLevel: () => number
-}
 
 function savedProfile(overrides: Partial<ModelProfile> = {}): ModelProfile {
   return {
@@ -54,6 +48,7 @@ function discoveryRequest(model: ModelProfile) {
 let root: Root | undefined
 let container: HTMLDivElement | undefined
 
+let tauriInternals: TauriInternalsHandle | undefined
 async function renderSettings(
   model: ModelProfile,
   discoverModels: ReturnType<typeof useLLMStore.getState>['discoverModels'],
@@ -74,15 +69,9 @@ async function renderSettings(
     setDefaultModel,
     discoverModels,
   })
-  ;(window as unknown as { aiNovelAPI: TestVelaApi }).aiNovelAPI = {
-    invoke: vi.fn(),
-    on: () => () => {},
-    once: () => {},
-    send: () => {},
-    setZoomLevel: () => {},
-    setZoomFactor: () => {},
-    getZoomLevel: () => 0,
-  }
+  // LLMSection 只走 mock 的 llm-store action（loaded: true 不触发 loadModels），
+  // 本文件不触达任何 Tauri 命令——installTauriInternals 仅提供 invoke/事件接缝。
+  tauriInternals = installTauriInternals()
 
   container = document.createElement('div')
   document.body.append(container)
@@ -101,7 +90,8 @@ afterEach(async () => {
   useLayoutStore.setState(originalLayoutState)
   useLLMStore.setState(originalLLMState)
   useLocaleStore.setState(originalLocaleState)
-  delete (window as unknown as { aiNovelAPI?: TestVelaApi }).aiNovelAPI
+  tauriInternals?.uninstall()
+  tauriInternals = undefined
   vi.restoreAllMocks()
 })
 

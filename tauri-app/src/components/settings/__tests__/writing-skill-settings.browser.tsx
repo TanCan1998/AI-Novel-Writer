@@ -5,42 +5,45 @@ import { page } from 'vitest/browser'
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 import SkillSettings from '../SkillSettings'
+import {
+  installTauriInternals,
+  type TauriInternalsHandle,
+} from '../../../../test/helpers/tauri-internals'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 let root: Root | undefined
 let container: HTMLDivElement | undefined
-const invoke = vi.fn()
+let tauriInternals: TauriInternalsHandle
 const originalProjectState = useProjectStore.getState()
 const originalLocaleState = useLocaleStore.getState()
 
-function ipcResult(channel: string) {
-  if (channel === 'skills:list-user') return []
-  if (channel === 'fs:list-dir') return []
-  if (channel === 'fs:check-exists') return false
-  if (channel === 'fs:read-file') return { success: false, content: '', error: 'missing' }
-  if (channel === 'fs:write-file') return { success: true }
-  if (channel === 'config:set') return { success: true }
-  if (channel === 'skills:inspect-github') return {
-    success: true,
-    inspection: {
-      sourceUrl: 'https://github.com/acme/scene-craft',
-      resolvedUrl: 'https://raw.githubusercontent.com/acme/scene-craft/main/SKILL.md',
-      metadata: { name: 'scene-craft', description: 'Concrete scene craft', language: 'en-US' },
-      compatible: true,
-      reasons: [],
-      suggestedStage: 'drafting',
-      utf8Bytes: 128,
-    },
-  }
-  throw new Error(`Unexpected IPC channel ${channel}`)
-}
-
 beforeEach(async () => {
-  invoke.mockImplementation(async (channel: string) => ipcResult(channel))
-  Object.defineProperty(window, 'aiNovelAPI', {
-    configurable: true,
-    value: { invoke, on: () => () => {}, once: () => {}, send: () => {} },
+  tauriInternals = installTauriInternals({
+    commands: {
+      skills_list_user: [],
+      fs_list_dir: [],
+      fs_check_exists: false,
+      fs_read_file: { success: false, content: '', error: 'missing' },
+      fs_write_file: { success: true },
+      config_set: { success: true },
+      skills_inspect_github: {
+        success: true,
+        inspection: {
+          sourceUrl: 'https://github.com/acme/scene-craft',
+          resolvedUrl: 'https://raw.githubusercontent.com/acme/scene-craft/main/SKILL.md',
+          metadata: {
+            name: 'scene-craft',
+            description: 'Concrete scene craft',
+            language: 'en-US',
+          },
+          compatible: true,
+          reasons: [],
+          suggestedStage: 'drafting',
+          utf8Bytes: 128,
+        },
+      },
+    },
   })
   useLocaleStore.setState({ locale: 'en-US' })
   useProjectStore.setState({
@@ -69,6 +72,7 @@ afterEach(async () => {
   useProjectStore.setState(originalProjectState)
   useLocaleStore.setState(originalLocaleState)
   vi.restoreAllMocks()
+  tauriInternals.uninstall()
 })
 
 describe('writing skill settings', () => {
@@ -79,7 +83,11 @@ describe('writing skill settings', () => {
     })
     await expect.element(page.getByText('scene-craft', { exact: true })).toBeVisible()
     await expect.element(page.getByRole('button', { name: 'Confirm install' })).toBeEnabled()
-    expect(invoke).toHaveBeenCalledWith('skills:inspect-github', 'https://github.com/acme/scene-craft')
+    expect(tauriInternals.invoke).toHaveBeenCalledWith(
+      'skills_inspect_github',
+      { sourceUrl: 'https://github.com/acme/scene-craft' },
+      undefined,
+    )
   })
 
   it('uses the application confirmation dialog before installation', async () => {
@@ -89,7 +97,11 @@ describe('writing skill settings', () => {
       await page.getByRole('button', { name: 'Confirm install' }).click()
     })
     await expect.element(page.getByRole('dialog')).toBeVisible()
-    expect(invoke).not.toHaveBeenCalledWith('skills:install-github', expect.anything())
+    expect(tauriInternals.invoke).not.toHaveBeenCalledWith(
+      'skills_install_github',
+      expect.anything(),
+      undefined,
+    )
     await act(async () => page.getByRole('button', { name: 'Cancel' }).click())
     await vi.waitFor(() => expect(page.getByRole('dialog').query()).toBeNull())
   })
@@ -104,13 +116,21 @@ describe('writing skill settings', () => {
       await page.getByLabelText('Revision and pre-final polish skill')
         .selectOptions('builtin:natural-prose-refinement')
     })
-    await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith(
-      'fs:write-file',
-      'C:/novels/skill-project/.lore/writing-skills.json',
-      expect.stringContaining('builtin:natural-prose-refinement'),
-      'C:/novels/skill-project',
-      expect.objectContaining({ projectId: 'skill-project', leaseId: 'skill-project-lease' }),
-    ))
+    await vi.waitFor(() =>
+      expect(tauriInternals.invoke).toHaveBeenCalledWith(
+        'fs_write_file',
+        {
+          filePath: 'C:/novels/skill-project/.lore/writing-skills.json',
+          content: expect.stringContaining('builtin:natural-prose-refinement'),
+          expectedProjectPath: 'C:/novels/skill-project',
+          projectSession: expect.objectContaining({
+            projectId: 'skill-project',
+            leaseId: 'skill-project-lease',
+          }),
+        },
+        undefined,
+      ),
+    )
   })
 
   it('uses an English separator when one skill is enabled for multiple stages', async () => {

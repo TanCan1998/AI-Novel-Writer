@@ -7,31 +7,40 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 import PromptSettings from '../PromptSettings'
 
+import {
+  installTauriInternals,
+  type TauriInternalsHandle,
+} from '../../../../test/helpers/tauri-internals'
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 let root: Root | undefined
 let container: HTMLDivElement | undefined
 
+let tauriInternals: TauriInternalsHandle | undefined
 afterEach(async () => {
   await act(async () => root?.unmount())
   container?.remove()
   useProjectStore.setState({ currentProject: null })
   useLocaleStore.setState({ locale: 'zh-CN' })
+  tauriInternals?.uninstall()
+  tauriInternals = undefined
 })
 
 it('checks project prompt diagnostics for the language selected in settings', async () => {
-  const invoke = vi.fn(async (channel: string) => {
-    if (channel === 'prompt:load-global') throw new Error('global unavailable in project diagnostic fixture')
-    if (channel === 'fs:check-exists') return true
-    if (channel === 'fs:list-dir') return [{
-      name: 'premise.zh-CN.json',
-      path: 'C:/novels/english/.lore/prompts/premise.zh-CN.json',
-      isDir: false,
-    }]
-    if (channel === 'fs:read-file') return { success: true, content: '{invalid json' }
-    throw new Error(`Unexpected IPC channel: ${channel}`)
+  tauriInternals = installTauriInternals({
+    commands: {
+      prompt_load_global: () => {
+        throw new Error('global unavailable in project diagnostic fixture')
+      },
+      fs_check_exists: () => true,
+      fs_list_dir: () => [{
+        name: 'premise.zh-CN.json',
+        path: 'C:/novels/english/.lore/prompts/premise.zh-CN.json',
+        isDir: false,
+      }],
+      fs_read_file: { success: true, content: '{invalid json' },
+    },
   })
-  ;(window as unknown as { aiNovelAPI: { invoke: typeof invoke } }).aiNovelAPI = { invoke }
   useLocaleStore.setState({ locale: 'en-US' })
   useProjectStore.setState({
     currentProject: {
@@ -47,11 +56,10 @@ it('checks project prompt diagnostics for the language selected in settings', as
   root = createRoot(container)
   await act(async () => { root?.render(<PromptSettings />) })
 
-  await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith(
-    'fs:read-file',
+  await vi.waitFor(() => expect(tauriInternals?.invoke).toHaveBeenCalledWith(
+    'fs_read_file',
     expect.anything(),
-    expect.anything(),
-    expect.anything(),
+    undefined,
   ))
   await expect.element(page.getByText(/Project prompts could not be loaded/)).not.toBeInTheDocument()
 
@@ -61,18 +69,19 @@ it('checks project prompt diagnostics for the language selected in settings', as
 
 it('keeps the project error visible when a later global retry succeeds', async () => {
   let globalAttempt = 0
-  const invoke = vi.fn(async (channel: string, ...args: unknown[]) => {
-    if (channel === 'prompt:load-global') {
-      globalAttempt += 1
-      if (globalAttempt === 1) throw new Error('global denied')
-      return { templates: [], diagnostics: [] }
-    }
-    if (channel === 'fs:check-exists' && String(args[0]).endsWith('/.lore/prompts')) {
-      throw new Error('project denied')
-    }
-    throw new Error(`Unexpected IPC channel: ${channel}`)
+  tauriInternals = installTauriInternals({
+    commands: {
+      prompt_load_global: () => {
+        globalAttempt += 1
+        if (globalAttempt === 1) throw new Error('global denied')
+        return { templates: [], diagnostics: [] }
+      },
+      fs_check_exists: (args: { filePath: string }) => {
+        if (String(args.filePath).endsWith('/.lore/prompts')) throw new Error('project denied')
+        throw new Error('Unexpected IPC channel: fs:check-exists')
+      },
+    },
   })
-  ;(window as unknown as { aiNovelAPI: { invoke: typeof invoke } }).aiNovelAPI = { invoke }
 
   useLocaleStore.setState({ locale: 'zh-CN' })
   useProjectStore.setState({

@@ -7,21 +7,20 @@ import { useLocaleStore } from '../../../stores/locale-store'
 import { useThemeStore } from '../../../stores/theme-store'
 import SettingsModal from '../SettingsModal'
 
+import {
+  installTauriInternals,
+  type TauriInternalsHandle,
+} from '../../../../test/helpers/tauri-internals'
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 const hanPattern = /[\u3400-\u9fff]/u
 let container: HTMLDivElement | undefined
 let root: Root | undefined
+let tauriInternals: TauriInternalsHandle
 
 beforeEach(async () => {
-  Object.defineProperty(window, 'aiNovelAPI', {
-    configurable: true,
-    value: {
-      invoke: vi.fn(async (channel: string) => {
-        if (channel === 'config:get') return { autoOpenNextChapterAfterFinalize: false }
-        throw new Error(`Unexpected IPC channel: ${channel}`)
-      }),
-    },
+  tauriInternals = installTauriInternals({
+    commands: { config_get: { autoOpenNextChapterAfterFinalize: false } },
   })
   useLocaleStore.setState({ locale: 'en-US' })
   useLayoutStore.setState({ settingsSection: 'editor' })
@@ -38,6 +37,7 @@ afterEach(async () => {
   container = undefined
   root = undefined
   vi.restoreAllMocks()
+  tauriInternals.uninstall()
 })
 
 describe('editor font locale', () => {

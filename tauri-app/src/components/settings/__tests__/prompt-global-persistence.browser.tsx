@@ -7,19 +7,15 @@ import { BUILTIN_PROMPTS } from '../../../services/prompt-templates'
 import { useLocaleStore } from '../../../stores/locale-store'
 import PromptSettings from '../PromptSettings'
 
+import {
+  installTauriInternals,
+  type TauriInternalsHandle,
+} from '../../../../test/helpers/tauri-internals'
 const originalLocaleState = useLocaleStore.getState()
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
-interface TestVelaApi {
-  invoke: ReturnType<typeof vi.fn>
-  on: () => () => void
-  once: () => void
-  send: () => void
-  setZoomLevel: () => void
-  setZoomFactor: () => void
-  getZoomLevel: () => number
-}
+let tauriInternals: TauriInternalsHandle | undefined
 
 let root: Root | undefined
 let container: HTMLDivElement | undefined
@@ -32,6 +28,8 @@ afterEach(async () => {
   useLocaleStore.setState(originalLocaleState)
   const { useProjectStore } = await import('../../../stores/project-store')
   useProjectStore.setState({ currentProject: null })
+  tauriInternals?.uninstall()
+  tauriInternals = undefined
 })
 
 describe('global prompt persistence at the settings boundary', () => {
@@ -40,21 +38,11 @@ describe('global prompt persistence at the settings boundary', () => {
     if (!builtin) throw new Error('Missing built-in prompt fixture')
 
     const persistedContent = '这是重启后仍应生效的全局提示词 {{user_idea}} {{number_of_chapters}} {{word_number}}'
-    const invoke = vi.fn(async (channel: string) => {
-      if (channel === 'prompt:load-global') {
-        return { templates: [{ ...builtin, content: persistedContent }], diagnostics: [] }
-      }
-      throw new Error(`Unexpected IPC channel: ${channel}`)
+    tauriInternals = installTauriInternals({
+      commands: {
+        prompt_load_global: { templates: [{ ...builtin, content: persistedContent }], diagnostics: [] },
+      },
     })
-    ;(window as unknown as { aiNovelAPI: TestVelaApi }).aiNovelAPI = {
-      invoke,
-      on: () => () => {},
-      once: () => {},
-      send: () => {},
-      setZoomLevel: () => {},
-      setZoomFactor: () => {},
-      getZoomLevel: () => 0,
-    }
 
     useLocaleStore.setState({ locale: 'zh-CN' })
     container = document.createElement('div')
@@ -69,7 +57,7 @@ describe('global prompt persistence at the settings boundary', () => {
     })
 
     await vi.waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith('prompt:load-global')
+      expect(tauriInternals?.invoke).toHaveBeenCalledWith('prompt_load_global', {}, undefined)
     })
     await expect.element(page.getByRole('textbox', { name: '补充创作指导' })).toHaveValue(persistedContent)
   })

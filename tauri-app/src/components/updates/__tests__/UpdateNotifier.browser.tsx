@@ -4,30 +4,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { useLocaleStore } from '../../../stores/locale-store'
 
+import {
+  installTauriInternals,
+  type TauriInternalsHandle,
+} from '../../../../test/helpers/tauri-internals'
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
 let container: HTMLDivElement
 let root: Root
 
+let tauriInternals: TauriInternalsHandle
 beforeEach(() => {
   useLocaleStore.setState({ locale: 'zh-CN', initialized: true })
-  Object.assign(window, {
-    aiNovelAPI: {
-      invoke: vi.fn(async (channel: string) => channel === 'update:get-state'
-        ? {
-            status: 'available',
-            currentVersion: '0.9.2',
-            availableVersion: '9.8.7',
-            updateAction: 'download',
-            isReminderDeferred: false,
-          }
-        : null),
-      on: vi.fn(() => () => {}),
-      once: vi.fn(),
-      send: vi.fn(),
-      setZoomLevel: vi.fn(),
-      setZoomFactor: vi.fn(),
-      getZoomLevel: vi.fn(() => 0),
+  tauriInternals = installTauriInternals({
+    commands: {
+      update_get_state: {
+        status: 'available',
+        currentVersion: '0.9.2',
+        availableVersion: '9.8.7',
+        updateAction: 'download',
+        isReminderDeferred: false,
+      },
     },
   })
   container = document.createElement('div')
@@ -38,7 +35,7 @@ beforeEach(() => {
 afterEach(async () => {
   await act(async () => root.unmount())
   container.remove()
-  Reflect.deleteProperty(window, 'aiNovelAPI')
+  tauriInternals.uninstall()
   vi.restoreAllMocks()
 })
 

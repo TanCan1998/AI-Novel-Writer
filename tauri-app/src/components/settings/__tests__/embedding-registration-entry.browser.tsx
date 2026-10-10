@@ -9,6 +9,10 @@ import { useLLMStore } from '../../../stores/llm-store'
 import { useLocaleStore } from '../../../stores/locale-store'
 import SettingsModal from '../SettingsModal'
 
+import {
+  installTauriInternals,
+  type TauriInternalsHandle,
+} from '../../../../test/helpers/tauri-internals'
 const originalLayoutState = useLayoutStore.getState()
 const originalLLMState = useLLMStore.getState()
 const originalLocaleState = useLocaleStore.getState()
@@ -28,24 +32,17 @@ const configuredEmbedding: ModelProfile = {
   purposes: ['embedding'],
 }
 
-interface TestVelaApi {
-  invoke: ReturnType<typeof vi.fn>
-  on: () => () => void
-  once: () => void
-  send: () => void
-  setZoomLevel: () => void
-  setZoomFactor: () => void
-  getZoomLevel: () => number
-}
-
 let root: Root | undefined
 let container: HTMLDivElement | undefined
-let invoke: ReturnType<typeof vi.fn>
+let tauriInternals: TauriInternalsHandle | undefined
 
 async function renderEmbeddingSettings(models: ModelProfile[]) {
   useLayoutStore.setState({ settingsSection: 'embedding' })
   useLocaleStore.setState({ locale: 'zh-CN' })
   useLLMStore.setState({ models, loaded: true })
+  tauriInternals = installTauriInternals({
+    commands: { model_provider_resource_open: { success: true } },
+  })
 
   container = document.createElement('div')
   document.body.append(container)
@@ -64,6 +61,8 @@ afterEach(async () => {
   useLayoutStore.setState(originalLayoutState)
   useLLMStore.setState(originalLLMState)
   useLocaleStore.setState(originalLocaleState)
+  tauriInternals?.uninstall()
+  tauriInternals = undefined
 })
 
 describe('embedding registration entry', () => {
@@ -71,16 +70,6 @@ describe('embedding registration entry', () => {
     { name: 'with no configured embedding model', models: [] },
     { name: 'with one configured embedding model', models: [configuredEmbedding] },
   ])('shows the free registration entry $name', async ({ models }) => {
-    invoke = vi.fn().mockResolvedValue({ success: true })
-    ;(window as unknown as { aiNovelAPI: TestVelaApi }).aiNovelAPI = {
-      invoke,
-      on: () => () => {},
-      once: () => {},
-      send: () => {},
-      setZoomLevel: () => {},
-      setZoomFactor: () => {},
-      getZoomLevel: () => 0,
-    }
 
     await renderEmbeddingSettings(models)
 
@@ -88,16 +77,6 @@ describe('embedding registration entry', () => {
   })
 
   it('opens the fixed SiliconFlow registration resource through IPC', async () => {
-    invoke = vi.fn().mockResolvedValue({ success: true })
-    ;(window as unknown as { aiNovelAPI: TestVelaApi }).aiNovelAPI = {
-      invoke,
-      on: () => () => {},
-      once: () => {},
-      send: () => {},
-      setZoomLevel: () => {},
-      setZoomFactor: () => {},
-      getZoomLevel: () => 0,
-    }
 
     await renderEmbeddingSettings([])
     await act(async () => {
@@ -105,21 +84,15 @@ describe('embedding registration entry', () => {
     })
 
     await vi.waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith('model-provider-resource:open', 'siliconflow-invite')
+      expect(tauriInternals?.invoke).toHaveBeenCalledWith(
+        'model_provider_resource_open',
+        { resource: 'siliconflow-invite' },
+        undefined,
+      )
     })
   })
 
   it('hides the recommendation after the user enters the add-embedding form', async () => {
-    invoke = vi.fn().mockResolvedValue({ success: true })
-    ;(window as unknown as { aiNovelAPI: TestVelaApi }).aiNovelAPI = {
-      invoke,
-      on: () => () => {},
-      once: () => {},
-      send: () => {},
-      setZoomLevel: () => {},
-      setZoomFactor: () => {},
-      getZoomLevel: () => 0,
-    }
 
     await renderEmbeddingSettings([])
     await act(async () => {
