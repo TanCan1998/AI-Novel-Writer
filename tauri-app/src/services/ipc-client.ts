@@ -196,6 +196,21 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   // 批次 G2b-5：导入运行准备 / 解析收口（2 频道）
   'db:import-run-prepare-inspection': ['request', 'expectedProjectPath'],
   'db:import-run-finalize-parsing': ['runId', 'expectedProjectPath'],
+  // 批次 G3b：导入运行执行租约 / 批次推进 / effect receipts（12 频道）
+  'db:import-run-start-resume': ['runId', 'owner', 'expectedProjectPath'],
+  'db:import-run-renew-execution': ['runId', 'execution', 'expectedProjectPath'],
+  'db:import-run-restart': ['runId', 'nextRunId', 'expectedProjectPath'],
+  'db:import-run-request-cancel': ['runId', 'execution', 'expectedProjectPath'],
+  'db:import-run-cancel-at-boundary': ['runId', 'execution', 'expectedProjectPath'],
+  'db:import-run-complete-batch': ['runId', 'stage', 'batchId', 'execution', 'expectedProjectPath'],
+  'db:import-run-advance-stage': ['runId', 'completedStage', 'nextStage', 'execution', 'expectedProjectPath'],
+  'db:import-run-fail': ['runId', 'stage', 'errorMessage', 'execution', 'expectedProjectPath'],
+  'db:import-run-complete': ['runId', 'execution', 'expectedProjectPath'],
+  'db:import-run-effect-receipt-get': ['runId', 'stage', 'batchId', 'expectedProjectPath'],
+  'db:import-run-effect-receipt-prepare': ['request', 'execution', 'expectedProjectPath'],
+  'db:import-run-effect-receipt-commit': ['runId', 'stage', 'batchId', 'execution', 'expectedProjectPath'],
+  // 批次 G3b：全局事实提交
+  'db:import-global-facts-commit': ['request', 'expectedProjectPath'],
 
   // 批次 E 第二部分：章节生命周期（chapter-lifecycle，4 频道）
   'chapter:delete-finalized': ['request', 'expectedProjectPath'],

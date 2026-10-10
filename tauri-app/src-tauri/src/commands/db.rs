@@ -22,6 +22,7 @@ use crate::repositories::draft_repository as drafts;
 use crate::repositories::finalization_repository as finalization;
 use crate::repositories::finalized_continuity_repository as continuity;
 use crate::repositories::finalized_draft_import_repository as draft_import;
+use crate::repositories::import_global_facts_repository as import_global_facts;
 use crate::repositories::import_run_repository as import_runs;
 use crate::repositories::llm_repository as llm;
 use crate::repositories::narrative_thread_repository as threads;
@@ -3210,6 +3211,639 @@ pub fn db_import_run_finalize_parsing(
     .map_err(mutating_error)
 }
 
+// ==================== 批次 G3b：导入运行执行租约 / 批次推进 / effect receipts ====================
+
+/// 对齐仓储内部 `now_ms()`（命令层自算当前毫秒时间戳，供租约签名使用）
+fn import_run_now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// 对齐 `isImportRunDirectCheckpointStage`（D4：direct-stage 前置校验在命令层，
+/// 对齐基线 `db-controller.ts:443` 的 handler 前置断言）
+fn is_import_run_direct_checkpoint_stage(stage: &str) -> bool {
+    stage == "knowledge"
+        || stage == "author-publish"
+        || stage == "author-postprocess"
+        || stage == "refresh"
+}
+
+/// `db:import-run-start-resume` 返回（对齐契约）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRunStartResumeResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub start: Option<import_runs::ImportRunStartResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// `db:import-run-renew-execution` 返回（对齐契约）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRunRenewExecutionResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution: Option<import_runs::ImportRunExecutionLease>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// `db:import-run-{restart,request-cancel,cancel-at-boundary,advance-stage,fail,complete}`
+/// 返回（对齐契约 `{ success, run?, error? }`）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRunRunMutationResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run: Option<import_runs::ImportRunSnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// `db:import-run-complete-batch` 返回（对齐契约
+/// `{ success, newlyCompleted?, cancelApplied?, run?, error? }`）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRunCompleteBatchResult {
+    pub success: bool,
+    pub newly_completed: bool,
+    pub cancel_applied: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run: Option<import_runs::ImportRunSnapshot>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// `db:import-run-effect-receipt-prepare` 返回（对齐契约）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRunEffectReceiptPrepareResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt: Option<import_runs::ImportRunEffectReceipt>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// `db:import-run-effect-receipt-commit` 返回（对齐契约）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportRunEffectReceiptCommitResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result: Option<import_runs::ImportRunEffectCommitResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// `db:import-global-facts-commit` 返回（对齐契约）
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportGlobalFactsCommitResult {
+    pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt: Option<import_global_facts::ImportGlobalFactsReceipt>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// `db:import-run-start-resume`（对齐 `db-controller.ts:384-392`）
+pub(crate) fn import_run_start_resume_inner(
+    state: &AppState,
+    run_id: &str,
+    owner: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<ImportRunStartResumeResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    let start = state.with_project_db(|conn| {
+        import_runs::start_or_resume(
+            conn,
+            run_id,
+            owner,
+            import_run_now_ms(),
+            import_runs::DEFAULT_EXECUTION_LEASE_MS,
+        )
+    })?;
+    Ok(ImportRunStartResumeResult {
+        success: true,
+        start: Some(start),
+        error: None,
+    })
+}
+
+/// `db:import-run-start-resume`
+#[tauri::command]
+pub fn db_import_run_start_resume(
+    state: State<'_, AppState>,
+    run_id: String,
+    owner: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<ImportRunStartResumeResult, String> {
+    import_run_start_resume_inner(
+        state.inner(),
+        &run_id,
+        &owner,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .map_err(mutating_error)
+}
+
+/// `db:import-run-renew-execution`（对齐 `db-controller.ts:394-402`）
+pub(crate) fn import_run_renew_execution_inner(
+    state: &AppState,
+    run_id: &str,
+    execution: &import_runs::ImportRunExecutionLease,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<ImportRunRenewExecutionResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    let execution = state.with_project_db(|conn| {
+        import_runs::renew_execution(
+            conn,
+            run_id,
+            execution,
+            import_run_now_ms(),
+            import_runs::DEFAULT_EXECUTION_LEASE_MS,
+        )
+    })?;
+    Ok(ImportRunRenewExecutionResult {
+        success: true,
+        execution: Some(execution),
+        error: None,
+    })
+}
+
+/// `db:import-run-renew-execution`
+#[tauri::command]
+pub fn db_import_run_renew_execution(
+    state: State<'_, AppState>,
+    run_id: String,
+    execution: import_runs::ImportRunExecutionLease,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<ImportRunRenewExecutionResult, String> {
+    import_run_renew_execution_inner(
+        state.inner(),
+        &run_id,
+        &execution,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .map_err(mutating_error)
+}
+
+/// `db:import-run-restart`（对齐 `db-controller.ts:404-412`）
+pub(crate) fn import_run_restart_inner(
+    state: &AppState,
+    run_id: &str,
+    next_run_id: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<ImportRunRunMutationResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    let run = state.with_project_db(|conn| {
+        import_runs::restart(conn, run_id, next_run_id, import_run_now_ms())
+    })?;
+    Ok(ImportRunRunMutationResult {
+        success: true,
+        run: Some(run),
+        error: None,
+    })
+}
+
+/// `db:import-run-restart`
+#[tauri::command]
+pub fn db_import_run_restart(
+    state: State<'_, AppState>,
+    run_id: String,
+    next_run_id: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<ImportRunRunMutationResult, String> {
+    import_run_restart_inner(
+        state.inner(),
+        &run_id,
+        &next_run_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .map_err(mutating_error)
+}
+
+/// `db:import-run-request-cancel`（对齐 `db-controller.ts:414-422`）
+pub(crate) fn import_run_request_cancel_inner(
+    state: &AppState,
+    run_id: &str,
+    execution: &import_runs::ImportRunExecutionLease,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<ImportRunRunMutationResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    let run = state.with_project_db(|conn| import_runs::request_cancel(conn, run_id, execution))?;
+    Ok(ImportRunRunMutationResult {
+        success: true,
+        run: Some(run),
+        error: None,
+    })
+}
+
+/// `db:import-run-request-cancel`
+#[tauri::command]
+pub fn db_import_run_request_cancel(
+    state: State<'_, AppState>,
+    run_id: String,
+    execution: import_runs::ImportRunExecutionLease,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<ImportRunRunMutationResult, String> {
+    import_run_request_cancel_inner(
+        state.inner(),
+        &run_id,
+        &execution,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .map_err(mutating_error)
+}
+
+/// `db:import-run-cancel-at-boundary`（对齐 `db-controller.ts:424-432`）
+pub(crate) fn import_run_cancel_at_boundary_inner(
+    state: &AppState,
+    run_id: &str,
+    execution: &import_runs::ImportRunExecutionLease,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<ImportRunRunMutationResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    let run =
+        state.with_project_db(|conn| import_runs::cancel_at_boundary(conn, run_id, execution))?;
+    Ok(ImportRunRunMutationResult {
+        success: true,
+        run: Some(run),
+        error: None,
+    })
+}
+
+/// `db:import-run-cancel-at-boundary`
+#[tauri::command]
+pub fn db_import_run_cancel_at_boundary(
+    state: State<'_, AppState>,
+    run_id: String,
+    execution: import_runs::ImportRunExecutionLease,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<ImportRunRunMutationResult, String> {
+    import_run_cancel_at_boundary_inner(
+        state.inner(),
+        &run_id,
+        &execution,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .map_err(mutating_error)
+}
+
+/// `db:import-run-complete-batch`（对齐 `db-controller.ts:434-445`；
+/// D4：direct-stage 前置校验在本层，`isImportRunDirectCheckpointStage`）
+pub(crate) fn import_run_complete_batch_inner(
+    state: &AppState,
+    run_id: &str,
+    stage: &str,
+    batch_id: &str,
+    execution: &import_runs::ImportRunExecutionLease,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<ImportRunCompleteBatchResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    if !is_import_run_direct_checkpoint_stage(stage) {
+        return Err("该导入阶段不接受直接 checkpoint".to_string());
+    }
+    let outcome = state.with_project_db(|conn| {
+        import_runs::complete_batch(conn, run_id, stage, batch_id, execution)
+    })?;
+    Ok(ImportRunCompleteBatchResult {
+        success: true,
+        newly_completed: outcome.newly_completed,
+        cancel_applied: outcome.cancel_applied,
+        run: Some(outcome.run),
+        error: None,
+    })
+}
+
+/// `db:import-run-complete-batch`
+#[tauri::command]
+pub fn db_import_run_complete_batch(
+    state: State<'_, AppState>,
+    run_id: String,
+    stage: String,
+    batch_id: String,
+    execution: import_runs::ImportRunExecutionLease,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<ImportRunCompleteBatchResult, String> {
+    import_run_complete_batch_inner(
+        state.inner(),
+        &run_id,
+        &stage,
+        &batch_id,
+        &execution,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .map_err(mutating_error)
+}
+
+/// `db:import-run-advance-stage`（对齐 `db-controller.ts:447-457`）
+pub(crate) fn import_run_advance_stage_inner(
+    state: &AppState,
+    run_id: &str,
+    completed_stage: &str,
+    next_stage: &str,
+    execution: &import_runs::ImportRunExecutionLease,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<ImportRunRunMutationResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    let run = state.with_project_db(|conn| {
+        import_runs::advance_stage(conn, run_id, completed_stage, next_stage, execution)
+    })?;
+    Ok(ImportRunRunMutationResult {
+        success: true,
+        run: Some(run),
+        error: None,
+    })
+}
+
+/// `db:import-run-advance-stage`
+#[tauri::command]
+pub fn db_import_run_advance_stage(
+    state: State<'_, AppState>,
+    run_id: String,
+    completed_stage: String,
+    next_stage: String,
+    execution: import_runs::ImportRunExecutionLease,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<ImportRunRunMutationResult, String> {
+    import_run_advance_stage_inner(
+        state.inner(),
+        &run_id,
+        &completed_stage,
+        &next_stage,
+        &execution,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .map_err(mutating_error)
+}
+
+/// `db:import-run-fail`（对齐 `db-controller.ts:459-469`）
+pub(crate) fn import_run_fail_inner(
+    state: &AppState,
+    run_id: &str,
+    stage: &str,
+    error_message: &str,
+    execution: &import_runs::ImportRunExecutionLease,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<ImportRunRunMutationResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    let run = state.with_project_db(|conn| {
+        import_runs::fail_run(conn, run_id, stage, error_message, execution)
+    })?;
+    Ok(ImportRunRunMutationResult {
+        success: true,
+        run: Some(run),
+        error: None,
+    })
+}
+
+/// `db:import-run-fail`
+#[tauri::command]
+pub fn db_import_run_fail(
+    state: State<'_, AppState>,
+    run_id: String,
+    stage: String,
+    error_message: String,
+    execution: import_runs::ImportRunExecutionLease,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<ImportRunRunMutationResult, String> {
+    import_run_fail_inner(
+        state.inner(),
+        &run_id,
+        &stage,
+        &error_message,
+        &execution,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .map_err(mutating_error)
+}
+
+/// `db:import-run-complete`（对齐 `db-controller.ts:471-479`）
+pub(crate) fn import_run_complete_inner(
+    state: &AppState,
+    run_id: &str,
+    execution: &import_runs::ImportRunExecutionLease,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<ImportRunRunMutationResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    let run = state.with_project_db(|conn| import_runs::complete_run(conn, run_id, execution))?;
+    Ok(ImportRunRunMutationResult {
+        success: true,
+        run: Some(run),
+        error: None,
+    })
+}
+
+/// `db:import-run-complete`
+#[tauri::command]
+pub fn db_import_run_complete(
+    state: State<'_, AppState>,
+    run_id: String,
+    execution: import_runs::ImportRunExecutionLease,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<ImportRunRunMutationResult, String> {
+    import_run_complete_inner(
+        state.inner(),
+        &run_id,
+        &execution,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .map_err(mutating_error)
+}
+
+/// `db:import-run-effect-receipt-get`（对齐 `db-controller.ts:356-364`；
+/// 读频道：失败直接 reject，不走 MUTATING 信封）
+pub(crate) fn import_run_effect_receipt_get_inner(
+    state: &AppState,
+    run_id: &str,
+    stage: &str,
+    batch_id: &str,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<Option<import_runs::ImportRunEffectReceipt>, String> {
+    guard_read(state, expected_project_path, session)?;
+    state.with_project_db(|conn| import_runs::get_effect_receipt(conn, run_id, stage, batch_id))
+}
+
+/// `db:import-run-effect-receipt-get`
+#[tauri::command]
+pub fn db_import_run_effect_receipt_get(
+    state: State<'_, AppState>,
+    run_id: String,
+    stage: String,
+    batch_id: String,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<Option<import_runs::ImportRunEffectReceipt>, String> {
+    import_run_effect_receipt_get_inner(
+        state.inner(),
+        &run_id,
+        &stage,
+        &batch_id,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+}
+
+/// `db:import-run-effect-receipt-prepare`（对齐 `db-controller.ts:366-375`）
+pub(crate) fn import_run_effect_receipt_prepare_inner(
+    state: &AppState,
+    request: &import_runs::ImportRunPrepareEffectReceiptRequest,
+    execution: &import_runs::ImportRunExecutionLease,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<ImportRunEffectReceiptPrepareResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    let receipt = state.with_project_db(|conn| {
+        import_runs::prepare_effect_receipt(conn, request, execution, import_run_now_ms())
+    })?;
+    Ok(ImportRunEffectReceiptPrepareResult {
+        success: true,
+        receipt: Some(receipt),
+        error: None,
+    })
+}
+
+/// `db:import-run-effect-receipt-prepare`
+#[tauri::command]
+pub fn db_import_run_effect_receipt_prepare(
+    state: State<'_, AppState>,
+    request: import_runs::ImportRunPrepareEffectReceiptRequest,
+    execution: import_runs::ImportRunExecutionLease,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<ImportRunEffectReceiptPrepareResult, String> {
+    import_run_effect_receipt_prepare_inner(
+        state.inner(),
+        &request,
+        &execution,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .map_err(mutating_error)
+}
+
+/// `db:import-run-effect-receipt-commit`（对齐 `db-controller.ts:377-382`；
+/// `projectRoot` 取自当前项目路径，对齐基线仓储内部 `getCurrentProjectPath()`）
+pub(crate) fn import_run_effect_receipt_commit_inner(
+    state: &AppState,
+    run_id: &str,
+    stage: &str,
+    batch_id: &str,
+    execution: &import_runs::ImportRunExecutionLease,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<ImportRunEffectReceiptCommitResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    let result = state.with_project_db(|conn| {
+        import_runs::commit_effect_receipt(
+            conn,
+            expected_project_path,
+            run_id,
+            stage,
+            batch_id,
+            execution,
+            import_run_now_ms(),
+        )
+    })?;
+    Ok(ImportRunEffectReceiptCommitResult {
+        success: true,
+        result: Some(result),
+        error: None,
+    })
+}
+
+/// `db:import-run-effect-receipt-commit`
+#[tauri::command]
+pub fn db_import_run_effect_receipt_commit(
+    state: State<'_, AppState>,
+    run_id: String,
+    stage: String,
+    batch_id: String,
+    execution: import_runs::ImportRunExecutionLease,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<ImportRunEffectReceiptCommitResult, String> {
+    import_run_effect_receipt_commit_inner(
+        state.inner(),
+        &run_id,
+        &stage,
+        &batch_id,
+        &execution,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .map_err(mutating_error)
+}
+
+/// `db:import-global-facts-commit`（对齐 `db-controller.ts:183-190`）
+pub(crate) fn import_global_facts_commit_inner(
+    state: &AppState,
+    request: &import_global_facts::ImportGlobalFactsRequest,
+    expected_project_path: &str,
+    session: Option<&ProjectSessionContext>,
+) -> Result<ImportGlobalFactsCommitResult, String> {
+    guard_read(state, expected_project_path, session)?;
+    let receipt = state.with_project_db(|conn| {
+        import_global_facts::ImportGlobalFactsRepository::commit(conn, request.clone())
+    })?;
+    Ok(ImportGlobalFactsCommitResult {
+        success: true,
+        receipt: Some(receipt),
+        error: None,
+    })
+}
+
+/// `db:import-global-facts-commit`
+#[tauri::command]
+pub fn db_import_global_facts_commit(
+    state: State<'_, AppState>,
+    request: import_global_facts::ImportGlobalFactsRequest,
+    expected_project_path: String,
+    project_session: Option<ProjectSessionContext>,
+) -> Result<ImportGlobalFactsCommitResult, String> {
+    import_global_facts_commit_inner(
+        state.inner(),
+        &request,
+        &expected_project_path,
+        project_session.as_ref(),
+    )
+    .map_err(mutating_error)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -5096,6 +5730,93 @@ mod tests {
         assert_eq!(mutating_error(error), "Error: 导入解析运行当前不可完成");
         assert!(
             import_run_finalize_parsing_inner(&state, "missing", &root, None).is_err(),
+            "缺会话应被拒绝"
+        );
+        cleanup(&root);
+    }
+
+    // ==================== 批次 G3b：执行租约 / 批次推进 / effect receipts ====================
+
+    #[test]
+    fn import_run_complete_batch_rejects_non_direct_checkpoint_stage_test() {
+        let (state, root, session) = activated_state("g3b-complete-batch");
+        let execution = import_runs::ImportRunExecutionLease {
+            owner: "executor-a".to_string(),
+            epoch: 1,
+            expires_at: import_run_now_ms() + import_runs::DEFAULT_EXECUTION_LEASE_MS,
+        };
+        // 'parsing' 不是 direct checkpoint 阶段（仅 knowledge / author-publish /
+        // author-postprocess / refresh 接受直接 checkpoint，D4 前置校验在命令层）
+        let error = import_run_complete_batch_inner(
+            &state,
+            "run-g3b",
+            "parsing",
+            "batch-1",
+            &execution,
+            &root,
+            Some(&session),
+        )
+        .unwrap_err();
+        assert_eq!(error, "该导入阶段不接受直接 checkpoint");
+        // 命令层包装为 MUTATING 文案（与 Electron `String(new Error(...))` 一致）
+        assert_eq!(
+            mutating_error(error),
+            "Error: 该导入阶段不接受直接 checkpoint"
+        );
+        assert!(
+            import_run_complete_batch_inner(
+                &state, "run-g3b", "parsing", "batch-1", &execution, &root, None
+            )
+            .is_err(),
+            "缺会话应被拒绝"
+        );
+        cleanup(&root);
+    }
+
+    #[test]
+    fn import_run_start_resume_issues_lease_and_renew_extends_test() {
+        use crate::import::ImportPurpose;
+        let (state, root, session) = activated_state("g3b-start-resume");
+        // reference 通道落地一个 'prepared' 可恢复运行（终态见 G2b-5 测试注释）
+        let inspection_id = seed_inspection(&state, ImportPurpose::Reference, "正文丙");
+        let request = prepare_request_for(&inspection_id, "run-g3b", ImportPurpose::Reference);
+        let prepared =
+            import_run_prepare_inspection_inner(&state, &request, &root, Some(&session)).unwrap();
+        let run_id = prepared
+            .preparation
+            .as_ref()
+            .and_then(|preparation| preparation.run.as_ref())
+            .map(|run| run.id.clone())
+            .expect("应生成导入运行");
+
+        // start-resume：签发执行租约，运行进入 running
+        let started =
+            import_run_start_resume_inner(&state, &run_id, "executor-a", &root, Some(&session))
+                .unwrap();
+        let start = started.start.expect("应返回 start");
+        assert_eq!(start.run.status, "running");
+        assert_eq!(start.execution.owner, "executor-a");
+        assert!(
+            start.execution.expires_at > import_run_now_ms(),
+            "租约应尚未过期"
+        );
+
+        // 同一执行器 renew：租约顺延且身份保留
+        let renewed = import_run_renew_execution_inner(
+            &state,
+            &run_id,
+            &start.execution,
+            &root,
+            Some(&session),
+        )
+        .unwrap();
+        let execution = renewed.execution.expect("应返回 execution");
+        assert_eq!(execution.owner, "executor-a");
+        assert!(execution.expires_at >= start.execution.expires_at);
+
+        // 缺会话一律拒绝
+        assert!(
+            import_run_start_resume_inner(&state, &run_id, "executor-a", &root, None).is_err(),
             "缺会话应被拒绝"
         );
         cleanup(&root);

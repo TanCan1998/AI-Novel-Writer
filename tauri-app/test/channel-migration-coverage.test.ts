@@ -142,9 +142,12 @@ describe('channel migration coverage', () => {
     // 批次 G2b-5：导入运行准备 / 解析收口已迁移
     expect(MIGRATED_CHANNELS.has('db:import-run-prepare-inspection')).toBe(true)
     expect(MIGRATED_CHANNELS.has('db:import-run-finalize-parsing')).toBe(true)
-    // 仍未迁移（G3：执行租约 / 批次推进 / effect receipts）
-    expect(MIGRATED_CHANNELS.has('db:import-run-effect-receipt-get')).toBe(false)
-    expect(MIGRATED_CHANNELS.has('db:import-run-start-resume')).toBe(false)
+    // 批次 G3b：执行租约 / 批次推进 / effect receipts / 全局事实已迁移
+    expect(MIGRATED_CHANNELS.has('db:import-run-effect-receipt-get')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('db:import-run-start-resume')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('db:import-run-complete-batch')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('db:import-run-advance-stage')).toBe(true)
+    expect(MIGRATED_CHANNELS.has('db:import-global-facts-commit')).toBe(true)
     // 已迁频道不受影响
     expect(MIGRATED_CHANNELS.has('config:get')).toBe(true)
     expect(MIGRATED_CHANNELS.has('llm:list-models')).toBe(true)

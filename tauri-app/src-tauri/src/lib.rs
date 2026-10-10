@@ -298,6 +298,21 @@ pub fn run() {
             // 批次 G2b-5：导入运行准备 / 解析收口（2 频道）
             commands::db_import_run_prepare_inspection,
             commands::db_import_run_finalize_parsing,
+            // 批次 G3b：导入运行执行租约 / 批次推进 / effect receipts（12 频道）
+            commands::db_import_run_start_resume,
+            commands::db_import_run_renew_execution,
+            commands::db_import_run_restart,
+            commands::db_import_run_request_cancel,
+            commands::db_import_run_cancel_at_boundary,
+            commands::db_import_run_complete_batch,
+            commands::db_import_run_advance_stage,
+            commands::db_import_run_fail,
+            commands::db_import_run_complete,
+            commands::db_import_run_effect_receipt_get,
+            commands::db_import_run_effect_receipt_prepare,
+            commands::db_import_run_effect_receipt_commit,
+            // 批次 G3b：全局事实提交
+            commands::db_import_global_facts_commit,
         ])
         .run(tauri::generate_context!())
         .expect("Tauri 应用启动失败");
