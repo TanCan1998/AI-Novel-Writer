@@ -14,6 +14,8 @@
 //! | `listDocuments` | [`list_documents`] |
 //! | `getStats` | [`stats`] |
 //! | `searchWithScope` 的文本降级支路 | [`search_text`] |
+//! | `hashCanonicalChunkSet` / `getDocumentIntegrity` | [`hash_canonical_chunk_set`] / [`document_integrity`] |
+//! | `removeDocument`（stable-id 语义） | [`remove_document_stable_id`] / [`replace_document`] |
 //!
 //! # 已记录的刻意差异
 //!
@@ -21,7 +23,7 @@
 //! **FTS5（jieba 预分词）召回 + 真实相关性分**（见 `hybrid.rs` 模块文档），
 //! 排序键仍为基线的词命中度 `Σ(n - index)`。
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 use std::collections::HashSet;
 
@@ -442,11 +444,281 @@ pub fn search_text(
     Ok(out)
 }
 
+// ==================== 参照文档幂等（批次 G4） ====================
+
+/// 参照导入的规范化块集哈希（对齐基线 `hashCanonicalChunkSet`：
+/// `sha256(JSON.stringify(chunks))`）。
+///
+/// `serde_json` 对字符串数组的编码与基线 `JSON.stringify` 逐字节一致
+/// （短控制字符转义、非 ASCII 原样输出、`/` 不转义），故哈希输入与
+/// 基线相同——**不得改变输入顺序或分隔符**。
+pub fn hash_canonical_chunk_set(chunks: &[String]) -> String {
+    let canonical = serde_json::to_string(chunks).expect("字符串数组的 JSON 序列化不可失败");
+    crate::import::parsing::sha256_hex(&canonical)
+}
+
+/// 参照文档幂等收据（对齐基线 `import_reference_documents` 的 7 列业务
+/// 投影；`created_at` / `updated_at` 由 SQLite 列默认值维护，见
+/// `db/schema.rs` 的建表语句——只读，不在此层修改）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReferenceDocumentReceipt {
+    pub document_id: String,
+    pub idempotency_key_hash: String,
+    pub content_hash: String,
+    pub chunk_set_hash: String,
+    pub expected_chunk_count: i64,
+    pub corpus_kind: String,
+    pub state: String,
+}
+
+/// 按 `document_id` 或幂等键哈希读取参照文档收据（对齐基线
+/// `SELECT ... FROM import_reference_documents
+///        WHERE document_id = ? OR idempotency_key_hash = ?`）。
+pub fn read_reference_document(
+    conn: &Connection,
+    document_id: &str,
+    idempotency_key_hash: &str,
+) -> Result<Option<ReferenceDocumentReceipt>, String> {
+    conn.query_row(
+        "SELECT document_id, idempotency_key_hash, content_hash, chunk_set_hash,
+                expected_chunk_count, corpus_kind, state
+         FROM import_reference_documents
+         WHERE document_id = ?1 OR idempotency_key_hash = ?2",
+        params![document_id, idempotency_key_hash],
+        |row| {
+            Ok(ReferenceDocumentReceipt {
+                document_id: row.get(0)?,
+                idempotency_key_hash: row.get(1)?,
+                content_hash: row.get(2)?,
+                chunk_set_hash: row.get(3)?,
+                expected_chunk_count: row.get(4)?,
+                corpus_kind: row.get(5)?,
+                state: row.get(6)?,
+            })
+        },
+    )
+    .optional()
+    .map_err(|error| error.to_string())
+}
+
+/// 写入参照文档幂等收据。对齐基线「不存在则插 `state='prepared'`」：
+/// 仅当 `document_id`（主键）与 `idempotency_key_hash`（唯一键）均无
+/// 冲突时插入；任一冲突即保持既有行不动（基线仅在无收据时插入，
+/// 后续状态推进走 [`mark_reference_document_state`]）。
+pub fn upsert_reference_document(
+    conn: &Connection,
+    receipt: &ReferenceDocumentReceipt,
+) -> Result<(), String> {
+    conn.execute(
+        "INSERT INTO import_reference_documents (
+           document_id, idempotency_key_hash, content_hash, chunk_set_hash,
+           expected_chunk_count, corpus_kind, state
+         ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT DO NOTHING",
+        params![
+            receipt.document_id,
+            receipt.idempotency_key_hash,
+            receipt.content_hash,
+            receipt.chunk_set_hash,
+            receipt.expected_chunk_count,
+            receipt.corpus_kind,
+            receipt.state,
+        ],
+    )
+    .map(|_| ())
+    .map_err(|error| error.to_string())
+}
+
+/// 推进参照文档状态机（对齐基线
+/// `UPDATE import_reference_documents
+///        SET state = ?, updated_at = datetime('now') WHERE document_id = ?`）。
+pub fn mark_reference_document_state(
+    conn: &Connection,
+    document_id: &str,
+    state: &str,
+) -> Result<(), String> {
+    conn.execute(
+        "UPDATE import_reference_documents
+         SET state = ?1, updated_at = datetime('now')
+         WHERE document_id = ?2",
+        params![state, document_id],
+    )
+    .map(|_| ())
+    .map_err(|error| error.to_string())
+}
+
+/// 文档完整性（对齐基线 `getDocumentIntegrity` 的 DB 侧判定口径）。
+///
+/// ⚠️ 架构差异：基线的 `complete` 还要求各嵌入代际（`embeddingGenerations`）
+/// 完整；Tauri 侧向量由文件型 [`crate::db::vector::LocalVectorIndex`] 持有、
+/// 不入 SQLite，故 `complete` 只反映 **canonical 完整性**（文档行唯一 +
+/// 块序列严格等于 `0..n` 且每块 `total_chunks` / `corpus_kind` 自洽）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct DocumentIntegrity {
+    /// 文档行与全部 canonical 块是否构成完整提交（基线口径，剔除向量代际）
+    pub complete: bool,
+    /// 语料类型：文档行优先，其次首块，最后 `'unknown'`（对齐基线）
+    pub corpus_kind: String,
+    /// 块数量（按 `chunk_index` 排序后的块集大小）
+    pub chunk_count: i64,
+    /// 按 `chunk_index` 排序后的块集哈希（[`hash_canonical_chunk_set`]）
+    pub chunk_set_hash: String,
+}
+
+/// 校验文档提交行与全部 canonical 块的完整性（对齐基线
+/// `getDocumentIntegrity`：文档与块均不存在时返回 `None`）。
+pub fn document_integrity(
+    conn: &Connection,
+    doc_id: &str,
+) -> Result<Option<DocumentIntegrity>, String> {
+    /// 块投影（按 `chunk_index` 排序；同 index 时按 `id` 保证确定性次序）
+    struct ChunkProjection {
+        id: String,
+        chunk_index: i64,
+        total_chunks: i64,
+        text: String,
+        corpus_kind: String,
+    }
+
+    let mut statement = conn
+        .prepare(
+            "SELECT id, chunk_index, total_chunks, text, corpus_kind
+             FROM kb_chunks WHERE doc_id = ?1
+             ORDER BY chunk_index, id",
+        )
+        .map_err(|error| error.to_string())?;
+    let ordered: Vec<ChunkProjection> = statement
+        .query_map([doc_id], |row| {
+            Ok(ChunkProjection {
+                id: row.get(0)?,
+                chunk_index: row.get(1)?,
+                total_chunks: row.get(2)?,
+                text: row.get(3)?,
+                corpus_kind: row.get(4)?,
+            })
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|error| error.to_string())?;
+
+    let document = conn
+        .query_row(
+            "SELECT chunk_count, corpus_kind FROM kb_documents WHERE id = ?1",
+            [doc_id],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+
+    // 基线：文档行与块行均无记录（且各嵌入代际无块）时返回 null。
+    if document.is_none() && ordered.is_empty() {
+        return Ok(None);
+    }
+
+    let corpus_kind = document
+        .as_ref()
+        .map(|(_, kind)| kind.clone())
+        .or_else(|| ordered.first().map(|row| row.corpus_kind.clone()))
+        .unwrap_or_else(|| "unknown".to_string());
+    let chunk_count = ordered.len() as i64;
+    let mut seen_ids: HashSet<String> = HashSet::new();
+    let canonical_complete = document.is_some()
+        && chunk_count > 0
+        && document.is_some_and(|(count, _)| count == chunk_count)
+        && ordered.iter().all(|row| seen_ids.insert(row.id.clone()))
+        && ordered.iter().enumerate().all(|(index, row)| {
+            row.chunk_index == index as i64
+                && row.total_chunks == chunk_count
+                && row.corpus_kind == corpus_kind
+        });
+    let texts: Vec<String> = ordered.iter().map(|row| row.text.clone()).collect();
+    Ok(Some(DocumentIntegrity {
+        complete: canonical_complete,
+        corpus_kind,
+        chunk_count,
+        chunk_set_hash: hash_canonical_chunk_set(&texts),
+    }))
+}
+
+/// 删除参照文档（stable-id 语义）——对齐基线 `removeDocFromStore`
+/// （`vector-store.ts::removeDocument`）的**数据库侧语义**：删
+/// `kb_documents` / `kb_chunks` / FTS 索引行，并验证零行后条件。
+///
+/// ⚠️ 向量**不在 SQLite**：Tauri 侧向量由文件型
+/// [`crate::db::vector::LocalVectorIndex`]（`<project>/.lore/kb/` 下的
+/// HNSW 图快照 + ID 映射 sidecar）持有，**物理索引由上层清理**
+/// （命令层在 DB 清理成功后另行调用 `LocalVectorIndex::delete_vector`）。
+///
+/// 返回 `Ok(true)` 表示清理完成（含「原本不存在」的幂等路径，对齐基线
+/// 零行后条件验证语义）；`Ok(false)` 表示删除后仍有残留（事务内理论上
+/// 不会发生，保留该返回值以对齐基线「无法安全清理」的失败形状）。
+pub fn remove_document_stable_id(conn: &Connection, doc_id: &str) -> Result<bool, String> {
+    conn.execute_batch("BEGIN IMMEDIATE")
+        .map_err(|error| error.to_string())?;
+    let result = (|| -> Result<bool, String> {
+        fts::delete_document(conn, doc_id).map_err(|error| error.to_string())?;
+        conn.execute("DELETE FROM kb_chunks WHERE doc_id = ?1", [doc_id])
+            .map_err(|error| error.to_string())?;
+        conn.execute("DELETE FROM kb_documents WHERE id = ?1", [doc_id])
+            .map_err(|error| error.to_string())?;
+        let remaining: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM kb_chunks WHERE doc_id = ?1",
+                [doc_id],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        Ok(remaining == 0)
+    })();
+    match result {
+        Ok(clean) => {
+            conn.execute_batch("COMMIT")
+                .map_err(|error| error.to_string())?;
+            Ok(clean)
+        }
+        Err(error) => {
+            let _ = conn.execute_batch("ROLLBACK");
+            Err(error)
+        }
+    }
+}
+
+/// 按 stable-id 重写文档（对齐基线 `replacementMode: 'stable-id'`）：
+/// 先 [`remove_document_stable_id`]（存在才删，幂等），再复用
+/// [`insert_document`] 写入新块，返回新块 id 列表。
+///
+/// 与基线的差异：基线由 `performReferenceTextImport` 先
+/// `removeDocFromStore` 再 `addChunks`；本函数把「先删后插」收口为
+/// 单点，供参照导入幂等路径使用。
+pub fn replace_document(
+    conn: &Connection,
+    doc_id: &str,
+    file_name: &str,
+    chunks: &[String],
+    meta: &DocumentMeta<'_>,
+) -> Result<Vec<String>, String> {
+    // 「存在才删」守卫对齐基线 `if (existingIntegrity && ...)`：
+    // 文档行或任一 canonical 块存在即视为已存在（含残缺态）。
+    let exists: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM kb_documents WHERE id = ?1)
+                     OR EXISTS(SELECT 1 FROM kb_chunks WHERE doc_id = ?1)",
+            [doc_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())?;
+    if exists && !remove_document_stable_id(conn, doc_id)? {
+        return Err("残缺参照文档无法安全清理".to_string());
+    }
+    insert_document(conn, doc_id, file_name, chunks, meta)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db::schema::{
-        CREATE_KB_CHUNKS, CREATE_KB_DOCUMENTS, CREATE_KB_EMBEDDING_SPACES, CREATE_KB_FTS,
+        CREATE_IMPORT_RUN, CREATE_KB_CHUNKS, CREATE_KB_DOCUMENTS, CREATE_KB_EMBEDDING_SPACES,
+        CREATE_KB_FTS,
     };
 
     fn conn() -> Connection {
@@ -455,6 +727,8 @@ mod tests {
         conn.execute_batch(CREATE_KB_CHUNKS).unwrap();
         conn.execute_batch(CREATE_KB_EMBEDDING_SPACES).unwrap();
         conn.execute_batch(CREATE_KB_FTS).unwrap();
+        // 批次 G4：参照文档幂等收据（import_reference_documents）
+        conn.execute_batch(CREATE_IMPORT_RUN).unwrap();
         conn
     }
 
@@ -633,5 +907,186 @@ mod tests {
         assert_eq!(stats.document_count, 0);
         assert_eq!(stats.total_chunks, 0);
         assert!(all_chunk_ids(&conn).unwrap().is_empty());
+    }
+
+    fn reference_meta() -> DocumentMeta<'static> {
+        DocumentMeta {
+            corpus_kind: "reference",
+            ..sample_meta()
+        }
+    }
+
+    #[test]
+    fn hash_canonical_chunk_set_is_order_sensitive_and_stable_test() {
+        let chunks = vec!["春江潮水".to_string(), "连海平".to_string()];
+        // 相同输入稳定
+        assert_eq!(
+            hash_canonical_chunk_set(&chunks),
+            hash_canonical_chunk_set(&chunks)
+        );
+        // 块序敏感
+        let mut reversed = chunks.clone();
+        reversed.reverse();
+        assert_ne!(
+            hash_canonical_chunk_set(&chunks),
+            hash_canonical_chunk_set(&reversed)
+        );
+        // 逐字节对齐基线：sha256(JSON.stringify(chunks))
+        let baseline_json = "[\"春江潮水\",\"连海平\"]";
+        assert_eq!(
+            hash_canonical_chunk_set(&chunks),
+            crate::import::parsing::sha256_hex(baseline_json)
+        );
+    }
+
+    #[test]
+    fn document_integrity_reports_complete_partial_and_mismatched_states_test() {
+        let chunks = vec!["甲".to_string(), "乙".to_string()];
+
+        // 完整：文档行 + 严格 0..n 块序列
+        let complete = conn();
+        insert_document(&complete, "d1", "参照.md", &chunks, &reference_meta()).unwrap();
+        let integrity = document_integrity(&complete, "d1")
+            .unwrap()
+            .expect("完整文档应有完整性记录");
+        assert!(integrity.complete);
+        assert_eq!(integrity.corpus_kind, "reference");
+        assert_eq!(integrity.chunk_count, 2);
+        assert_eq!(integrity.chunk_set_hash, hash_canonical_chunk_set(&chunks));
+
+        // 残缺：文档行声称 2 块、实际只余 1 块
+        let partial = conn();
+        insert_document(&partial, "d2", "参照.md", &chunks, &reference_meta()).unwrap();
+        partial
+            .execute(
+                "DELETE FROM kb_chunks WHERE doc_id = 'd2' AND chunk_index = 1",
+                [],
+            )
+            .unwrap();
+        let integrity = document_integrity(&partial, "d2")
+            .unwrap()
+            .expect("残缺文档仍有记录");
+        assert!(!integrity.complete);
+        assert_eq!(integrity.chunk_count, 1);
+
+        // 块数不符：文档行 chunk_count 与实际块数不一致
+        let mismatched = conn();
+        insert_document(&mismatched, "d3", "参照.md", &chunks, &reference_meta()).unwrap();
+        mismatched
+            .execute(
+                "UPDATE kb_documents SET chunk_count = 1 WHERE id = 'd3'",
+                [],
+            )
+            .unwrap();
+        let integrity = document_integrity(&mismatched, "d3")
+            .unwrap()
+            .expect("块数不符文档仍有记录");
+        assert!(!integrity.complete);
+        assert_eq!(integrity.chunk_count, 2);
+
+        // 文档与块均不存在 → None（对齐基线 null 语义）
+        assert!(document_integrity(&complete, "missing").unwrap().is_none());
+    }
+
+    #[test]
+    fn replace_document_rewrites_chunks_without_residue_test() {
+        let conn = conn();
+        let old = vec!["旧块一".to_string(), "旧块二".to_string()];
+        let old_ids = insert_document(&conn, "d1", "参照.md", &old, &reference_meta()).unwrap();
+        assert_eq!(old_ids.len(), 2);
+
+        let new = vec![
+            "新块一".to_string(),
+            "新块二".to_string(),
+            "新块三".to_string(),
+        ];
+        let new_ids = replace_document(&conn, "d1", "参照.md", &new, &reference_meta()).unwrap();
+        assert_eq!(new_ids.len(), 3);
+
+        // kb_chunks 数量正确
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM kb_chunks WHERE doc_id = 'd1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 3);
+        // 无残留：旧块在 kb_chunks 与 kb_fts 均不存活
+        for old_id in &old_ids {
+            let remaining: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM kb_chunks WHERE id = ?1",
+                    [old_id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(remaining, 0, "旧块 {old_id} 在 kb_chunks 应无残留");
+            let fts_remaining: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM kb_fts WHERE chunk_id = ?1",
+                    [old_id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(fts_remaining, 0, "FTS 旧块 {old_id} 应无残留");
+        }
+        // 重写后完整性复核
+        let integrity = document_integrity(&conn, "d1")
+            .unwrap()
+            .expect("重写后应完整");
+        assert!(integrity.complete);
+        assert_eq!(integrity.chunk_set_hash, hash_canonical_chunk_set(&new));
+    }
+
+    #[test]
+    fn reference_document_receipt_roundtrip_test() {
+        let conn = conn();
+        let receipt = ReferenceDocumentReceipt {
+            document_id: "doc-1".to_string(),
+            idempotency_key_hash: "key-hash".to_string(),
+            content_hash: "content-hash".to_string(),
+            chunk_set_hash: "chunk-set-hash".to_string(),
+            expected_chunk_count: 2,
+            corpus_kind: "reference".to_string(),
+            state: "prepared".to_string(),
+        };
+        assert!(read_reference_document(&conn, "doc-1", "key-hash")
+            .unwrap()
+            .is_none());
+
+        upsert_reference_document(&conn, &receipt).unwrap();
+        let read = read_reference_document(&conn, "doc-1", "key-hash")
+            .unwrap()
+            .expect("应可读回");
+        assert_eq!(read, receipt);
+
+        // 幂等：重复插入不覆盖既有行（对齐基线「不存在则插」）
+        let mut rewritten = receipt.clone();
+        rewritten.state = "committed".to_string();
+        upsert_reference_document(&conn, &rewritten).unwrap();
+        assert_eq!(
+            read_reference_document(&conn, "doc-1", "key-hash")
+                .unwrap()
+                .unwrap()
+                .state,
+            "prepared"
+        );
+
+        // 状态机推进
+        mark_reference_document_state(&conn, "doc-1", "committed").unwrap();
+        assert_eq!(
+            read_reference_document(&conn, "doc-1", "key-hash")
+                .unwrap()
+                .unwrap()
+                .state,
+            "committed"
+        );
+
+        // 幂等键哈希亦可定位（基线 WHERE document_id = ? OR idempotency_key_hash = ?）
+        let by_key = read_reference_document(&conn, "unknown-doc", "key-hash")
+            .unwrap()
+            .expect("应按幂等键命中");
+        assert_eq!(by_key.document_id, "doc-1");
     }
 }
