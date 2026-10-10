@@ -57,6 +57,7 @@ tauri-app/src-tauri/gen/schemas
 # pi 编码代理的本地会话数据与凭据（agent/auth.json、tmp/ 临时索引），绝不入库
 # 注意：目录**保留在磁盘上**，删除会导致登录态与缓存丢失。
 .pi/
+/pi-session-*.html
 
 # Never publish internal agent instructions, local review output, or compiler state.
 /AGENTS.md
@@ -73,3 +74,5 @@ tauri-app/src-tauri/gen/schemas
 /public/screenshot/
 /public/logos/
 *.tsbuildinfo
+gitleaks.sarif
+gitleaks-report.json
