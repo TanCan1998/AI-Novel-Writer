@@ -11,7 +11,7 @@
 
 ---
 
-## 快照（最后更新：2026-10-10 · 第四十二次）
+## 快照（最后更新：2026-10-10 · 第四十三次）
 
 > 本表只填**最新一次自检的实测值**。改表前必须重跑对应命令，不得沿用旧数字、不得估算。
 > 本轮实测命令与输出见下方「[§5 自检记录](#5-自检记录2026-10-10-实测)」。
@@ -20,17 +20,17 @@
 |---|---|
 | 仓库 / 分支 | **`TanCan1998/Lorekeeper`**（`EthanYoQ/AI-Novel-Writer` 的 PUBLIC fork）· `master` |
 | 产品身份 | **Lorekeeper（设定司）**；`identifier = com.tancan1998.lorekeeper`；npm `lorekeeper-tauri`；Rust crate `lorekeeper` / lib `lorekeeper_lib` |
-| 已注册命令 | **185** |
-| 覆盖 invoke 频道 | **184**（契约总数 193，事件频道 **5**） |
-| 未迁移 invoke 频道 | **9**（`db=0 mcp=9`） |
+| 已注册命令 | **194** |
+| 覆盖 invoke 频道 | **193**（契约总数 193，事件频道 **5**） |
+| 未迁移 invoke 频道 | **0**（`db=0 mcp=0`）✅ |
 | orphan | **空** ✅ |
-| `cargo test --lib` | **670/670** ✅（第四十二次：655 + H4 Task 1/2 新增 15） |
+| `cargo test --lib` | **689/689** ✅（第四十三次：670 + H4 Task 3/4 新增 14 + Task 7 补强 5） |
 | `cargo fmt --check` | **干净（0 差异）** ✅ |
 | `cargo check --all-targets` | **0 告警** ✅ |
 | `pnpm typecheck` / `lint` | exit 0 / exit 0 ✅ |
 | 定向 `vitest` | **7/7**（2 文件：契约覆盖 / 入参结构体契约）✅ |
-| 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅** / **批次 G2a ✅（本次）** / **批次 G2b ✅（1–6 步全部完成）** / **批次 G3a ✅** / **批次 G3b ✅** / **批次 G4 ✅（代码收口）** / **B13 ✅（本次）** |
-| 当前阶段 | **H4 已开工（第四十二次）**：前提已定 —— 信任模型 **(a) `std::process::Command` + 自研守卫（零新依赖）**，顺序 **先 H4 收口再合并上游**（`git merge upstream/master --no-ff` 待 H4 后执行）。H4 **Task 1+2 已落盘**（`mcp/{mod,types,config}.rs` + `commands/mcp.rs` + `state.rs` 装配 + `commands/mod.rs` 登记；**刻意未注册 `lib.rs`**（D-H4-4），故未迁移仍 **9**，仅剩 `mcp=9`）；自检 **670/670**。前序：**G4 代码已收口**（`94a1fe6a` + `5c4fd26e`）、**B13 已关闭**（`ef76662b`）。**⚠️ G4 的 GUI 冒烟（导入参照章节链路）仍待做**（用户决定稍后）。其它待办：B14（真 Windows 自更新）、上游合并专项、B24（整屏瞬黑，暂缓） |
+| 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅** / **批次 G2a ✅** / **批次 G2b ✅（1–6 步全部完成）** / **批次 G3a ✅** / **批次 G3b ✅** / **批次 G4 ✅（代码收口）** / **B13 ✅** / **H4 ✅（本次）** |
+| 当前阶段 | **H4 已收口（第四十三次）**：mcp 9 频道全部真实化并注册，**未迁移 invoke 9 → 0**（`db=0 mcp=0`）、已注册命令 **194** → 覆盖 **193**、自检 **689/689**。提交 `a2348a79`（stdio 传输层 + 连接状态机）+ `14d224d9`（注册 9 命令 + 前端登记 + `--emit` + 断言适配）+ P2 收尾（非 UTF-8 行不再断连、`drop_stale_servers` 去 TOCTOU + 5 例单测）。前序：**G4 代码已收口**（`94a1fe6a` + `5c4fd26e`）、**B13 已关闭**（`ef76662b`）。**⚠️ G4 的 GUI 冒烟（导入参照章节链路）仍待做**（用户决定稍后）；**B22 两段式关窗 dirty 分支仍待 GUI 实测**。其它待办：B14（真 Windows 自更新）、**上游合并专项（H4 收口后立即执行）**、B24（整屏瞬黑，暂缓） |
 | 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、`tauri-plugin-opener 2.7.0`、`windows-sys 0.61`（`[target.'cfg(windows)'.dependencies]`，仅 lock 提级，**0 新下载**；Ask first 已批准 2026-10-10）。**G2a 零新依赖**，**G3a 零新依赖**（仓储层平移，无 Cargo.toml 改动），**G3b 零新依赖**（命令层平移，无 Cargo.toml 改动）。向量层 `hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio`；FTS5 由 `libsqlite3-sys` bundled 提供 |
 | GUI 冒烟 | ✅ 自 2026-10-07 起 **十三轮**。⏳ **第十四轮（G4 参照章节链路）待做**：① 作者原稿全链路回归；② 参考语料选 `.md` → 应得 `preparation` 而非诚实错误，重选应得 `exact-duplicate`；③ `importReference` 成功写库并记「参照章节 N 已进入知识库」（重复显示「（已存在）」）。**第十三轮（2026-10-10，弹窗动画统一）**：设置弹窗明显变快（修复前实为“静置 400ms + 播 220ms”）、四类弹窗进出场一致、Radix 弹窗仍居中且尺寸正常 ✅。**第十二轮（2026-10-10，冒烟发现的三项缺陷修复）**：① 弹窗 **ESC 关闭**（根因：Radix `DismissableLayer` 仅在 `index === layers.length-1` 时注册 ESC，而 Radix 关闭后仍保留 `DialogContent` 挂载——实测 `layers.length=7`，可见弹窗永远不是最高层）；② **窗口命令真实化**（批次 A 四个命令原为假成功骨架）；③ **标题栏拖拽**（`-webkit-app-region` 在 WebView2 无效 → 补 `data-tauri-drag-region`）。4 项人工验证全部 ✅。近三轮：第十一轮（G2a）、第十轮（G1）、第九轮（H 前三项 + B12） |
 | 双栈隔离 | **L0/L1/L2/L3 全部独立**：安装标识 / `~/.lorekeeper` / `<root>/.lore/`（库 `.lore/lorekeeper.db`、KB 向量 `.lore/kb/`）。基线为 `~/.vela` / `<root>/.vela/`。**两栈项目目录刻意不互通**（`ee40aaab`） |
@@ -40,9 +40,26 @@
 
 ---
 
-## 本次更新（2026-10-10 · 第四十二～四十次）
+## 本次更新（2026-10-10 · 第四十三～四十次）
 
-### 1. H4 起步 ✅ Task 1+2（mcp 类型镜像 / 管理器骨架 / 配置层；**刻意不注册命令**）
+### 1. H4 收口 ✅ Task 3+4 + Task 6+7（mcp 9 频道全部真实化；未迁移 9 → 0）
+
+落盘（提交 `a2348a79` + `14d224d9`）：
+
+- 新增 `tauri-app/src-tauri/src/mcp/transport.rs`（538 行）：`McpStdioTransport`（`Command` argv 直传不经 shell、env 继承后叠加、stdin/stdout/stderr 三管道）+ 读线程 `\n` 分帧 + `pending` 表（超时与 `close` 双路清理）+ 10s 超时 `MCP 请求超时: <method>` + Windows `CREATE_NO_WINDOW`（D-H4-3）+ `Drop` 兜底 kill 子进程；
+- `tauri-app/src-tauri/src/mcp/mod.rs`（780 行，+507/−93）：`connect` / `disconnect` / `disconnect_all` / `call_tool` / `get_servers_status` / `drop_stale_servers` 真实实现；握手 `initialize`（`protocolVersion:'2024-11-05'` + `clientInfo {name:'vela',version:'1.0.0'}`，D-H4-2）+ `notifications/initialized`；`tools/list` / `resources/list` 失败退空数组；未连接文案 `服务器 <id> 未连接`；运行时表改持 `Arc<McpServerRuntime>`（D-H4-6）；
+- `tauri-app/src-tauri/src/lib.rs:267-276` 注册全部 9 个 `commands::mcp_*`；`tauri-app/src-tauri/src/state.rs` 常驻装配 `mcp: Mutex<Arc<McpManager>>`（`mcp_manager()`，锁中毒经 `into_inner` 恢复）；删除 `commands/mcp.rs::manager_or_transient` 临时实例回退与 `state.rs` / `commands/mod.rs` 两处临时 `#[allow]`；
+- 前端：`tauri-app/src/services/ipc-client.ts:233-237` 登记 `mcp:connect` / `mcp:disconnect` → `['serverId']`、`mcp:call-tool` → `['serverId','toolName','args']`；`tauri-app/src/shared/migrated-channels.ts` 由 `node scripts/verify-channel-coverage.mjs --emit` 重生成；`tauri-app/test/channel-migration-coverage.test.ts:125` 的「真子集」断言改写为「等于契约 invoke 全集」（含反向包含循环），并补 9 频道状态断言（D-H4-4 收口）。
+
+**独立复验（编排者本人终端，非引用子代理）**：`cargo fmt --check` exit 0；`cargo check --all-targets` exit 0（0 告警）；`cargo test --lib` → **684 passed / 0 failed**（670 + 14）；`pnpm typecheck` / `pnpm run lint` exit 0；`node scripts/verify-channel-coverage.mjs` → 契约 invoke **193**（事件 **5**）/ 已注册命令 **194** → 覆盖 **193** / **未迁移 0** / 命令名与契约频道一一对应 ✅；定向 `vitest` 2 文件 7/7。
+
+**只读评审结论：无 P0/P1，可进下一批**；5 项 P2 中 2 项必修 + 单测补强已完成（见下段），另 2 项登记为偏离（D-H4-8 / D-H4-9）。
+
+**Task 7 余项已完成**：① `transport.rs` 读线程改按字节读行（`read_until` + `String::from_utf8_lossy`）——非 UTF-8 行只损失该行，连接不再被 `close("连接已断开")` 杀掉（对齐基线 `processBuffer` :301-318）；② `mod.rs::drop_stale_servers` 在同一把 `servers` 表锁内 `retain` 摘表并同步 `loaded_configs`、锁释放后再 `shutdown`，消除「无锁收集 → 逐个 disconnect」期间并发 connect 同 id 被误杀的 TOCTOU（锁序 servers → loaded_configs 为全局唯一嵌套序，无反转；`load_config` 不在持 `loaded_configs` 锁时调用它，无自锁风险）；③ 新增 5 例实质单测：`read_loop_frames_crlf_lines_test` / `read_loop_skips_invalid_utf8_line_test` / `wait_response_returns_disconnected_on_close_test` / `close_is_idempotent_test` / `spawn_node_subprocess_e2e_test`（`node -e` 真子进程应答 initialize / tools/list / resources/list，环境无 node 时跳过）。复验：`cargo fmt --check` exit 0、`cargo check --all-targets` **0 告警**、`cargo test --lib` **689 passed / 0 failed**。⚠️ **既有 flake（非本轮引入）**：全量并行跑时 `db::vector::tests::insert_and_search_maps_doc_id_back_test`（`src/db/vector.rs:503`）偶发失败（本轮首跑 688/689）；单测复跑 3/3、全量复跑 689/689 均通过——即 B16 登记的 HNSW 墓碑测试 flake。
+
+**刻意偏离（第四十三次登记，详见开工清单 §5 / §5.1）**：D-H4-6（`McpServerRuntime` 删 `Clone` 改持 `Arc`）；D-H4-7（同步模型 4 条等价替换：阻塞式请求-响应、stdin 写失败立即可报 `连接已断开`、进程退出状态动态反映、`connect` I/O 不持表锁 + `Arc::ptr_eq` 校验）；D-H4-8（`as_i64` 只认数字 id，字符串 id 响应被忽略——请求 id 恒为自增数字，基线 `Map.get` 不会遇到此形态）；D-H4-9（`write_all` 无写超时，子进程不读 stdin 时写可阻塞，与基线同样可能挂起）。
+
+### 2. H4 起步 ✅ Task 1+2（mcp 类型镜像 / 管理器骨架 / 配置层；**刻意不注册命令**）
 
 用户 2026-10-10 定下 H4 前提：信任模型 **(a) `std::process::Command` + 自研守卫（零新依赖）**；顺序 **先 H4 收口，再合并上游**；合并方式 `git merge upstream/master --no-ff`。
 
@@ -64,7 +81,7 @@
 
 **待下批（Task 3..7）**：stdio 传输层（`mcp/transport.rs`，`std::process::Command` + 自研守卫）→ 连接状态机 → `call-tool` / `list-tools` / `list-resources` → 前端登记 + 注册 + `--emit` + 测试适配 → 单测补强。**收口前必须删除**：`commands/mcp.rs::manager_or_transient` 的临时实例回退（否则状态不共享），以及 `state.rs` / `commands/mod.rs` 的 `#[allow(...)]` 临时豁免。
 
-### 2. B13 ✅ 渲染层导航防护收口（提交 `ef76662b`）
+### 3. B13 ✅ 渲染层导航防护收口（提交 `ef76662b`）
 
 HEAD 自 `01d0f6e2` 前进到 `bdd9d3c3`，含两个提交：`ef76662b`
 `feat(tauri): 新增 B13 渲染层导航防护插件` 与 `bdd9d3c3`
@@ -84,13 +101,13 @@ B13 已关闭（基线 `preventRendererNavigation` + 新窗口拦截的 Tauri �
 `cargo test --lib` 由 652 增至 **655**（+3：`allows_app_origins_test` /
 `rejects_foreign_and_dangerous_urls_test` / `official_homepage_matches_exactly_test`）。
 
-### 3. H4（mcp 9 频道）开工清单已产出（第四十一次）—— 前提已于第四十二次确认
+### 4. H4（mcp 9 频道）开工清单已产出（第四十一次）—— 前提已于第四十二次确认
 
 - 开工清单：`docs-fork/plans/2026-10-10-h4-mcp-kickoff.md`（提交 `bdd9d3c3`）；
 - 仍**待用户确认**开工清单 §4 信任模型：(a) `std::process::Command` + 自研守卫
   vs (b) `tauri-plugin-shell`——**确认后才能开工**（未迁移仍为 **9**，仅剩 `mcp=9`）。
 
-### 4. 刻意偏离（D-B13-1 / D-B22-1 / D-B22-2，第四十一次登记）
+### 5. 刻意偏离（D-B13-1 / D-B22-1 / D-B22-2，第四十一次登记）
 
 - **D-B13-1**：`navigation_guard::init` 为非泛型
   `pub fn init() -> TauriPlugin<tauri::Wry>`，而非 `init<R: Runtime>()`。
@@ -105,14 +122,14 @@ B13 已关闭（基线 `preventRendererNavigation` + 新窗口拦截的 Tauri �
   无对应概念（已在 `tauri-app/src-tauri/src/commands/window.rs` 头注释记录：
   `CloseRequested` 只对存活窗口触发，故仅保留 `approved` 一条放行条件）。
 
-### 5. 第四十一次本轮验证事实
+### 6. 第四十一次本轮验证事实
 
 - **B22 两段式关窗的端到端仍需 GUI 人工实测，本轮未做、不得写成已通过**：
   OS 关闭按钮 / Alt+F4、保存并退出 / 放弃并退出 / 取消三按钮、
   脏状态与 workflow 运行中分支、approved 后二次 close 放行、
   WebView2 事件竞态。
 
-### 6. 自检（第四十一次实测，2026-10-10）
+### 7. 自检（第四十一次实测，2026-10-10）
 
 - `pnpm typecheck` → exit 0；`pnpm run lint` → exit 0
   （`eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0`）；
@@ -278,9 +295,12 @@ handler 前置断言，D4）。恢复 D1–D3 需用户确认。
 | `2f28d4a9` | `docs(fork): B24 整屏瞬黑排查记录` |
 | `ef76662b` | `feat(tauri): 新增 B13 渲染层导航防护插件` |
 | `bdd9d3c3` | `docs(tauri): 新增 H4（mcp 9 频道）开工清单` |
-- HEAD（写入本轮时）：`bdd9d3c3 docs(tauri): 新增 H4（mcp 9 频道）开工清单`
+| `a2348a79` | `feat(tauri): H4 Task 3+4——mcp stdio 传输层与连接状态机` |
+| `14d224d9` | `feat(tauri): H4 Task 6+7——注册 9 个 mcp 命令并归零未迁移频道` |
+- HEAD（写入本轮时）：`14d224d9 feat(tauri): H4 Task 6+7——注册 9 个 mcp 命令并归零未迁移频道`
 - **推送状态（2026-10-10）**：`origin/master` 曾落后 10 个提交（末个远端为 `03c9f230`），本轮补提交后**已全部推送**（`03c9f230..2f28d4a9`，`ahead 0 / behind 0`）。
 - **推送状态（2026-10-10）**：上一轮已推送至 `2f28d4a9`；本轮两提交（`ef76662b` + `bdd9d3c3`）**尚未推送**（`git status -sb`：`master...origin/master [ahead 2]`）。
+- **推送状态（2026-10-10 · 第四十三次）**：H4 Task 3+4 与 Task 6+7 两提交（`a2348a79` + `14d224d9`）**尚未推送**（`git rev-list --left-right --count origin/master...HEAD` = `0 2`）；按用户决定「H4 收口后一次性提交并推送」处理。
   1. 第三十九次「`cargo test --lib` **607/607**」→ G3a 移植 36 例后为 643，G3b 再 +2 命令层测试后实测为 **645/645**；
   2. 第三十九次「下一步 G3（执行租约 / 批次推进 / effect receipts 11 频道 + `db:import-global-facts-commit`）」→ **G3a（仓储层）与 G3b（频道注册）均已完成**，下一步是 **G4**；
   3. 第四十次 G3a 版「下一步 **G3b**（13 频道注册）」→ **G3b 已完成**（提交 `f31446ec`，未迁移 22 → 9）；
@@ -294,7 +314,7 @@ handler 前置断言，D4）。恢复 D1–D3 需用户确认。
 2. **子代理编排通道已验**（开工清单 [`docs-fork/plans/2026-10-10-subagent-pideck-kickoff.md`](../plans/2026-10-10-subagent-pideck-kickoff.md) §8）：`lorekeeper-task` + `bash` 端到端可用（子代理返回 `c0a0c5c2` 与编排者一致）；PiDeck 面板出条目已确认；`toolUses`/`tokens` 实时跳动**未取得界面证据**。
 3. **其它待办**：B13（导航防护）、B14（真 Windows 自更新）、H4（mcp，暂缓）、上游合并专项、B24（整屏瞬黑，暂缓）。
 3. **B13 ✅ 已关闭**（`ef76662b`）；**H4 待用户确认**开工清单 §4 信任模型（(a) `std::process::Command` + 自研守卫 vs (b) `tauri-plugin-shell`）后开工。其它待办：B14（真 Windows 自更新）、上游合并专项、B24（整屏瞬黑，暂缓）。
-4. **H4 已开工（第四十二次）**：前提已定（信任模型 **(a)**、先 H4 后合并上游）；Task 1+2 已落盘（见上方 §1），未迁移仍 **9**（刻意不注册，D-H4-4）。下一步序：Task 3+4（stdio 传输层 + 连接状态机）→ Task 5+6（工具/资源/调用 + 注册 + `--emit` + 测试适配）→ Task 7（单测补强）+ 编排者复验 → 快照/提交 → **上游合并 `git merge upstream/master --no-ff`**（上游 tip `21d67211`，分叉 `509 150`，共同祖先 `992b3f5f`，唯一冲突文件 `README.md`；实测上游 mcp 基线仅 +1 行 `assertGlobalDataReady()`（Tauri 侧不适用）、mcp 9 契约两版逐字一致；上游契约 **+14 频道、0 删除** → 合并后未迁移将为 **23**）。
+4. **H4 已收口（第四十三次）**：Task 3+4（stdio 传输层 + 连接状态机）与 Task 6+7（注册 9 命令 + 前端登记 + `--emit` + 断言适配）均已落地（提交 `a2348a79` + `14d224d9`），**未迁移 invoke 0**；Task 7 的 P2 必修项与 5 例单测补强亦已完成（自检 **689/689**）。收口后立即执行 **上游合并 `git merge upstream/master --no-ff`**（上游 tip `21d67211`，分叉 `509 150`，共同祖先 `992b3f5f`，唯一冲突文件 `README.md`；实测上游 mcp 基线仅 +1 行 `assertGlobalDataReady()`（Tauri 侧不适用）、mcp 9 契约两版逐字一致；上游契约 **+14 频道、0 删除** → 合并后未迁移将为 **23**）。
 **刻意偏离登记（批次 G4）**：**D-G4-1** —— `tauri-app/src-tauri/src/db/kb/store.rs::document_integrity` 的 `complete` **只反映 canonical 完整性**（文档行唯一 + 块序列严格 `0..n` + `total_chunks`/`corpus_kind` 自洽），**不含基线的 `embeddingGenerations` 检查**（基线 `electron/vector-store.ts:1464-1470`：`complete = canonicalComplete && embeddingGenerations.every(g => g.status === 'building' || g.complete)`）。原因：Tauri 侧向量由文件型 `LocalVectorIndex` 持有、不入 SQLite，无法在 SQL 层复现代际检查。恢复需用户确认。
 
 ### 3. 阻塞项与待授权项（**不得删除，须逐条确认后更新**）
@@ -315,7 +335,7 @@ handler 前置断言，D4）。恢复 D1–D3 需用户确认。
 | B12 | 「打开外部链接」缺失 | ✅ 已解除（第三十三次） |
 | B13 | 渲染层导航防护未接入 | ✅ 已解除（依据：`ef76662b`：新增 `src/navigation_guard.rs`（`navigation-guard` 插件，`on_navigation` 拦截渲染层导航），`lib.rs` 注册 `.plugin(navigation_guard::init())`） |
 | B14 | 真正的 Windows 自动更新 | ⚠️ 需 `tauri-plugin-updater` + 签名公钥 + 打包链路 |
-| B15 | H4（mcp 9 频道） | ⚠️ 用户决定暂缓；方案已评估（仅 stdio，`std::process` + 自研守卫） |
+| B15 | H4（mcp 9 频道） | ✅ **已解除（第四十三次）**：`a2348a79`（stdio 传输层 + 连接状态机）+ `14d224d9`（注册 9 命令 + 前端登记 + `--emit`），未迁移 **9 → 0**；仅实现 stdio（SSE 对齐基线仍不实现），配置根改 `lorekeeper_home()/mcp_config.json`（D-H4-1） |
 | B16 | `db/vector.rs` HNSW 墓碑测试偶发失败 | ✅ 已修（第三十四次） |
 | B17 | 批次 G schema | ✅ 已获批并落地 9 张表（`cca792cd`） |
 | **B18** | **`.epub` 导入依赖** | ⚠️ **新增（本次）**：需 `zip` 类 crate 解包，属 Ask first；G1 返回 D4 诚实错误，对话框仍列出 epub |
