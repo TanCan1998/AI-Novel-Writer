@@ -104,3 +104,44 @@ Agent(
 - **§4 兜底方案不触发**：`bash` 可用 → `.pi/agents/lorekeeper-task.md` 的 `tools:` 维持原样（含 `bash`），子代理可自主自检。
 - 编排者独立复验：`git status` 无新增改动（子代理零写入）；`.pi/` 由 `.gitignore:59` 忽略，未污染仓库。
 - 遗留：② 的界面跳动未取得界面证据，如需补证可再派一次探针并在派发瞬间盯面板。
+
+---
+
+## 9. 追加验证：子代理该用 `bash` 还是 `powershell`（2026-10-10）
+
+派发 `shell-cost`（`lorekeeper-task` / `tokendance/ling-3.1-flash`）调研，结论经编排者复验。
+
+### 9.1 结论
+
+1. **「选哪个」不存在**：`powershell` 不在子代理 frontmatter 的 `tools:` 白名单里 ——
+   `@tintinweb/pi-subagents/dist/agent-types.js:17` 的 `BUILTIN_TOOL_NAMES` 由
+   `createCodingTools(".")`（read/bash/edit/write）+ `createReadOnlyTools(".")`（read/grep/find/ls）求并集，
+   **共 7 个，无 `powershell`**。写进去只会得到
+   `tools-error: tool "powershell" ... is not a known built-in` 警告且默认不激活。
+2. **即使可选，`bash` 也更省**（本机实测）：
+
+| 场景 | `bash`（Git MSYS2） | `powershell`（本机真实后端 PS 5.1） |
+|---|---|---|
+| 成功、无 stderr | 9 B / 1 行 | 9 B / 1 行（相同） |
+| 成功、有 stderr 且写 `2>&1` | **15 B / 1 行** | **250 B / 8 行** |
+| 失败且写 `2>&1` | **37 B / 1 行**（退出码 128 保真） | 277 B / 7 行（退出码归一为 1） |
+
+   差异只出现在有 stderr 的路径，每次约 **+235 字节 ≈ 57 tokens**；schema 差异可忽略
+   （bash 512 B vs powershell 524 B，12 字节 ≈ 2.9 tokens/轮）。
+3. **`bash` 在 win32 的执行后端** = `C:\Program Files\Git\bin\bash.exe -c "<cmd>"`
+   （Git for Windows 自带 MSYS2，实测横幅 `MINGW64_NT-10.0-26300`）；解析顺序见
+   `dist/utils/shell.js:58-89`（自定义 shellPath → `%ProgramFiles%\Git\bin\bash.exe` → `where bash.exe`）。
+
+### 9.2 编排者复验纠正了子代理两处错误（「不采信自述」的价值）
+
+| 子代理结论 | 实测事实 |
+|---|---|
+| 「pi 的 powershell 工具在本机实际跑 **pwsh 7.6.6**，最坏仅 +12 字节 ANSI」 | ❌ 错。本会话实测 `$PSVersionTable.PSVersion = 5.1.26100.9549`，`pnpm typecheck 2>&1` → **8 行 / 250 字节**（含 `CategoryInfo` / `FullyQualifiedErrorId` 装饰）。它由源码偏好顺序 `pwsh.exe ?? powershell.exe` **推断**了后端，未验证真正执行的 shell |
+| 「本机无任何 settings.json」 | ❌ 错。用户级 `~/.pi/agent/settings.json` **存在**；只有项目级 `.pi/settings.json` 不存在 |
+
+### 9.3 成本教训（派发上限）
+
+该次调研 **79 次工具调用**（`bash` 67 + `read` 12）/ **269.5k token** / **985 秒**，
+而编排者复验只用了 **2 条命令**。根因：brief 未设范围上限，而 `lorekeeper-task` 的 `max_turns` 是 150。
+**纪律：派发时必须在 prompt 里写死上限**（如「工具调用不超过 15 次」），并要求
+「宁可写『未测出 + 原因』，也不要再花一次调用去补测」。
