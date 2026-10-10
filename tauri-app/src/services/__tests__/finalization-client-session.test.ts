@@ -17,7 +17,6 @@ const frozenSession = {
 beforeEach(() => {
   invoke.mockReset()
   invoke.mockResolvedValue({ success: true, committed: true })
-  setActiveProjectSessionContext(frozenSession)
 })
 
 afterEach(() => {
@@ -25,6 +24,11 @@ afterEach(() => {
 })
 
 describe('retryFinalizationPublication', () => {
+  it('新桥接缺失时拒绝，不借旧桥接写入', async () => {
+    vi.stubGlobal('window', { velaAPI: { invoke } })
+    await expect(retryFinalizationPublication('finalization-1', frozenSession)).rejects.toThrow('无法提交定稿')
+    expect(invoke).not.toHaveBeenCalled()
+  })
   it('sends the caller-frozen session instead of recapturing one later', async () => {
     await retryFinalizationPublication('finalization-1', frozenSession)
 

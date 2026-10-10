@@ -61,7 +61,7 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'fs:grant-mkdir': ['grantId', 'relativePath'],
   // 批次 B：项目生命周期（带参频道）
   'project:create': ['config', 'requestToken', 'rendererProjectPath'],
-  'project:open': ['projectPath', 'requestToken', 'rendererProjectPath'],
+  'project:open': ['target', 'requestToken', 'rendererProjectPath'],
   'project:save': ['projectId', 'data', 'expectedProjectPath'],
   'project:update-config': ['projectId', 'data', 'expectedProjectPath'],
   'project:recent-remove': ['projectPath'],
@@ -184,6 +184,9 @@ const CHANNEL_ARG_NAMES: Record<string, readonly string[]> = {
   'kb:get-vector-rebuild-status': ['expectedProjectPath'],
   'kb:backfill-vectors': ['expectedProjectPath'],
 
+  // 批次 B：项目目录选择（能力域，不自动注入项目会话）
+  // 注：返回不透明授权 `{ grantId, displayName }`，路径不经过 IPC。
+  'dialog:select-folder': ['purpose'],
   // 批次 G1：作者原稿导入（2 频道）
   // 注：`dialog:select-novel-files` 是能力域频道（不自动注入项目会话），
   // 因此 `projectSession` 由调用点显式作为第 2 个定位参数传入。
@@ -334,13 +337,26 @@ function isCapabilityOrAppDataChannel(channel: string): boolean {
 
 function isProjectScopedChannel(channel: string): boolean {
   if (isCapabilityOrAppDataChannel(channel)) return false
-  return channel.startsWith('db:')
+  return channel.startsWith('generation:')
+    || channel.startsWith('character-proposal:')
+    || channel.startsWith('character-identity:')
+    || channel.startsWith('character-avatar:')
+    || channel.startsWith('finalized-character:')
+    || channel.startsWith('finalization-generation:')
+    || channel.startsWith('graph-generation:')
+    || channel.startsWith('legacy-roster:')
+    || channel.startsWith('review-revision:')
+    || channel.startsWith('agent-generation:')
+    || channel.startsWith('import-generation:')
+    || channel.startsWith('editor-inline:')
+    || channel.startsWith('db:')
     || channel.startsWith('kb:')
     || channel.startsWith('chapter:')
     || channel.startsWith('fs:')
     || channel === 'project:save'
     || channel === 'project:update-config'
     || channel === 'project:delete'
+    || channel === 'project:overview-current'
 }
 
 function invokeWithSession<C extends InvokeChannel>(

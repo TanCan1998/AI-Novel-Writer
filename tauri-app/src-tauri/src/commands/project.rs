@@ -19,6 +19,7 @@ use tauri::{Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::commands::SimpleResult;
+use crate::external_grant::{GrantOperation, INVALID_GRANT_MESSAGE, PROJECT_DIRECTORY_GRANT_TTL};
 use crate::project_access::{self, PROJECT_ROOT_REQUIRED_CODE, PROJECT_ROOT_REQUIRED_MESSAGE};
 use crate::repositories::project_core_repository as project_core;
 use crate::security::{
@@ -230,13 +231,16 @@ pub fn iso8601_utc_from_millis(millis: u64) -> String {
 
 /// 主窗口标签，与 `tauri.conf.json` 的 `app.windows[0].label` 一致。
 const MAIN_WINDOW_LABEL: &str = "main";
-/// 目录选择对话框标题 —— 对齐基线 `project-controller.ts` 的 `选择项目保存位置`。
-const SELECT_FOLDER_TITLE: &str = "选择项目保存位置";
+/// 目录选择对话框标题（按用途分支，对齐基线 `project-controller.ts`）
+const SELECT_FOLDER_CREATE_TITLE: &str = "选择项目保存位置";
+const SELECT_FOLDER_OPEN_TITLE: &str = "选择项目目录";
 /// 等待用户操作的上限，仅作安全网：正常情况下用户交互远快于此。
 /// 插件 `run_on_main_thread` 的结果被 `let _ =` 丢弃，极端情形（主线程已退出）下
 /// 其自带的 `blocking_*` 会**永久阻塞**；此处改用自持超时，超时按「取消」（`null`）处理，
 /// 与基线 `result.canceled` 的返回同义。
 const SELECT_FOLDER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+/// 项目目录授权注册表锁中毒文案（与 `commands/external_file_grant.rs` 一致）
+const GRANT_REGISTRY_POISONED: &str = "外部文件授权状态被污染";
 
 /// `FilePath` → 路径字符串。
 ///
@@ -252,24 +256,58 @@ pub fn file_path_to_string(path: tauri_plugin_dialog::FilePath) -> Option<String
     }
 }
 
-/// `dialog:select-folder` —— 系统原生目录选择，返回绝对路径或 `null`（取消）。
+/// 对齐契约 `ProjectDirectoryGrant`：只携带展示名与不透明授权标识，
+/// 绝对路径不出现在 IPC 面上（仅存在于进程内授权注册表）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProjectDirectoryGrant {
+    pub grant_id: String,
+    pub display_name: String,
+}
+
+/// `dialog:select-folder` 用途校验。
 ///
-/// 迁移自 `electron/controllers/project-controller.ts:801`：
-/// `dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })`。
+/// 对齐基线 `issueDirectoryGrant` 的 operation 分支：仅 `project-create` /
+/// `project-open` 合法，其余用途按「项目目录授权用途无效」拒绝。
+fn project_grant_operation(purpose: &str) -> Result<GrantOperation, String> {
+    match purpose {
+        "project-create" => Ok(GrantOperation::ProjectCreate),
+        "project-open" => Ok(GrantOperation::ProjectOpen),
+        _ => Err("项目目录授权用途无效".to_string()),
+    }
+}
+
+/// `dialog:select-folder` —— 系统原生目录选择，按用途签发项目目录授权。
+///
+/// 迁移自 `electron/controllers/project-controller.ts`：用户选择目录后签发
+/// 对应用途（`project-create` / `project-open`）的目录授权，返回
+/// `{ grantId, displayName }`（`displayName` = 目录名）；取消返回 `null`。
+/// 渲染层随后凭 `grantId` 调用 `project:create`（`config.parentGrantId`）/
+/// `project:open`（`target` 为授权对象），路径不经过 IPC。
 ///
 /// 与基线的两点差异（均为 Tauri 侧的必然调整，语义等价）：
-/// 1. **`async`**：非 async 的 `#[tauri::command]` 在主线程执行，而 `blocking_pick_folder`
-///    在主线程调用会死锁（插件文档明示）。async 命令跑在 `tauri::async_runtime` 线程上，
-///    再用 `spawn_blocking` 承载等待，主线程保持自由以驱动对话框消息循环。
-/// 2. **显式父窗口**：基线 `showOpenDialog` 默认以调用窗口为父；Tauri 侧需手动 `set_parent`，
-///    否则对话框会被 `decorations: false` 的主窗口遮挡。
+/// 1. **`async`**：非 async 的 `#[tauri::command]` 在主线程执行，而
+///    `blocking_pick_folder` 在主线程调用会死锁（插件文档明示）。async 命令
+///    跑在 `tauri::async_runtime` 线程上，再用 `spawn_blocking` 承载等待，
+///    主线程保持自由以驱动对话框消息循环。
+/// 2. **显式父窗口**：基线 `showOpenDialog` 默认以调用窗口为父；Tauri 侧需
+///    手动 `set_parent`，否则对话框会被 `decorations: false` 的主窗口遮挡。
 ///
-/// 本命令属**能力域**，按契约不接收 `projectSession` 尾参（`ipc-channels.ts` 无 args），
-/// 返回的路径仅作父目录输入，随后由 `project:create` / `project:open` 做项目根校验。
+/// 本命令属**能力域**，按契约不接收 `projectSession` 尾参（`ipc-channels.ts`
+/// 无 args）；授权签发失败返回 `Err`（基线此处抛错，渲染层 `await` 会 reject）。
 #[tauri::command]
-pub async fn dialog_select_folder(app: tauri::AppHandle) -> Option<String> {
+pub async fn dialog_select_folder(
+    app: tauri::AppHandle,
+    purpose: String,
+) -> Result<Option<ProjectDirectoryGrant>, String> {
+    let operation = project_grant_operation(&purpose)?;
+    let title = if operation == GrantOperation::ProjectCreate {
+        SELECT_FOLDER_CREATE_TITLE
+    } else {
+        SELECT_FOLDER_OPEN_TITLE
+    };
     let (sender, receiver) = std::sync::mpsc::channel();
-    let mut builder = app.dialog().file().set_title(SELECT_FOLDER_TITLE);
+    let mut builder = app.dialog().file().set_title(title);
     if let Some(window) = app.get_webview_window(MAIN_WINDOW_LABEL) {
         builder = builder.set_parent(&window);
     }
@@ -284,7 +322,31 @@ pub async fn dialog_select_folder(app: tauri::AppHandle) -> Option<String> {
     .await
     .ok()
     .flatten();
-    picked.and_then(file_path_to_string)
+    let Some(path) = picked else {
+        return Ok(None);
+    };
+    let Some(directory) = file_path_to_string(path) else {
+        return Ok(None);
+    };
+    let display_name = std::path::Path::new(&directory)
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .unwrap_or_else(|| directory.clone());
+    let state = app.state::<AppState>();
+    let mut registry = state
+        .external_grants
+        .lock()
+        .map_err(|_| GRANT_REGISTRY_POISONED.to_string())?;
+    let grant_id = registry.issue_directory_with_operations(
+        std::path::Path::new(&directory),
+        vec![operation],
+        PROJECT_DIRECTORY_GRANT_TTL,
+        None,
+    )?;
+    Ok(Some(ProjectDirectoryGrant {
+        grant_id,
+        display_name,
+    }))
 }
 
 // ===== 骨架占位（批次 C 数据库层接入后启用）=====
@@ -672,19 +734,43 @@ pub fn project_create(
     renderer_project_path: Option<String>,
 ) -> ProjectCreateResult {
     let _ = renderer_project_path;
-    let app = state.inner();
+    project_create_inner(state.inner(), config, request_token)
+}
+
+/// `project:create` 主体。
+///
+/// `tauri::State` 包装无法在测试中构造，拆出内层函数
+/// （对齐 `commands/db.rs` 的 `*_inner` 测试模式）。
+fn project_create_inner(
+    state: &AppState,
+    config: serde_json::Value,
+    request_token: String,
+) -> ProjectCreateResult {
+    let app = state;
+
     if let Err(error) = app.set_latest_open_token(&request_token) {
         return create_failure(&request_token, app, error, None);
     }
 
-    let parent_path = config
-        .get("path")
+    let parent_grant_id = config
+        .get("parentGrantId")
         .and_then(|item| item.as_str())
         .unwrap_or_default()
         .to_string();
-    if parent_path.trim().is_empty() {
+    if parent_grant_id.trim().is_empty() {
         return create_failure(&request_token, app, "项目目录不能为空".to_string(), None);
     }
+    // 对齐基线 `resolveDirectoryPath({ grantId: config.parentGrantId,
+    // operation: 'project-create' })`：只校验授权用途与有效期，不消费配额。
+    let parent_path = match resolve_project_grant_directory(
+        state,
+        &parent_grant_id,
+        GrantOperation::ProjectCreate,
+    ) {
+        Ok(path) => path,
+        Err(error) => return create_failure(&request_token, app, error, None),
+    };
+
     let display_name = project_access::sanitize_project_name(
         config
             .get("name")
@@ -795,7 +881,7 @@ pub fn project_create(
 #[tauri::command]
 pub fn project_open(
     state: State<'_, AppState>,
-    project_path: String,
+    target: serde_json::Value,
     request_token: String,
     renderer_project_path: Option<String>,
 ) -> ProjectOpenResult {
@@ -804,6 +890,14 @@ pub fn project_open(
     if let Err(error) = app.set_latest_open_token(&request_token) {
         return open_failure(&request_token, app, error, None);
     }
+
+    // 对齐基线：target 为字符串 = 主进程持有 id 的最近项目路径（原样透传）；
+    // 为授权对象 = 经 `resolveDirectoryPath({ grantId, operation: 'project-open' })`
+    // 解析（只校验、不消费配额）。
+    let project_path = match resolve_project_open_target(state.inner(), &target) {
+        Ok(path) => path,
+        Err(error) => return open_failure(&request_token, app, error, None),
+    };
 
     match open_project_inner(app, &project_path) {
         Ok((mut project, lease)) => {
@@ -836,6 +930,48 @@ pub fn project_open(
         }
         Err((error, error_code)) => open_failure(&request_token, app, error, error_code),
     }
+}
+
+/// 解析项目目录授权 → 绝对路径。
+///
+/// 对齐基线 `resolveDirectoryPath`：只校验授权用途与有效期，
+/// 不消费配额；目录授权无相对路径时解析结果即授权目录本身。
+fn resolve_project_grant_directory(
+    state: &AppState,
+    grant_id: &str,
+    operation: GrantOperation,
+) -> Result<String, String> {
+    state
+        .external_grants
+        .lock()
+        .map_err(|_| GRANT_REGISTRY_POISONED.to_string())
+        .and_then(|mut registry| {
+            registry
+                .resolve_target(grant_id, operation, None, false)
+                .map(|granted| granted.path.to_string_lossy().to_string())
+        })
+}
+
+/// `project:open` 目标解析。
+///
+/// 字符串目标原样透传（基线按「主进程持有 id 的最近项目」路径处理）；
+/// 授权对象经 `project-open` 用途授权解析；其它形状按无效授权口径
+/// （对齐基线 `invalidExternalGrantText`）拒绝。
+fn resolve_project_open_target(
+    state: &AppState,
+    target: &serde_json::Value,
+) -> Result<String, String> {
+    if let Some(path) = target.as_str() {
+        return Ok(path.to_string());
+    }
+    let grant_id = target
+        .get("grantId")
+        .and_then(|item| item.as_str())
+        .filter(|id| !id.trim().is_empty());
+    let Some(grant_id) = grant_id else {
+        return Err(INVALID_GRANT_MESSAGE.to_string());
+    };
+    resolve_project_grant_directory(state, grant_id, GrantOperation::ProjectOpen)
 }
 
 // ===== project:save / project:update-config =====
@@ -1071,5 +1207,235 @@ mod tests {
         let url = url::Url::parse("content://com.example.doc/1").expect("合法 content URL");
         // 非 file:// URI 无法转为本地路径 → 按「取消」处理，不泄露不可用凭据。
         assert_eq!(file_path_to_string(FilePath::Url(url)), None);
+    }
+
+    #[test]
+    fn dialog_select_folder_purpose_validation_test() {
+        assert_eq!(
+            project_grant_operation("project-create").unwrap(),
+            GrantOperation::ProjectCreate
+        );
+        assert_eq!(
+            project_grant_operation("project-open").unwrap(),
+            GrantOperation::ProjectOpen
+        );
+        assert_eq!(
+            project_grant_operation("legacy-import").unwrap_err(),
+            "项目目录授权用途无效"
+        );
+        assert_eq!(
+            project_grant_operation("").unwrap_err(),
+            "项目目录授权用途无效"
+        );
+        assert_eq!(
+            project_grant_operation("PROJECT-CREATE").unwrap_err(),
+            "项目目录授权用途无效",
+            "用途区分大小写（对齐基线字面量分支）"
+        );
+    }
+
+    fn temp_grant_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "lorekeeper-project-cmd-{name}-{}",
+            project_access::random_uuid_v4()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("创建临时目录");
+        dir
+    }
+
+    #[test]
+    fn resolve_project_grant_directory_requires_matching_operation_test() {
+        let parent = temp_grant_dir("create-grant");
+        let canonical = std::fs::canonicalize(&parent).unwrap();
+        let state = AppState::new();
+        let grant_id = {
+            let mut registry = state.external_grants.lock().unwrap();
+            registry
+                .issue_directory_with_operations(
+                    &parent,
+                    vec![GrantOperation::ProjectCreate],
+                    PROJECT_DIRECTORY_GRANT_TTL,
+                    None,
+                )
+                .unwrap()
+        };
+
+        // 跨用途拒绝：创建授权不能用于打开
+        assert_eq!(
+            resolve_project_grant_directory(&state, &grant_id, GrantOperation::ProjectOpen)
+                .unwrap_err(),
+            "外部文件授权不允许打开项目操作"
+        );
+        // 常规文件操作同样被拒
+        assert_eq!(
+            resolve_project_grant_directory(&state, &grant_id, GrantOperation::Read).unwrap_err(),
+            "外部文件授权不允许读取操作"
+        );
+        // 正确用途 → 解析到授权目录本身
+        assert_eq!(
+            resolve_project_grant_directory(&state, &grant_id, GrantOperation::ProjectCreate)
+                .unwrap(),
+            canonical.to_string_lossy().to_string()
+        );
+        // 未知授权 → 无效授权口径
+        assert_eq!(
+            resolve_project_grant_directory(&state, "missing-grant", GrantOperation::ProjectCreate)
+                .unwrap_err(),
+            INVALID_GRANT_MESSAGE
+        );
+
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    #[test]
+    fn resolve_project_open_target_accepts_string_and_grant_test() {
+        let state = AppState::new();
+        // 字符串目标原样透传（基线：主进程持有的最近项目路径）
+        assert_eq!(
+            resolve_project_open_target(&state, &serde_json::json!("F:\\Novel\\My Book")).unwrap(),
+            "F:\\Novel\\My Book"
+        );
+
+        let parent = temp_grant_dir("open-grant");
+        let canonical = std::fs::canonicalize(&parent).unwrap();
+        let grant_id = {
+            let mut registry = state.external_grants.lock().unwrap();
+            registry
+                .issue_directory_with_operations(
+                    &parent,
+                    vec![GrantOperation::ProjectOpen],
+                    PROJECT_DIRECTORY_GRANT_TTL,
+                    None,
+                )
+                .unwrap()
+        };
+        let target = serde_json::json!({
+            "grantId": grant_id,
+            "displayName": parent.file_name().unwrap().to_string_lossy().to_string(),
+        });
+        assert_eq!(
+            resolve_project_open_target(&state, &target).unwrap(),
+            canonical.to_string_lossy().to_string()
+        );
+
+        // 授权对象但用途不匹配（签的是创建授权）→ 拒绝
+        let create_grant = {
+            let mut registry = state.external_grants.lock().unwrap();
+            registry
+                .issue_directory_with_operations(
+                    &parent,
+                    vec![GrantOperation::ProjectCreate],
+                    PROJECT_DIRECTORY_GRANT_TTL,
+                    None,
+                )
+                .unwrap()
+        };
+        assert_eq!(
+            resolve_project_open_target(&state, &serde_json::json!({ "grantId": create_grant }))
+                .unwrap_err(),
+            "外部文件授权不允许打开项目操作"
+        );
+
+        // 其它形状（空对象 / null / 空白 grantId）→ 无效授权口径
+        assert_eq!(
+            resolve_project_open_target(&state, &serde_json::json!({})).unwrap_err(),
+            INVALID_GRANT_MESSAGE
+        );
+        assert_eq!(
+            resolve_project_open_target(&state, &serde_json::json!(null)).unwrap_err(),
+            INVALID_GRANT_MESSAGE
+        );
+        assert_eq!(
+            resolve_project_open_target(&state, &serde_json::json!({ "grantId": "  " }))
+                .unwrap_err(),
+            INVALID_GRANT_MESSAGE
+        );
+
+        let _ = std::fs::remove_dir_all(&parent);
+    }
+
+    #[test]
+    fn project_create_resolves_parent_grant_and_creates_project_test() {
+        // `AI_NOVEL_LOREKEEPER_HOME` 是进程级环境变量：先保存再恢复
+        // （与 `commands/llm.rs` 的同名测试同模式），避免把测试项目
+        // 写进真实数据根的 recent-projects.json。
+        let home = temp_grant_dir("lorekeeper-home");
+        let previous = std::env::var(crate::app_paths::LOREKEEPER_HOME_ENV).ok();
+        std::env::set_var(crate::app_paths::LOREKEEPER_HOME_ENV, &home);
+
+        let parent = temp_grant_dir("create-parent");
+        let state = AppState::new();
+        let grant_id = {
+            let mut registry = state.external_grants.lock().unwrap();
+            registry
+                .issue_directory_with_operations(
+                    &parent,
+                    vec![GrantOperation::ProjectCreate],
+                    PROJECT_DIRECTORY_GRANT_TTL,
+                    None,
+                )
+                .unwrap()
+        };
+
+        let config = serde_json::json!({
+            "name": "授权创建的小说",
+            "parentGrantId": grant_id,
+            "genre": "玄幻",
+            "targetAudience": "男频",
+        });
+        let result = project_create_inner(&state, config, "create-token-1".to_string());
+        assert!(result.success, "创建应成功：{:?}", result.error);
+        let root = result.project_path.clone().unwrap();
+        assert!(
+            project_access::manifest_path(&root).exists(),
+            "项目清单应落盘（.lore/project.json）"
+        );
+        assert!(
+            std::path::Path::new(&root)
+                .join(crate::db::PROJECT_DIR_NAME)
+                .join(crate::db::PROJECT_DB_FILE_NAME)
+                .exists(),
+            "项目库应落盘于 .lore/lorekeeper.db"
+        );
+
+        // 旧字段 `path` 不再被识别（空 parentGrantId → 项目目录不能为空）
+        let legacy = serde_json::json!({
+            "name": "旧字段项目",
+            "path": parent.to_string_lossy().to_string(),
+        });
+        let failed = project_create_inner(&state, legacy, "create-token-2".to_string());
+        assert!(!failed.success);
+        assert_eq!(failed.error.as_deref(), Some("项目目录不能为空"));
+
+        // 授权解析失败（把打开授权用于创建）→ 透传注册表错误
+        let open_grant = {
+            let mut registry = state.external_grants.lock().unwrap();
+            registry
+                .issue_directory_with_operations(
+                    &parent,
+                    vec![GrantOperation::ProjectOpen],
+                    PROJECT_DIRECTORY_GRANT_TTL,
+                    None,
+                )
+                .unwrap()
+        };
+        let mismatched = project_create_inner(
+            &state,
+            serde_json::json!({ "name": "用途不符", "parentGrantId": open_grant }),
+            "create-token-3".to_string(),
+        );
+        assert!(!mismatched.success);
+        assert_eq!(
+            mismatched.error.as_deref(),
+            Some("外部文件授权不允许创建项目操作")
+        );
+
+        match previous {
+            Some(value) => std::env::set_var(crate::app_paths::LOREKEEPER_HOME_ENV, value),
+            None => std::env::remove_var(crate::app_paths::LOREKEEPER_HOME_ENV),
+        }
+        let _ = std::fs::remove_dir_all(&home);
+        let _ = std::fs::remove_dir_all(&parent);
     }
 }

@@ -1,34 +1,40 @@
 import { describe, expect, it } from 'vitest'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { MIGRATED_CHANNELS } from '../src/shared/migrated-channels'
+import { collectContractChannels } from '../scripts/channel-contract.mjs'
 import { readNormalizedSource } from './source-contract'
 
+/** `tauri-app/` 根目录（本文件位于 `tauri-app/test/`）。 */
+const appRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+)
 /**
  * `src/shared/migrated-channels.ts` 是**生成物**（`pnpm run check:channels:emit`）。
  * 本测试重算同样的映射并比对，保证：
  *   1. 生成物不会过期（迁移新频道后忘了重新生成 → 测试失败）；
  *   2. 生成物不会被手改（手改会与 lib.rs / 契约不一致 → 测试失败）；
- *   3. 未迁移频道至此归零（集合等于全量契约 invoke 频道）。
+ *   3. 已迁移集合 ⊆ 全量契约 invoke 频道（上游合并新增 97 个未迁移，
+ *      待新批次迁移；清单见 docs-fork/plans/）。
  */
-
-/** 契约里的 invoke 频道（按所属 interface 名排除事件频道）。
+/**
+ * 契约里的 invoke 频道（按所属 interface 名排除事件频道）。
+ *
+ * 上游合并后契约已拆成模块合成（`AllInvokeChannels =
+ * LegacyRosterGenerationChannels & ... & MCPChannels`），自
+ * `src/shared/ipc-channels.ts` 递归跟随相对 import 收集
+ * （与 `scripts/verify-channel-coverage.mjs` 共用
+ * `scripts/channel-contract.mjs`，保证两处口径一致）。
  *
  * 迁移期契约事实源 = **tauri-app 副本**（工作目录 = tauri-app/）：
- * G1 的 `finalization:*` 只在 Tauri 侧声明，上游 `src/` 保持不动以保上游可合并。
+ * G1 的 `finalization:*` 只在 Tauri 侧声明，上游 `src/` 保持不动
+ * 以保上游可合并。
  */
 function collectInvokeChannels(): Set<string> {
-  const invoke = new Set<string>()
-  let iface = ''
-  for (const line of readNormalizedSource('src/shared/ipc-channels.ts').split('\n')) {
-    const ifaceMatch = line.match(/^export interface (\w+)/u)
-    if (ifaceMatch) iface = ifaceMatch[1]
-    const channel = line.match(/^\s*'([a-z0-9-]+:[a-z0-9-]+)'\s*:\s*\{/u)
-    if (!channel) continue
-    if (!/Event/u.test(iface)) invoke.add(channel[1])
-  }
-  return invoke
+  return new Set(collectContractChannels({ appRoot }).invoke.keys())
 }
-
 /** lib.rs 中 `generate_handler!` 已注册的命令名 */
 function collectRegisteredCommands(): Set<string> {
   const commands = new Set<string>()
@@ -78,18 +84,14 @@ function argsArity(block: string): number {
 
 /** 已迁移频道的契约参数个数（只统计 invoke 频道：事件频道不在 MIGRATED_CHANNELS 内）。 */
 function collectMigratedArgCounts(): Map<string, number> {
-  const source = readNormalizedSource('src/shared/ipc-channels.ts')
-  const headers = [...source.matchAll(/^\s*'([a-z0-9-]+:[a-z0-9-]+)'\s*:\s*\{/gmu)]
+  const { invoke } = collectContractChannels({ appRoot })
   const counts = new Map<string, number>()
-  headers.forEach((header, index) => {
-    const channel = header[1]
-    if (!MIGRATED_CHANNELS.has(channel)) return
-    const blockEnd = index + 1 < headers.length ? headers[index + 1].index ?? source.length : source.length
-    counts.set(channel, argsArity(source.slice(header.index ?? 0, blockEnd)))
-  })
+  for (const [channel, block] of invoke) {
+    if (!MIGRATED_CHANNELS.has(channel)) continue
+    counts.set(channel, argsArity(block))
+  }
   return counts
 }
-
 /** `ipc-client.ts` 中 `CHANNEL_ARG_NAMES` 已登记的频道 → 参数名序列。 */
 function collectRegisteredArgNames(): Map<string, string[]> {
   // 注意：此处是 Tauri 侧客户端（工作目录 = tauri-app/），与上式契约同源。
@@ -122,18 +124,19 @@ describe('channel migration coverage', () => {
     expect(unresolved).toEqual([])
   })
 
-  it('已迁移集合等于契约 invoke 频道全集（未迁移归零）', () => {
+  it('已迁移集合包含于契约 invoke 频道全集（未迁移 97 个待新批次迁移）', () => {
     const invoke = collectInvokeChannels()
     expect(MIGRATED_CHANNELS.size).toBeGreaterThan(0)
-    expect(MIGRATED_CHANNELS.size).toBe(invoke.size)
+    // 已迁移频道必须全部仍在契约里（子集关系）。
     for (const channel of MIGRATED_CHANNELS) {
       expect(invoke.has(channel), `${channel} 不在契约 invoke 频道中`).toBe(true)
     }
-    for (const channel of invoke) {
-      expect(MIGRATED_CHANNELS.has(channel), `${channel} 尚未迁移`).toBe(true)
-    }
+    // 上游合并新增，待新批次迁移；清单见 docs-fork/plans/（共 97 个频道）。
+    const unmigrated = [...invoke].filter(
+      (channel) => !MIGRATED_CHANNELS.has(channel),
+    )
+    expect(unmigrated.length).toBe(97)
   })
-
   it('迁移状态断言：已迁频道在集合内，批次 G2 依赖的频道仍被前置拦截', () => {
     // 批次 G1：作者原稿导入已迁移
     expect(MIGRATED_CHANNELS.has('dialog:select-novel-files')).toBe(true)

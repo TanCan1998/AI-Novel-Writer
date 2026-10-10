@@ -4,6 +4,9 @@
  *
  * 迁移以 `src/shared/ipc-channels.ts` 为唯一事实源：每个 invoke 频道对应一个
  * `#[tauri::command]`，命令名 = 频道名的机械映射（`:` / `-` → `_`）。
+ * 上游合并后契约已拆成模块合成（`AllInvokeChannels =
+ * LegacyRosterGenerationChannels & ... & MCPChannels`），频道采集自
+ * `ipc-channels.ts` 递归跟随相对 import（见 `scripts/channel-contract.mjs`）。
  * 本脚本在**不启动应用**的前提下验证该映射，用于每批迁移后的回归：
  *
  *   - `orphan`：注册了命令但契约里没有对应频道（拼写错误 / 不该存在的命令）→ 退出码 1；
@@ -20,16 +23,17 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { collectContractChannels } from './channel-contract.mjs'
+
 const here = path.dirname(fileURLToPath(import.meta.url))
 const appRoot = path.resolve(here, '..')
 const repoRoot = path.resolve(appRoot, '..')
 
 // 契约事实源 = tauri-app 副本：G1 的 `finalization:*` 只在 Tauri 侧声明
 // （上游 `src/` 未声明且保持不动，以保证上游可合并）。
-const channelsFile = path.join(appRoot, 'src/shared/ipc-channels.ts')
+// 契约闭包 = 自 `src/shared/ipc-channels.ts` 递归跟随相对 import 的全部文件。
 const libFile = path.join(appRoot, 'src-tauri/src/lib.rs')
 const migratedFile = path.join(appRoot, 'src/shared/migrated-channels.ts')
-
 const quiet = process.argv.includes('--quiet')
 const emit = process.argv.includes('--emit')
 
@@ -42,21 +46,6 @@ function readLines(file) {
   }
 }
 
-/** 契约里的 invoke 频道与事件频道（事件按所属 interface 名区分） */
-function collectChannels() {
-  const invoke = new Set()
-  const events = new Set()
-  let iface = ''
-  for (const line of readLines(channelsFile)) {
-    const ifaceMatch = line.match(/^export interface (\w+)/u)
-    if (ifaceMatch) iface = ifaceMatch[1]
-    const channel = line.match(/^\s*'([a-z0-9-]+:[a-z0-9-]+)'\s*:\s*[{A-Za-z]/u)
-    if (!channel) continue
-    if (/Event/u.test(iface)) events.add(channel[1])
-    else invoke.add(channel[1])
-  }
-  return { invoke, events }
-}
 
 /** lib.rs 中 generate_handler! 已注册的命令名 */
 function collectRegistered() {
@@ -97,7 +86,10 @@ function emitMigratedChannels(channels) {
 
 const commandName = (channel) => channel.replace(/[:-]/g, '_')
 
-const { invoke, events } = collectChannels()
+// 契约里的 invoke 频道与事件频道（事件按所属 interface 名区分）。
+const contract = collectContractChannels({ appRoot })
+const invoke = new Set(contract.invoke.keys())
+const events = contract.events
 const registered = collectRegistered()
 
 const migrated = []

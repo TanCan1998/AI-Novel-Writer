@@ -33,7 +33,11 @@ pub const EXPORT_GRANT_TTL: Duration = Duration::from_secs(10 * 60);
 /// 导出目录授权最大使用次数（对齐基线 `EXPORT_GRANT_MAX_USES = 4096`）
 pub const EXPORT_GRANT_MAX_USES: u32 = 4096;
 
-/// 授权可执行的操作（对齐基线 `ExternalFileGrantOperation`）
+/// 项目目录授权 TTL（对齐基线项目目录授权 `ttlMs = 10 分钟`）
+pub const PROJECT_DIRECTORY_GRANT_TTL: Duration = Duration::from_secs(10 * 60);
+
+/// 授权可执行的操作（对齐基线 `ExternalFileGrantOperation`；
+/// 项目用途变体供 `dialog:select-folder` 签发的项目目录授权使用）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GrantOperation {
     Read,
@@ -41,6 +45,12 @@ pub enum GrantOperation {
     Write,
     Create,
     Show,
+    /// `project:create` 的父目录授权（`dialog:select-folder` 签发）
+    ProjectCreate,
+    /// `project:open` 的项目目录授权（`dialog:select-folder` 签发）
+    ProjectOpen,
+    /// 旧版项目导入授权（对齐基线 `legacy-import` 用途）
+    LegacyImport,
 }
 
 impl GrantOperation {
@@ -52,6 +62,9 @@ impl GrantOperation {
             Self::Write => "写入",
             Self::Create => "创建",
             Self::Show => "显示",
+            Self::ProjectCreate => "创建项目",
+            Self::ProjectOpen => "打开项目",
+            Self::LegacyImport => "导入旧版项目",
         }
     }
 }
@@ -554,6 +567,49 @@ mod tests {
             .resolve_target(&file_grant, GrantOperation::Read, None, true)
             .unwrap();
         assert_eq!(ok.path, std::fs::canonicalize(&file).unwrap());
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn project_directory_grant_restricts_to_issued_operation_test() {
+        let dir = temp_dir("project-grant");
+        let mut registry = ExternalGrantRegistry::default();
+        let grant_id = registry
+            .issue_directory_with_operations(
+                &dir,
+                vec![GrantOperation::ProjectCreate],
+                PROJECT_DIRECTORY_GRANT_TTL,
+                None,
+            )
+            .unwrap();
+
+        // 项目用途授权不得用于文件/目录常规操作
+        assert!(registry
+            .revalidate(&grant_id, GrantOperation::Read)
+            .is_err());
+        assert!(registry
+            .revalidate(&grant_id, GrantOperation::List)
+            .is_err());
+        // 跨项目用途同样被拒（创建授权不能用于打开/导入）
+        assert!(registry
+            .revalidate(&grant_id, GrantOperation::ProjectOpen)
+            .is_err());
+        assert!(registry
+            .revalidate(&grant_id, GrantOperation::LegacyImport)
+            .is_err());
+        // 签发用途可用；resolve_target（只校验、不消费）解析到授权目录本身
+        let target = registry
+            .resolve_target(&grant_id, GrantOperation::ProjectCreate, None, false)
+            .unwrap();
+        assert_eq!(target.scope, GrantScope::Directory);
+        assert_eq!(target.root, std::fs::canonicalize(&dir).unwrap());
+        assert_eq!(
+            target.path,
+            std::fs::canonicalize(&dir).unwrap(),
+            "无相对路径时解析结果即授权目录本身"
+        );
+        assert_eq!(registry.len(), 1, "只校验不消费，授权记录保留");
 
         let _ = std::fs::remove_dir_all(&dir);
     }

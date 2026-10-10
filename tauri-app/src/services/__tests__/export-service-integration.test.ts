@@ -21,11 +21,8 @@ vi.mock('electron', () => ({
 }))
 
 import { registerExternalFileGrantController } from '@baseline/controllers/external-file-grant-controller'
-import {
-  closeProjectDatabase,
-  getProjectDb,
-  initProjectDatabase,
-} from '@baseline/database'
+import { closeProjectDatabase, getProjectDb } from '@baseline/database'
+import { openCanonicalProjectFixture as initProjectDatabase } from '../../../test/helpers/canonical-project-fixture'
 import { FinalizationRepository } from '@baseline/repositories/finalization-repository'
 import { ExternalFileGrantService } from '@baseline/services/external-file-grant-service'
 import { nodeTestSecureFileSystem } from '../../../test/helpers/node-test-secure-file-system'
@@ -106,8 +103,8 @@ describe('authoritative finalized export integration', () => {
     setActiveProjectSessionContext(projectSession)
     const event = { sender: { id: 17, once: vi.fn() } }
     vi.stubGlobal('window', {
-      velaAPI: {
-        invoke: async (channel: string, ...args: unknown[]) => {
+      __TAURI_INTERNALS__: {
+        invoke: vi.fn(async (channel: string, ...args: unknown[]) => {
           if (channel === 'db:draft-export-snapshot') {
             expect(args).toEqual([projectPath, projectSession])
             return FinalizationRepository.listAuthoritativeForExport()
@@ -119,7 +116,7 @@ describe('authoritative finalized export integration', () => {
           const ipcHandler = electronMocks.handlers.get(channel)
           if (!ipcHandler) throw new Error(`Missing IPC handler: ${channel}`)
           return ipcHandler(event, ...args)
-        },
+        }),
       },
     })
 
