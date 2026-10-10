@@ -39,6 +39,14 @@ unicode-normalization = "0.1"
 # 已由方案 C 验证通过（`examples/hnsw_validation.rs`），现正式工程化为
 # `src/db/vector.rs` 的 `LocalVectorIndex`（双向 ID 映射 + 内存墓碑 + 二进制图快照）。
 hnsw_rs = "0.3.4"
+# 批次 B5：头像压缩纯逻辑（移植 `electron/services/avatar-image.ts`）。
+# 纯 Rust 解码/编码（魔数检测 + PNG/JPEG 重编码）；default-features 关闭，
+# 只勾 png/jpeg/webp 三 codec，避免拉入 gif/bmp/tiff 等无用解码器。
+image = { version = "0.25", default-features = false, features = [
+    "png",
+    "jpeg",
+    "webp",
+] }
 # jieba-rs 0.7.0：中文分词（关键词检索路径 `/ FTS5 预分词 / 查询分词`）。
 # 本批次先行声明，供 F2 的 `fts` 子层消费；向量层本身不依赖它。
 jieba-rs = "0.7.0"

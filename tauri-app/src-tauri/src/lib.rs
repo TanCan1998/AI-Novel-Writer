@@ -39,6 +39,9 @@ mod project_access;
 // 若保持私有，尚未被命令层消费的新 API 会触发 dead_code 告警。
 pub mod repositories;
 mod security;
+// 批次 B5：头像压缩纯逻辑（`electron/services/avatar-image.ts` 的
+// Rust 移植；消费方为角色资产服务 character-asset-service 的对应面）。
+pub mod services;
 mod state;
 // 批次 H：Writing Skill 检查与 GitHub 地址解析（`src/shared/writing-skills.ts` 的 Rust 单源）。
 pub mod writing_skills;
