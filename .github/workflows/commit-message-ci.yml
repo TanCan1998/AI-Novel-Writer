@@ -15,8 +15,11 @@ name: Commit message CI
 #
 # Upstream history imported from EthanYoQ/AI-Novel-Writer is deliberately not audited —
 # it contains plenty of pre-convention subjects (38 commits when this check was added).
-# If a branch merges upstream and drags those commits into the range, pass `ignore_authors`
-# (on workflow_dispatch) or `--ignore-author <email>` (locally).
+# Upstream history imported from EthanYoQ/AI-Novel-Writer is never audited, on any event:
+# `UPSTREAM_IGNORE_AUTHORS` below is applied to push / pull_request / workflow_dispatch alike,
+# so merging upstream/master into this fork cannot turn the push run red. Extra addresses can
+# still be added ad hoc via the `ignore_authors` dispatch input (or `--ignore-author <email>`
+# when running the script locally).
 
 on:
   push:
@@ -105,17 +108,19 @@ jobs:
             exit 0
           fi
 
-          node_args=(scripts/check-commit-msg.mjs --range "${range}")
-          if [ -n "${DISPATCH_IGNORE_AUTHORS}" ]; then
-            # Emails carry no whitespace, so stripping every blank is a safe trim.
-            IFS=',' read -r -a raw_authors <<< "${DISPATCH_IGNORE_AUTHORS}"
-            for author in "${raw_authors[@]}"; do
-              author="${author//[[:space:]]/}"
-              if [ -n "${author}" ]; then
-                node_args+=(--ignore-author "${author}")
-              fi
-            done
-          fi
+          # Upstream history is deliberately exempt (see the header comment); this list is applied to
+          # every event, and the workflow_dispatch input is appended on top of it.
+          UPSTREAM_IGNORE_AUTHORS="257484394+EthanYoQ@users.noreply.github.com"
 
+          node_args=(scripts/check-commit-msg.mjs --range "${range}")
+          combined_authors="${UPSTREAM_IGNORE_AUTHORS},${DISPATCH_IGNORE_AUTHORS}"
+          # Emails carry no whitespace, so stripping every blank is a safe trim.
+          IFS=',' read -r -a raw_authors <<< "${combined_authors}"
+          for author in "${raw_authors[@]}"; do
+            author="${author//[[:space:]]/}"
+            if [ -n "${author}" ]; then
+              node_args+=(--ignore-author "${author}")
+            fi
+          done
           echo "Range under check: ${range}"
           node "${node_args[@]}"
