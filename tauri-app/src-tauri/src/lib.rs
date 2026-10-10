@@ -29,6 +29,10 @@ mod llm;
 pub mod import;
 // 批次 E（G1）：实体稿发布 / 清理投影（`electron/services/manuscript-publisher.ts` 的平移）。
 mod manuscript_publisher;
+// 批次 A 收口（B13）：渲染层导航防护（对齐基线 `preventRendererNavigation`
+// + 官方主页弹窗拦截）。主窗口由 tauri.conf.json 声明（非 builder 创建），
+// 故以自有插件注册，经插件 store 的 on_navigation 钩子覆盖所有 webview。
+mod navigation_guard;
 mod project_access;
 // 批次 G2a/G2b：仓储层公开（与 `pub mod db` 一致）——
 // 各仓储的 `pub fn` 是 crate 的公开 API，命令层在后续批次逐步接入；
@@ -51,7 +55,10 @@ pub fn run() {
         // 故 `capabilities/default.json` 维持最小权限（不追加 `dialog:*`）。
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        // 批次 A 收口（2026-10-10）：两段式关窗守卫。
+        // 批次 A 收口（B13）：渲染层导航防护。
+        // 拒绝渲染层导航替换主框架；URL 精确等于官方主页时
+        // 交给系统浏览器打开，但导航仍被拒绝（对齐基线「永远 deny」）。
+        .plugin(navigation_guard::init())
         // 拦截 `CloseRequested` → 广播 `window:close-requested` 让渲染层确认未保存内容，
         // 待 `window:resolve-close(proceed)` 将 `approved` 置位后才真正放行。
         .on_window_event(|window, event| {

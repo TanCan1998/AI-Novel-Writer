@@ -17,7 +17,10 @@ use tauri::AppHandle;
 use crate::external_link::open_external_url;
 
 /// 官方主页 URL（固定；唯一受信外部目的地之一）
-const OFFICIAL_HOMEPAGE_URL: &str = "https://github.com/TanCan1998/Lorekeeper";
+///
+/// `pub(crate)`：批次 A 收口（B13）`navigation_guard` 复用同一常量
+/// （导航钩子里的精确匹配判定）；值不变，渲染层仍无法传入 URL。
+pub(crate) const OFFICIAL_HOMEPAGE_URL: &str = "https://github.com/TanCan1998/Lorekeeper";
 
 /// Official Homepage:open 命令
 #[tauri::command]
