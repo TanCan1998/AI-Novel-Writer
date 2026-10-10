@@ -11,9 +11,17 @@
 
 | 类别 | 数量 | 说明 |
 |---|---|---|
-| invoke 频道（请求/响应） | **193** | 渲染 → 主进程，`ipcMain.handle`（含 G1 补建 2 个） |
-| 事件频道（主 → 渲染推送） | **5** | `ipcRenderer.on`，迁移为 Tauri Event |
-| 合计 | **198** | 每个频道对应一个 Rust 命令或事件 |
+| invoke 频道（请求/响应） | **193**（合并前基线）→ **290**（上游合并后） | 渲染 → 主进程，`ipcMain.handle`（含 G1 补建 2 个） |
+| 事件频道（主 → 渲染推送） | **5**（合并前）→ **7**（上游新增 `generation:snapshot` / `generation:reasoning`） | `ipcRenderer.on`，迁移为 Tauri Event |
+| 合计 | **198**（合并前）→ **297**（上游合并后） | 每个频道对应一个 Rust 命令或事件 |
+
+> ⚠️ **2026-10-10 上游 master 合并（第四十四次）**：上游把契约从单文件拆成 **28 个 `*Channels` 模块合成**
+> （`AllInvokeChannels = … & MCPChannels`；`AllEventChannels = GenerationOwnerEvents & LLMStreamEvents & UpdateStateEvents & WindowEvents`）。
+> tauri-app 镜像已重建，并引入 `tauri-app/scripts/channel-contract.mjs`（递归跟随相对 import 采集频道，供
+> `scripts/verify-channel-coverage.mjs` 与 `test/channel-migration-coverage.test.ts` 共用）。合并后口径：
+> **契约 invoke 290 / 事件 7**，已注册命令 194 → 覆盖 **193**，**未迁移 97**（全部为上游新增域）。
+> **新批次开工清单与分批规划见 [`2026-10-10-post-merge-97-kickoff.md`](./2026-10-10-post-merge-97-kickoff.md)**；
+> 本文 §2–§6 的描述仍以合并前 193 频道基线为准，新批次逐个收口后再逐步并入。
 
 > **【契约单源位置刻意偏移 — G1，2026-10-09】** 定稿频道 `finalization:commit` / `finalization:retry`
 > 在 Electron 侧由 `finalization-controller.ts` 真实注册，但**上游两份 `ipc-channels.ts` 均未声明**。
@@ -199,5 +207,4 @@ Tauri 映射：`tauri-plugin-fs` scope 白名单 + 自研 grant 校验，**不�
 | **F** | kb 全部、plot-tree、narrative-thread、consistency-exemption | C | AppResult 错误码对齐。拆 **F1**（plot-tree 3 / narrative-thread 6 / consistency-exemption 3 = 12 频道，零新依赖，纯 SQLite 平移；剧情树 `sourceRevision` 有**黄金哈希测试**锁定与 `JSON.stringify` 逐字节一致）/ **F2**（`kb:*` 15 + `dialog:select-knowledge-*` 2）。**F2 向量路线见 §4.11**；隔离红线**已解决**（L3 后项目目录 `.lore/`，向量快照 `.lore/kb/`）。进度：**F2-1 ✅ / F2-2 ✅ / F2-3 ✅（F2 全部完成）** |
 | **G** | import-run 全套（18 频道状态机）、dialog:select-novel-files、import-global-facts | C | 执行租约 `ImportRunExecutionLease`；断点恢复语义。**✅ G4 已收口**：`kb:import-reference-text` 已真实化（提交 `94a1fe6a` + `5c4fd26e`；刻意偏离 D-G4-1 见 §4.11 备注），占位频道真实化、未改变未迁移计数。**进度（2026-10-10）**：**schema 已获批并落地**——`db/schema.rs` 新增 9 张表 + 7 索引（`import_runs` / `import_run_chapters` / `import_run_sources` / `import_run_source_chapters` / `import_source_chapter_map` / `import_run_receipts` / `import_run_knowledge_receipts` / `import_reference_documents` / `import_source_aliases`），**刻意不建** `import_legacy_identity_bridge`；申报书见 [`docs-fork/research/2026-10-10-g-import-run-schema-proposal.md`](../research/2026-10-10-g-import-run-schema-proposal.md)。分批：G1 检视面（3）→ G2 状态机主体（5）→ G3 租约与批次推进（11）→ G4 收口。⚠️ **2026-10-10 调研后修订分批**：渲染层只用结构化请求路径，而 `reference` 分支需 `beginParsing`（G2），故 **G1 改为交付「导入作者原稿」完整链路**（`dialog:select-novel-files` author-manuscript 路径 + 检视存储 + 章节解析 + `db:import-run-author-preview`），`reference` 与 `.epub` 返回诚实错误；开工清单见 [`docs-fork/plans/2026-10-10-g1-import-select-kickoff.md`](./2026-10-10-g1-import-select-kickoff.md)（含 D1 无密钥 sha256 别名等 4 项刻意偏离）。**✅ G1 完成（2026-10-10）**：`dialog:select-novel-files` + `db:import-run-author-preview` 已注册（2 频道），新增 `windows-sys`（已在 lock，0 新下载）与刻意偏离 D7（数字感知自然序）；**✅ G2 开工清单（2026-10-10）**：**细分 G2a（读面 3 频道）+ G2b（写面 2 频道 + 复活 `reference` 分支）**；**G2a 已交付**（`import_run_repository.rs` 读面 + `import/batch_checkpoint.rs` + 3 命令 + 2 前端登记）。清单见 [`docs-fork/plans/2026-10-10-g2-import-run-kickoff.md`](./2026-10-10-g2-import-run-kickoff.md)；下一步 G2b。 |
 | **H** | update（零依赖 GitHub-Release 后端，见 H3 评估；真正 Windows 自更新需 updater 插件 + 签名密钥，另立专项）、mcp（**暂缓**，仅 stdio）、prompt/skills ✅、**fs:grant-\* 三命令 ✅ + `dialog:select-export-directory` ✅** + official-homepage/model-provider-resource 打开链接 ✅ | 任意 | ✅ **进度（2026-10-09 第三十三次）**：H1（fs:grant-* + 导出目录）✅、H2（prompt/skills 7 频道）✅、B12（`tauri-plugin-opener`，修好两处假成功）✅；**H3（update 6 频道）待做**；H4（mcp 9 频道）暂缓。macOS 更新 = 仅打开 Release 页；`tauri-plugin-fs 2.6.0` 已随 dialog 插件连带引入，勿重复添加；grant 签发只回传 `grantId`（ADR 0002） |
-
-每批次验收：Rust 单元测试 + `cargo test` + 前端 `pnpm typecheck`/相关 `pnpm test` + 与 Electron 版行为对照。**验收数字见 [`docs/handoffs/`](../handoffs/) 最新快照。**
+每批次验收：Rust 单元测试 + `cargo test` + 前端 `pnpm typecheck`/相关 `pnpm test` + 与 Electron 版行为对照。**验收数字见 [`docs-fork/handoffs/`](../handoffs/) 最新快照。**
