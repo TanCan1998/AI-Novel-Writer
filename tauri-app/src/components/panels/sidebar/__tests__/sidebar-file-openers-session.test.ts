@@ -16,6 +16,7 @@ import { setActiveProjectSessionContext } from '../../../../shared/project-sessi
 import { useEditorStore } from '../../../../stores/editor-store'
 import { useProjectStore } from '../../../../stores/project-store'
 
+import { installTauriInternals, type TauriInternalsHandle } from '../../../../../test/helpers/tauri-internals'
 const projectPath = 'C:\\novels\\same-project'
 
 const projectWithLease = (leaseId: string) => ({
@@ -36,6 +37,7 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
+let tauriInternals: TauriInternalsHandle
 beforeEach(() => {
   mocks.toastError.mockReset()
   useEditorStore.getState().clearTabs()
@@ -48,6 +50,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  tauriInternals?.uninstall()
   vi.unstubAllGlobals()
   useEditorStore.getState().clearTabs()
   useProjectStore.setState({ currentProject: null })
@@ -56,47 +59,26 @@ afterEach(() => {
 
 describe('sidebar file openers keep the original project session', () => {
   it('does not create a saved blank chapter tab when fs reports success:false', async () => {
-    const invoke = vi.fn(async () => ({
-      success: false,
-      content: '',
-      error: 'read denied',
-    }))
-    vi.stubGlobal('window', {
-      aiNovelAPI: {
-        invoke,
-        on: vi.fn(),
-        once: vi.fn(),
-        send: vi.fn(),
-        setZoomLevel: vi.fn(),
-        setZoomFactor: vi.fn(),
-        getZoomLevel: vi.fn(),
+    tauriInternals = installTauriInternals({
+      commands: {
+        fs_read_file: async () => ({ success: false, content: '', error: 'read denied' }),
       },
     })
-
     await openChapterFile(`${projectPath}\\manuscript\\chapter_1.md`, '第1章')
 
     expect(useEditorStore.getState().tabs).toEqual([])
-    expect(invoke).toHaveBeenCalledOnce()
+    expect(tauriInternals.invoke).toHaveBeenCalledOnce()
   })
 
   it('drops a delayed same-path read after reopening with a new lease', async () => {
     const delayedRead = deferred<{ success: boolean; content: string }>()
-    const invoke = vi.fn(async () => delayedRead.promise)
-    vi.stubGlobal('window', {
-      aiNovelAPI: {
-        invoke,
-        on: vi.fn(),
-        once: vi.fn(),
-        send: vi.fn(),
-        setZoomLevel: vi.fn(),
-        setZoomFactor: vi.fn(),
-        getZoomLevel: vi.fn(),
+    tauriInternals = installTauriInternals({
+      commands: {
+        fs_read_file: () => delayedRead.promise,
       },
     })
-
     const opening = openChapterFile(`${projectPath}\\manuscript\\chapter_1.md`, '第1章')
-    await vi.waitFor(() => expect(invoke).toHaveBeenCalledOnce())
-
+    await vi.waitFor(() => expect(tauriInternals.invoke).toHaveBeenCalledOnce())
     useProjectStore.setState({ currentProject: projectWithLease('lease-B') })
     setActiveProjectSessionContext({
       projectId: 'same-project-id',

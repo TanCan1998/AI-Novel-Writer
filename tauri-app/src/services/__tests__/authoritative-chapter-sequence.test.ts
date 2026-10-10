@@ -5,6 +5,7 @@ import {
   AuthoritativeChapterSequenceError,
   readAuthoritativeNextChapter,
 } from '../authoritative-chapter-sequence'
+import { installTauriInternals, type TauriInternalsHandle } from '../../../test/helpers/tauri-internals'
 
 const PROJECT_PATH = 'C:\\novels\\authoritative-sequence'
 const PROJECT_SESSION: ProjectSessionContext = {
@@ -13,23 +14,15 @@ const PROJECT_SESSION: ProjectSessionContext = {
   projectPath: PROJECT_PATH,
 }
 
+let tauriInternals: TauriInternalsHandle
 function installSequence(result: unknown) {
-  const invoke = vi.fn().mockResolvedValue(result)
-  vi.stubGlobal('window', {
-    aiNovelAPI: {
-      invoke,
-      on: vi.fn(),
-      once: vi.fn(),
-      send: vi.fn(),
-      setZoomLevel: vi.fn(),
-      setZoomFactor: vi.fn(),
-      getZoomLevel: vi.fn(),
-    },
+  tauriInternals = installTauriInternals({
+    commands: { db_draft_authority_sequence: result },
   })
-  return invoke
 }
 
 afterEach(() => {
+  tauriInternals.uninstall()
   vi.unstubAllGlobals()
 })
 
@@ -38,13 +31,13 @@ describe('authoritative next-chapter renderer boundary', () => {
     ['empty authority', { status: 'empty', lastChapterNumber: 0, nextChapterNumber: 1, duplicateChapterNumbers: [], authorityFingerprint: 'a'.repeat(64) }, 1],
     ['continuous Chapters 1 through 9', { status: 'continuous', lastChapterNumber: 9, nextChapterNumber: 10, duplicateChapterNumbers: [], authorityFingerprint: 'b'.repeat(64) }, 10],
   ] as const)('returns the next chapter for %s', async (_label, sequence, expected) => {
-    const invoke = installSequence(sequence)
+    installSequence(sequence)
 
     await expect(readAuthoritativeNextChapter(PROJECT_SESSION, 'zh-CN')).resolves.toBe(expected)
-    expect(invoke).toHaveBeenCalledWith(
-      'db:draft-authority-sequence',
-      PROJECT_PATH,
-      PROJECT_SESSION,
+    expect(tauriInternals.invoke).toHaveBeenCalledWith(
+      'db_draft_authority_sequence',
+      { expectedProjectPath: PROJECT_PATH, projectSession: PROJECT_SESSION },
+      undefined,
     )
   })
 

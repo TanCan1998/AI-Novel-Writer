@@ -7,6 +7,7 @@ import { useWorkflowStore } from '../../../stores/workflow-store'
 import type { CharacterRosterEntry, CharacterRosterSnapshot } from '../../../shared/character-roster'
 import { migrateLegacyCharacterRoster } from '../architecture-workflow'
 import { buildLegacyRosterTask, buildLegacyRosterJsonRepairTask } from '../../../shared/legacy-roster-generation-pure'
+import { installTauriInternals, type TauriInternalsHandle } from '../../../../test/helpers/tauri-internals'
 
 const projectPath = 'C:\\novels\\legacy-roster'
 const projectSession = {
@@ -88,7 +89,8 @@ function activeProject() {
   }
 }
 
-function installVela(invoke: (channel: string, ...args: unknown[]) => unknown) {
+let tauriInternals: TauriInternalsHandle
+function installVela(dbCommands: Record<string, unknown>) {
   const lease = {
     leaseId: 'legacy-model-lease',
     modelId: 'legacy-repair-model',
@@ -113,23 +115,16 @@ function installVela(invoke: (channel: string, ...args: unknown[]) => unknown) {
     createdAt: 1000,
     expiresAt: 61_000,
   }
-  vi.stubGlobal('window', {
-    aiNovelAPI: {
-      invoke: vi.fn((channel: string, ...args: unknown[]) => {
-        if (channel === 'llm:begin-execution-lease') return Promise.resolve({ success: true, lease })
-        if (channel === 'llm:close-execution-lease') return Promise.resolve({ success: true })
-        if (channel === 'fs:list-dir' && args[0] === `${projectPath}/.lore/skills`) {
-          return Promise.resolve([])
-        }
-        if (channel === 'fs:check-exists') return Promise.resolve(false)
-        return invoke(channel, ...args)
-      }),
-      on: vi.fn(),
-      once: vi.fn(),
-      send: vi.fn(),
-      setZoomLevel: vi.fn(),
-      setZoomFactor: vi.fn(),
-      getZoomLevel: vi.fn(),
+  tauriInternals = installTauriInternals({
+    commands: {
+      llm_begin_execution_lease: { success: true, lease },
+      llm_close_execution_lease: { success: true },
+      fs_list_dir: (args: Record<string, unknown>) => {
+        if (args.dirPath === `${projectPath}/.lore/skills`) return []
+        throw new Error(`测试未配置桌面目录：${String(args.dirPath)}`)
+      },
+      fs_check_exists: false,
+      ...dbCommands,
     },
   })
 }
@@ -148,6 +143,7 @@ afterEach(() => {
     defaultModelId: originalDefaultModelId,
     generateStream: originalGenerateStream,
   })
+  tauriInternals.uninstall()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -165,44 +161,40 @@ describe('legacy character roster repair public workflow seam', () => {
     })
     useLLMStore.setState({ generateStream })
 
-    const invoke = vi.fn(async (channel: string) => {
-      switch (channel) {
-        case 'db:character-roster-read':
-          return pendingLegacyRoster
-        case 'db:character-roster-commit':
-          return {
-            success: true,
-            receipt: {
-              operationId: expect.any(String),
-              payloadHash: 'payload-hash',
-              revision: 1,
-              idempotent: false,
-              snapshot: readyRoster,
-            },
-          }
-        default:
-          throw new Error(`Unexpected IPC channel: ${channel}`)
-      }
+    installVela({
+      db_character_roster_read: pendingLegacyRoster,
+      db_character_roster_commit: {
+        success: true,
+        receipt: {
+          operationId: expect.any(String),
+          payloadHash: 'payload-hash',
+          revision: 1,
+          idempotent: false,
+          snapshot: readyRoster,
+        },
+      },
     })
-    installVela(invoke)
 
     await migrateLegacyCharacterRoster(projectPath, { generationDependencies: { createRuntime: options => createGenerationRuntime(options) } })
 
     expect(generateStream).toHaveBeenCalledOnce()
     expect(generateStream.mock.calls[0]?.[0]).toEqual(buildLegacyRosterTask({ legacyMarkdown: pendingLegacyRoster.legacyMarkdown!, genre: '科幻' }).messages)
-    expect(invoke).toHaveBeenCalledWith(
-      'db:character-roster-commit',
-      expect.objectContaining({
-        expectedRevision: 0,
-        schemaVersion: 1,
-        entries: repairedEntries,
-        intent: 'legacy_repair',
-      }),
-      projectPath,
-      projectSession,
+    expect(tauriInternals.invoke).toHaveBeenCalledWith(
+      'db_character_roster_commit',
+      {
+        request: expect.objectContaining({
+          expectedRevision: 0,
+          schemaVersion: 1,
+          entries: repairedEntries,
+          intent: 'legacy_repair',
+        }),
+        expectedProjectPath: projectPath,
+        projectSession,
+      },
+      undefined,
     )
-    expect(invoke.mock.calls.map(([channel]) => channel)).not.toContain('db:character-save-all')
-    expect(invoke.mock.calls.map(([channel]) => channel)).not.toContain('db:project-core-update')
+    expect(tauriInternals.invoke.mock.calls.map(([command]) => command)).not.toContain('db_character_save_all')
+    expect(tauriInternals.invoke.mock.calls.map(([command]) => command)).not.toContain('db_project_core_update')
     expect(useWorkflowStore.getState().history[0]).toMatchObject({
       type: 'post_process',
       status: 'completed',
@@ -222,17 +214,13 @@ describe('legacy character roster repair public workflow seam', () => {
       return Promise.resolve(`legacy-json-${generateStream.mock.calls.length}`)
     })
     useLLMStore.setState({ generateStream })
-    const invoke = vi.fn(async (channel: string) => {
-      if (channel === 'db:character-roster-read') return pendingLegacyRoster
-      if (channel === 'db:character-roster-commit') {
-        return {
-          success: true,
-          receipt: { operationId: 'repair-json', payloadHash: 'hash', revision: 1, idempotent: false, snapshot: readyRoster },
-        }
-      }
-      throw new Error(`Unexpected IPC channel: ${channel}`)
+    installVela({
+      db_character_roster_read: pendingLegacyRoster,
+      db_character_roster_commit: {
+        success: true,
+        receipt: { operationId: 'repair-json', payloadHash: 'hash', revision: 1, idempotent: false, snapshot: readyRoster },
+      },
     })
-    installVela(invoke)
 
     await migrateLegacyCharacterRoster(projectPath, { generationDependencies: { createRuntime: options => createGenerationRuntime(options) } })
 
@@ -243,10 +231,10 @@ describe('legacy character roster repair public workflow seam', () => {
       purpose: 'legacy-character-roster-json-repair',
     })
     expect(repairOptions).not.toHaveProperty('temperature')
-    expect(invoke.mock.calls.map(([channel]) => channel).filter(channel => channel.startsWith('db:character-roster'))).toEqual([
-      'db:character-roster-read',
-      'db:character-roster-read',
-      'db:character-roster-commit',
+    expect(tauriInternals.invoke.mock.calls.map(([command]) => command).filter(command => command.startsWith('db_character_roster'))).toEqual([
+      'db_character_roster_read',
+      'db_character_roster_read',
+      'db_character_roster_commit',
     ])
   })
 
@@ -259,15 +247,11 @@ describe('legacy character roster repair public workflow seam', () => {
       return Promise.resolve('legacy-truncated')
     })
     useLLMStore.setState({ generateStream })
-    const invoke = vi.fn(async (channel: string) => {
-      if (channel === 'db:character-roster-read') return pendingLegacyRoster
-      throw new Error(`Unexpected IPC channel: ${channel}`)
-    })
-    installVela(invoke)
+    installVela({ db_character_roster_read: pendingLegacyRoster })
 
     await expect(migrateLegacyCharacterRoster(projectPath, { generationDependencies: { createRuntime: options => createGenerationRuntime(options) } })).rejects.toThrow('已自动续写 2 次，尚未完整生成')
     expect(generateStream).toHaveBeenCalledTimes(3)
-    expect(invoke.mock.calls.map(([channel]) => channel).filter(channel => channel.startsWith('db:character-roster'))).toEqual(['db:character-roster-read'])
+    expect(tauriInternals.invoke.mock.calls.map(([command]) => command).filter(command => command.startsWith('db_character_roster'))).toEqual(['db_character_roster_read'])
   })
   it('keeps the existing three initial plus three syntax-repair request ceiling in one runtime', async () => {
     const generateStream = vi.fn((
@@ -280,20 +264,18 @@ describe('legacy character roster repair public workflow seam', () => {
       return Promise.resolve(`bounded-${count}`)
     })
     useLLMStore.setState({ generateStream })
-    const invoke = vi.fn(async (channel: string) => {
-      if (channel === 'db:character-roster-read') return pendingLegacyRoster
-      if (channel === 'db:character-roster-commit') return { success: true, receipt: {
+    installVela({
+      db_character_roster_read: pendingLegacyRoster,
+      db_character_roster_commit: { success: true, receipt: {
         operationId: 'six-requests', payloadHash: 'hash', revision: 1, idempotent: false, snapshot: readyRoster,
-      } }
-      throw new Error(`Unexpected IPC channel: ${channel}`)
+      } },
     })
-    installVela(invoke)
     await migrateLegacyCharacterRoster(projectPath, { generationDependencies: { createRuntime: options => createGenerationRuntime(options) } })
     expect(generateStream).toHaveBeenCalledTimes(6)
     expect((generateStream.mock.calls as unknown as unknown[][]).map(call => (call[3] as { purpose: string }).purpose)).toEqual([
       ...Array(3).fill('legacy-character-roster-repair'), ...Array(3).fill('legacy-character-roster-json-repair'),
     ])
-    expect(invoke.mock.calls.filter(([channel]) => channel === 'db:character-roster-commit')).toHaveLength(1)
+    expect(tauriInternals.invoke.mock.calls.filter(([command]) => command === 'db_character_roster_commit')).toHaveLength(1)
   })
 
   it('adopts protected existing cards without a model call, then rebuilds only the read-only projection', async () => {
@@ -309,26 +291,25 @@ describe('legacy character roster repair public workflow seam', () => {
     }
     const generateStream = vi.fn()
     useLLMStore.setState({ generateStream })
-    const invoke = vi.fn(async (channel: string) => {
-      if (channel === 'db:character-roster-read') return existingCards
-      if (channel === 'db:character-roster-commit') {
-        return {
-          success: true,
-          receipt: { operationId: 'adopt-cards', payloadHash: 'hash', revision: 1, idempotent: false, snapshot: adoptedRoster },
-        }
-      }
-      throw new Error(`Unexpected IPC channel: ${channel}`)
+    installVela({
+      db_character_roster_read: existingCards,
+      db_character_roster_commit: {
+        success: true,
+        receipt: { operationId: 'adopt-cards', payloadHash: 'hash', revision: 1, idempotent: false, snapshot: adoptedRoster },
+      },
     })
-    installVela(invoke)
 
     await migrateLegacyCharacterRoster(projectPath, { generationDependencies: { createRuntime: options => createGenerationRuntime(options) } })
 
     expect(generateStream).not.toHaveBeenCalled()
-    expect(invoke).toHaveBeenCalledWith(
-      'db:character-roster-commit',
-      expect.objectContaining({ intent: 'legacy_cards_adoption', entries: repairedEntries }),
-      projectPath,
-      projectSession,
+    expect(tauriInternals.invoke).toHaveBeenCalledWith(
+      'db_character_roster_commit',
+      {
+        request: expect.objectContaining({ intent: 'legacy_cards_adoption', entries: repairedEntries }),
+        expectedProjectPath: projectPath,
+        projectSession,
+      },
+      undefined,
     )
   })
 
@@ -343,11 +324,7 @@ describe('legacy character roster repair public workflow seam', () => {
       return Promise.resolve('legacy-switch')
     })
     useLLMStore.setState({ generateStream })
-    const invoke = vi.fn(async (channel: string) => {
-      if (channel === 'db:character-roster-read') return pendingLegacyRoster
-      throw new Error(`Unexpected IPC channel: ${channel}`)
-    })
-    installVela(invoke)
+    installVela({ db_character_roster_read: pendingLegacyRoster })
 
     const execution = migrateLegacyCharacterRoster(projectPath, { generationDependencies: { createRuntime: options => createGenerationRuntime(options) } })
     await vi.waitFor(() => expect(generateStream).toHaveBeenCalledOnce())
@@ -361,7 +338,7 @@ describe('legacy character roster repair public workflow seam', () => {
     finishGeneration?.()
 
     await expect(execution).rejects.toThrow('当前项目已切换，旧角色图谱修复已停止以避免写入错误项目')
-    expect(invoke.mock.calls.map(([channel]) => channel).filter(channel => channel.startsWith('db:character-roster'))).toEqual(['db:character-roster-read'])
+    expect(tauriInternals.invoke.mock.calls.map(([command]) => command).filter(command => command.startsWith('db_character_roster'))).toEqual(['db_character_roster_read'])
   })
 
   it('does not commit when cancellation reaches the repair before its atomic boundary', async () => {
@@ -374,11 +351,7 @@ describe('legacy character roster repair public workflow seam', () => {
       return Promise.resolve('legacy-cancel')
     })
     useLLMStore.setState({ generateStream })
-    const invoke = vi.fn(async (channel: string) => {
-      if (channel === 'db:character-roster-read') return pendingLegacyRoster
-      throw new Error(`Unexpected IPC channel: ${channel}`)
-    })
-    installVela(invoke)
+    installVela({ db_character_roster_read: pendingLegacyRoster })
 
     const execution = migrateLegacyCharacterRoster(projectPath, { generationDependencies: { createRuntime: options => createGenerationRuntime(options) } })
     await vi.waitFor(() => expect(generateStream).toHaveBeenCalledOnce())
@@ -388,7 +361,7 @@ describe('legacy character roster repair public workflow seam', () => {
     finishGeneration?.()
 
     await expect(execution).rejects.toThrow('工作流已取消')
-    expect(invoke.mock.calls.map(([channel]) => channel).filter(channel => channel.startsWith('db:character-roster'))).toEqual(['db:character-roster-read'])
+    expect(tauriInternals.invoke.mock.calls.map(([command]) => command).filter(command => command.startsWith('db_character_roster'))).toEqual(['db_character_roster_read'])
   })
 
   it('leaves semantic validation to the atomic seam and never falls back to Markdown parsing', async () => {
@@ -400,20 +373,18 @@ describe('legacy character roster repair public workflow seam', () => {
       return Promise.resolve('legacy-semantic-invalid')
     })
     useLLMStore.setState({ generateStream })
-    const invoke = vi.fn(async (channel: string) => {
-      if (channel === 'db:character-roster-read') return pendingLegacyRoster
-      if (channel === 'db:character-roster-commit') return { success: false, error: '角色名单不能为空' }
-      throw new Error(`Unexpected IPC channel: ${channel}`)
+    installVela({
+      db_character_roster_read: pendingLegacyRoster,
+      db_character_roster_commit: { success: false, error: '角色名单不能为空' },
     })
-    installVela(invoke)
 
     await expect(migrateLegacyCharacterRoster(projectPath, { generationDependencies: { createRuntime: options => createGenerationRuntime(options) } })).rejects.toThrow('角色名单不能为空')
     expect(generateStream).toHaveBeenCalledOnce()
-    expect(invoke.mock.calls.map(([channel]) => channel).filter(channel => channel.startsWith('db:character-roster'))).toEqual([
-      'db:character-roster-read',
-      'db:character-roster-read',
-      'db:character-roster-commit',
+    expect(tauriInternals.invoke.mock.calls.map(([command]) => command).filter(command => command.startsWith('db_character_roster'))).toEqual([
+      'db_character_roster_read',
+      'db_character_roster_read',
+      'db_character_roster_commit',
     ])
-    expect(invoke.mock.calls.map(([channel]) => channel)).not.toContain('db:character-save-all')
+    expect(tauriInternals.invoke.mock.calls.map(([command]) => command)).not.toContain('db_character_save_all')
   })
 })

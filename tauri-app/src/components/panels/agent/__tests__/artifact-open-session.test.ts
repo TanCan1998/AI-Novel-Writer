@@ -13,6 +13,7 @@ import { setActiveProjectSessionContext } from '../../../../shared/project-sessi
 import { useEditorStore } from '../../../../stores/editor-store'
 import { useLocaleStore } from '../../../../stores/locale-store'
 import { useProjectStore } from '../../../../stores/project-store'
+import { installTauriInternals, type TauriInternalsHandle } from '../../../../../test/helpers/tauri-internals'
 
 const projectPath = 'C:\\novels\\same-project'
 
@@ -28,6 +29,7 @@ function projectWithLease(leaseId: string) {
   } as never
 }
 
+let tauriInternals: TauriInternalsHandle
 beforeEach(() => {
   mocks.alertError.mockReset()
   useLocaleStore.setState({ locale: 'en-US' })
@@ -41,6 +43,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  tauriInternals?.uninstall()
   vi.unstubAllGlobals()
   useEditorStore.getState().clearTabs()
   useProjectStore.setState({ currentProject: null })
@@ -63,18 +66,7 @@ describe('agent artifact open session ownership', () => {
   })
 
   it('fails closed when a legacy artifact has no frozen project session', async () => {
-    const invoke = vi.fn(async () => ({ success: true, content: 'should not be read' }))
-    vi.stubGlobal('window', {
-      aiNovelAPI: {
-        invoke,
-        on: vi.fn(),
-        once: vi.fn(),
-        send: vi.fn(),
-        setZoomLevel: vi.fn(),
-        setZoomFactor: vi.fn(),
-        getZoomLevel: vi.fn(),
-      },
-    })
+    tauriInternals = installTauriInternals({})
 
     await expect(openArtifactInEditor({
       type: 'file_modified',
@@ -83,25 +75,13 @@ describe('agent artifact open session ownership', () => {
       projectPath,
     } as never)).resolves.toBe(false)
 
-    expect(invoke).not.toHaveBeenCalled()
+    expect(tauriInternals.invoke).not.toHaveBeenCalled()
     expect(useEditorStore.getState().tabs).toEqual([])
     expect(mocks.alertError).toHaveBeenCalledOnce()
   })
 
   it('fails closed for an artifact from an older lease of the same project path', async () => {
-    const invoke = vi.fn(async () => ({ success: true, content: 'stale artifact' }))
-    vi.stubGlobal('window', {
-      aiNovelAPI: {
-        invoke,
-        on: vi.fn(),
-        once: vi.fn(),
-        send: vi.fn(),
-        setZoomLevel: vi.fn(),
-        setZoomFactor: vi.fn(),
-        getZoomLevel: vi.fn(),
-      },
-    })
-
+    tauriInternals = installTauriInternals({})
     const result = await openArtifactInEditor({
       type: 'file_modified',
       name: 'chapter_1.md',
@@ -115,7 +95,7 @@ describe('agent artifact open session ownership', () => {
     } as never)
 
     expect(result).toBe(false)
-    expect(invoke).not.toHaveBeenCalled()
+    expect(tauriInternals.invoke).not.toHaveBeenCalled()
     expect(useEditorStore.getState().tabs).toEqual([])
     expect(mocks.alertError).toHaveBeenCalledOnce()
   })

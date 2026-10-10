@@ -5,6 +5,7 @@ import type { StepCallbacks, WorkflowContext } from '../../../stores/workflow-st
 import { useLocaleStore } from '../../../stores/locale-store'
 import { useProjectStore } from '../../../stores/project-store'
 import { createChapterWorkflow, createRepairFinalizeWorkflow } from '../chapter-workflow'
+import { installTauriInternals, type TauriInternalsHandle } from '../../../../test/helpers/tauri-internals'
 
 const postProcess = vi.hoisted(() => ({
   params: [] as Array<Record<string, unknown>>,
@@ -64,9 +65,11 @@ function callbacks(): StepCallbacks {
   return { log: vi.fn(), setProgress: vi.fn(), appendText: vi.fn() }
 }
 
+let tauriInternals: TauriInternalsHandle
 afterEach(() => {
   postProcess.params.length = 0
   postProcess.execute.mockClear()
+  tauriInternals?.uninstall()
   vi.unstubAllGlobals()
   useLocaleStore.setState({ locale: originalLocale })
   useProjectStore.setState({ currentProject: null })
@@ -114,21 +117,14 @@ describe('createRepairFinalizeWorkflow', () => {
         sessionLease: PROJECT_SESSION.leaseId,
       } as never,
     })
-    const invoke = vi.fn(async (channel: string) => {
-      switch (channel) {
-        case 'db:draft-get-finalized':
-          return { id: 17 }
-        case 'db:draft-get-full':
-          return { content: '已定稿正文' }
-        case 'db:continuity-read-source':
-          return finalizedSource('已定稿正文')
-        case 'db:blueprint-get':
-          return { title: '定稿标题', characters: ['林舟'] }
-        default:
-          throw new Error(`unexpected IPC: ${channel}`)
-      }
+    tauriInternals = installTauriInternals({
+      commands: {
+        db_draft_get_finalized: { id: 17 },
+        db_draft_get_full: { content: '已定稿正文' },
+        db_continuity_read_source: finalizedSource('已定稿正文'),
+        db_blueprint_get: { title: '定稿标题', characters: ['林舟'] },
+      },
     })
-    vi.stubGlobal('window', { aiNovelAPI: { invoke } })
 
     const workflow = createRepairFinalizeWorkflow(3, PROJECT_PATH, PROJECT_SESSION, stepKey)
     const step = workflow.steps[0]!
@@ -158,22 +154,14 @@ describe('createRepairFinalizeWorkflow', () => {
         sessionLease: PROJECT_SESSION.leaseId,
       } as never,
     })
-    const invoke = vi.fn(async (channel: string) => {
-      switch (channel) {
-        case 'db:draft-get-finalized':
-          return { id: 17 }
-        case 'db:draft-get-full':
-          return { content: 'Finalized manuscript' }
-        case 'db:continuity-read-source':
-          return finalizedSource('Finalized manuscript')
-        case 'db:blueprint-get':
-          return null
-        default:
-          throw new Error(`unexpected IPC: ${channel}`)
-      }
+    tauriInternals = installTauriInternals({
+      commands: {
+        db_draft_get_finalized: { id: 17 },
+        db_draft_get_full: { content: 'Finalized manuscript' },
+        db_continuity_read_source: finalizedSource('Finalized manuscript'),
+        db_blueprint_get: null,
+      },
     })
-    vi.stubGlobal('window', { aiNovelAPI: { invoke } })
-
     const workflow = createRepairFinalizeWorkflow(3, PROJECT_PATH, PROJECT_SESSION)
     expect(() => createRepairFinalizeWorkflow(3, PROJECT_PATH, {
       ...PROJECT_SESSION,
@@ -220,12 +208,12 @@ describe('createRepairFinalizeWorkflow', () => {
         } as never,
       })
     }
-    const invoke = vi.fn(async (channel: string) => {
-      if (channel === 'db:draft-get-finalized') return failure === 'draft' ? null : { id: 17 }
-      if (channel === 'db:draft-get-full') return null
-      throw new Error(`unexpected IPC: ${channel}`)
+    tauriInternals = installTauriInternals({
+      commands: {
+        db_draft_get_finalized: failure === 'draft' ? null : { id: 17 },
+        db_draft_get_full: null,
+      },
     })
-    vi.stubGlobal('window', { aiNovelAPI: { invoke } })
     const workflow = createRepairFinalizeWorkflow(3, PROJECT_PATH, PROJECT_SESSION)
     useLocaleStore.setState({ locale: 'zh-CN' })
     const step = workflow.steps[0]!

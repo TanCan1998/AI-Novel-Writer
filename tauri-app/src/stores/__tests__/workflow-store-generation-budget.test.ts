@@ -12,6 +12,7 @@ import {
 import { useLocaleStore } from '../locale-store'
 import { useProjectStore } from '../project-store'
 import { useWorkflowStore } from '../workflow-store'
+import { installTauriInternals, type TauriInternalsHandle } from '../../../test/helpers/tauri-internals'
 
 const projectPath = 'C:\\test-project'
 const projectSession = {
@@ -106,17 +107,13 @@ class BudgetedGenerationCommand extends BaseWorkflowCommand {
   }
 }
 
+let tauriInternals: TauriInternalsHandle
 beforeEach(() => {
-  // 工作流夹具显式提供桌面桥接；未知调用仍拒绝，避免掩盖真实 IPC 缺失。
-  vi.stubGlobal('window', {
-    aiNovelAPI: {
-      invoke: vi.fn(async (channel: string) => {
-        if (channel === 'skills:list-user') return []
-        if (channel === 'fs:check-exists') return false
-        throw new Error(`测试未配置桌面调用：${channel}`)
-      }),
-      on: vi.fn(() => () => {}),
-      once: vi.fn(),
+  // 工作流夹具显式提供桌面桥接；未登记命令仍拒绝，避免掩盖真实 IPC 缺失。
+  tauriInternals = installTauriInternals({
+    commands: {
+      skills_list_user: async () => [],
+      fs_check_exists: async () => false,
     },
   })
   useWorkflowStore.setState({
@@ -205,5 +202,6 @@ describe('workflow generation prompt budget diagnostics', () => {
 })
 
 afterEach(() => {
+  tauriInternals.uninstall()
   vi.unstubAllGlobals()
 })

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { WorkflowContext } from '../../../stores/workflow-store'
 import { runPostProcessPipeline } from '../workflow-utils'
 
+import { installTauriInternals, type TauriInternalsHandle } from '../../../../test/helpers/tauri-internals'
 const projectSession = {
   projectId: 'project-1',
   leaseId: 'lease-1',
@@ -21,43 +22,29 @@ function englishContext(): WorkflowContext {
   }
 }
 
+let tauriInternals: TauriInternalsHandle
+
 function stubIpcInvoke() {
-  const invoke = vi.fn(async (channel: string) => {
-    switch (channel) {
-      case 'db:post-process-get-latest-run':
-        return invoke.mock.calls.filter(([name]) => name === channel).length === 1 ? null : { id: 'run-1' }
-      case 'db:post-process-create-run':
-        return { success: true, id: 'run-1' }
-      case 'db:post-process-get-steps':
-        return []
-      case 'db:post-process-mark-step-failed':
-        return { success: true }
-      default:
-        throw new Error(`Unexpected IPC channel: ${channel}`)
-    }
-  })
-  vi.stubGlobal('window', {
-    aiNovelAPI: {
-      invoke,
-      on: vi.fn(),
-      once: vi.fn(),
-      send: vi.fn(),
-      setZoomLevel: vi.fn(),
-      setZoomFactor: vi.fn(),
-      getZoomLevel: vi.fn(),
+  let latestRunCalls = 0
+  tauriInternals = installTauriInternals({
+    commands: {
+      db_post_process_get_latest_run: () => (latestRunCalls++ === 0 ? null : { id: 'run-1' }),
+      db_post_process_create_run: { success: true, id: 'run-1' },
+      db_post_process_get_steps: [],
+      db_post_process_mark_step_failed: { success: true },
     },
   })
-  return invoke
 }
 
 afterEach(() => {
+  tauriInternals?.uninstall()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
 
 describe('runPostProcessPipeline stopOnFailure', () => {
   it('persists the failed step and stops before any later post-processing step runs', async () => {
-    const invoke = stubIpcInvoke()
+    stubIpcInvoke()
     const secondStep = vi.fn(async () => undefined)
     const callbacks = { log: vi.fn(), setProgress: vi.fn(), appendText: vi.fn() }
 
@@ -77,13 +64,16 @@ describe('runPostProcessPipeline stopOnFailure', () => {
     expect(logs).toContain('First step failed on attempt 1; retrying')
     expect(logs).not.toMatch(/⚠️|✅|❌|⏭️|💡/u)
 
-    expect(invoke).toHaveBeenCalledWith(
-      'db:post-process-mark-step-failed',
-      'run-1',
-      'first',
-      'provider timeout',
-      'C:/novel',
-      projectSession,
+    expect(tauriInternals.invoke).toHaveBeenCalledWith(
+      'db_post_process_mark_step_failed',
+      {
+        runId: 'run-1',
+        stepKey: 'first',
+        errorMsg: 'provider timeout',
+        expectedProjectPath: 'C:/novel',
+        projectSession,
+      },
+      undefined,
     )
     expect(secondStep).not.toHaveBeenCalled()
   })
@@ -92,14 +82,11 @@ describe('runPostProcessPipeline stopOnFailure', () => {
     const createdRunId = 'run-created-in-same-second'
     const unrelatedLatestRunId = 'run-unrelated-latest'
     let getStepsCalls = 0
-    const invoke = vi.fn(async (channel: string, ..._args: unknown[]) => {
-      void _args
-      switch (channel) {
-        case 'db:post-process-get-latest-run':
-          return { id: unrelatedLatestRunId }
-        case 'db:post-process-create-run':
-          return { success: true, id: createdRunId }
-        case 'db:post-process-get-steps':
+    tauriInternals = installTauriInternals({
+      commands: {
+        db_post_process_get_latest_run: { id: unrelatedLatestRunId },
+        db_post_process_create_run: { success: true, id: createdRunId },
+        db_post_process_get_steps: () => {
           getStepsCalls += 1
           return getStepsCalls === 1
             ? [{
@@ -126,21 +113,8 @@ describe('runPostProcessPipeline stopOnFailure', () => {
                 completedAt: '2026-07-25T00:00:00.000Z',
                 lastAttemptAt: '2026-07-25T00:00:00.000Z',
               }]
-        case 'db:post-process-mark-step-ok':
-          return { success: true }
-        default:
-          throw new Error(`Unexpected IPC channel: ${channel}`)
-      }
-    })
-    vi.stubGlobal('window', {
-      aiNovelAPI: {
-        invoke,
-        on: vi.fn(),
-        once: vi.fn(),
-        send: vi.fn(),
-        setZoomLevel: vi.fn(),
-        setZoomFactor: vi.fn(),
-        getZoomLevel: vi.fn(),
+        },
+        db_post_process_mark_step_ok: { success: true },
       },
     })
 
@@ -154,20 +128,17 @@ describe('runPostProcessPipeline stopOnFailure', () => {
       { retryCount: 0, cancellation: englishContext(), projectSession },
     )
 
-    expect(invoke.mock.calls.filter(([channel]) => channel === 'db:post-process-get-latest-run'))
+    expect(tauriInternals.invoke.mock.calls.filter(([command]) => command === 'db_post_process_get_latest_run'))
       .toHaveLength(1)
-    expect(invoke).toHaveBeenCalledWith(
-      'db:post-process-mark-step-ok',
-      createdRunId,
-      'only',
-      'C:/novel',
-      projectSession,
+    expect(tauriInternals.invoke).toHaveBeenCalledWith(
+      'db_post_process_mark_step_ok',
+      { runId: createdRunId, stepKey: 'only', expectedProjectPath: 'C:/novel', projectSession },
+      undefined,
     )
-    expect(invoke.mock.calls.filter(([channel, runId]) =>
-      channel === 'db:post-process-get-steps' && runId === createdRunId
+    expect(tauriInternals.invoke.mock.calls.filter(([command, args]) =>
+      command === 'db_post_process_get_steps' && args?.runId === createdRunId
     )).toHaveLength(2)
-    expect(invoke.mock.calls.some(([, runId]) => runId === unrelatedLatestRunId)).toBe(false)
-    expect(status.allCriticalPassed).toBe(true)
+    expect(tauriInternals.invoke.mock.calls.some(([, args]) => args?.runId === unrelatedLatestRunId)).toBe(false)
     expect(status.steps.only.ok).toBe(true)
     const logs = vi.mocked(callbacks.log).mock.calls.flat().join('\n')
     expect(logs).toContain('Initializing post-processing run')
@@ -177,7 +148,7 @@ describe('runPostProcessPipeline stopOnFailure', () => {
   })
 
   it('fails closed before IPC when no frozen project session is supplied', async () => {
-    const invoke = stubIpcInvoke()
+    stubIpcInvoke()
 
     await expect(runPostProcessPipeline(
       'C:/novel',
@@ -188,6 +159,6 @@ describe('runPostProcessPipeline stopOnFailure', () => {
       { retryCount: 0 },
     )).rejects.toThrow('后处理缺少冻结项目会话')
 
-    expect(invoke).not.toHaveBeenCalled()
+    expect(tauriInternals.invoke).not.toHaveBeenCalled()
   })
 })

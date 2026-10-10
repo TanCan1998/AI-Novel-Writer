@@ -4,8 +4,10 @@ import { useProjectStore } from '../../../../stores/project-store'
 import { createAgentExecutionContext } from '../project-context'
 import { writeFileTool } from '../write-file.tool'
 
+import { installTauriInternals, type TauriInternalsHandle } from '../../../../../test/helpers/tauri-internals'
 const projectAPath = 'C:\\novels\\A'
 
+let tauriInternals: TauriInternalsHandle
 beforeEach(() => {
   useProjectStore.setState({
     currentProject: {
@@ -19,36 +21,30 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  tauriInternals?.uninstall()
   vi.unstubAllGlobals()
   useProjectStore.setState({ currentProject: null })
 })
 
 describe('tool artifact project ownership', () => {
   it('freezes the tool-time project identity into every created artifact', async () => {
-    const invoke = vi.fn(async () => ({ success: true }))
-    vi.stubGlobal('window', {
-      aiNovelAPI: {
-        invoke,
-        on: vi.fn(),
-        once: vi.fn(),
-        send: vi.fn(),
-        setZoomLevel: vi.fn(),
-        setZoomFactor: vi.fn(),
-        getZoomLevel: vi.fn(),
-      },
+    tauriInternals = installTauriInternals({
+      commands: { fs_write_file: { success: true } },
     })
-
     const result = await writeFileTool.execute({
       file_path: 'chapters/1.md',
       content: 'chapter one',
     }, createAgentExecutionContext())
 
-    expect(invoke).toHaveBeenCalledWith(
-      'fs:write-file',
-      `${projectAPath}/chapters/1.md`,
-      'chapter one',
-      projectAPath,
-      expect.objectContaining({ projectId: 'A', leaseId: 'lease-A' }),
+    expect(tauriInternals.invoke).toHaveBeenCalledWith(
+      'fs_write_file',
+      {
+        filePath: `${projectAPath}/chapters/1.md`,
+        content: 'chapter one',
+        expectedProjectPath: projectAPath,
+        projectSession: expect.objectContaining({ projectId: 'A', leaseId: 'lease-A' }),
+      },
+      undefined,
     )
     expect(result.artifacts).toEqual([
       expect.objectContaining({
@@ -66,9 +62,8 @@ describe('tool artifact project ownership', () => {
   })
 
   it('refuses an aborted write before invoking the authoritative filesystem boundary', async () => {
-    const invoke = vi.fn(async () => ({ success: true }))
-    vi.stubGlobal('window', {
-      aiNovelAPI: { invoke, on: vi.fn(), once: vi.fn(), send: vi.fn() },
+    tauriInternals = installTauriInternals({
+      commands: { fs_write_file: { success: true } },
     })
     const controller = new AbortController()
     controller.abort()
@@ -81,19 +76,20 @@ describe('tool artifact project ownership', () => {
       abortSignal: controller.signal,
     })).rejects.toThrow(/取消|cancel/u)
 
-    expect(invoke).not.toHaveBeenCalled()
+    expect(tauriInternals.invoke).not.toHaveBeenCalled()
   })
 
   it('reports the original write receipt after the response is delayed across a project switch', async () => {
     let finishWrite: (() => void) | undefined
     let commits = 0
-    const invoke = vi.fn(async () => {
-      commits++
-      await new Promise<void>(resolve => { finishWrite = resolve })
-      return { success: true }
-    })
-    vi.stubGlobal('window', {
-      aiNovelAPI: { invoke, on: vi.fn(), once: vi.fn(), send: vi.fn() },
+    tauriInternals = installTauriInternals({
+      commands: {
+        fs_write_file: async () => {
+          commits++
+          await new Promise<void>(resolve => { finishWrite = resolve })
+          return { success: true }
+        },
+      },
     })
     const executionContext = createAgentExecutionContext()
     const resultPromise = writeFileTool.execute({
@@ -124,13 +120,10 @@ describe('tool artifact project ownership', () => {
     ['unknown', false],
     ['committed', true],
   ] as const)('preserves a %s write result returned by the filesystem controller', async (commitState, expectedSuccess) => {
-    const invoke = vi.fn(async () => ({
-      success: false,
-      commitState,
-      error: 'write receipt detail',
-    }))
-    vi.stubGlobal('window', {
-      aiNovelAPI: { invoke, on: vi.fn(), once: vi.fn(), send: vi.fn() },
+    tauriInternals = installTauriInternals({
+      commands: {
+        fs_write_file: () => ({ success: false, commitState, error: 'write receipt detail' }),
+      },
     })
 
     const result = await writeFileTool.execute({

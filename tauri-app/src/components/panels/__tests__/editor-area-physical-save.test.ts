@@ -4,6 +4,7 @@ import { savePhysicalChapterForSession } from '../editor-area-physical-save'
 import { setActiveProjectSessionContext } from '../../../shared/project-session-context'
 import { useEditorStore } from '../../../stores/editor-store'
 
+import { installTauriInternals, type TauriInternalsHandle } from '../../../../test/helpers/tauri-internals'
 const projectPath = 'C:\\novels\\same-project'
 const filePath = `${projectPath}\\manuscript\\chapter_1.md`
 const sessionA = {
@@ -22,6 +23,7 @@ function deferred<T>() {
   return { promise, resolve, reject }
 }
 
+let tauriInternals: TauriInternalsHandle
 beforeEach(() => {
   useEditorStore.getState().clearTabs()
   useEditorStore.getState().openFile({
@@ -38,6 +40,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  tauriInternals?.uninstall()
   vi.unstubAllGlobals()
   useEditorStore.getState().clearTabs()
   setActiveProjectSessionContext(null)
@@ -46,16 +49,9 @@ afterEach(() => {
 describe('physical chapter save session settlement', () => {
   it('does not mark a chapter saved when a delayed write returns after a same-path reopen', async () => {
     const delayedWrite = deferred<{ success: boolean }>()
-    const invoke = vi.fn(async () => delayedWrite.promise)
-    vi.stubGlobal('window', {
-      aiNovelAPI: {
-        invoke,
-        on: vi.fn(),
-        once: vi.fn(),
-        send: vi.fn(),
-        setZoomLevel: vi.fn(),
-        setZoomFactor: vi.fn(),
-        getZoomLevel: vi.fn(),
+    tauriInternals = installTauriInternals({
+      commands: {
+        fs_write_file: () => delayedWrite.promise,
       },
     })
 
@@ -65,7 +61,7 @@ describe('physical chapter save session settlement', () => {
       content: 'edited',
       projectSession: sessionA,
     })
-    await vi.waitFor(() => expect(invoke).toHaveBeenCalledOnce())
+    await vi.waitFor(() => expect(tauriInternals.invoke).toHaveBeenCalledOnce())
 
     setActiveProjectSessionContext({ ...sessionA, leaseId: 'lease-B' })
     delayedWrite.resolve({ success: true })
