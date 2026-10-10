@@ -24,12 +24,12 @@
 | 覆盖 invoke 频道 | **184**（契约总数 193，事件频道 4） |
 | 未迁移 invoke 频道 | **9**（`db=0 mcp=9`） |
 | orphan | **空** ✅ |
-| `cargo test --lib` | **645/645** ✅ |
+| `cargo test --lib` | **652/652** ✅ |
 | `cargo fmt --check` | **干净（0 差异）** ✅ |
 | `cargo check --all-targets` | **0 告警** ✅ |
 | `pnpm typecheck` / `lint` | exit 0 / exit 0 ✅ |
 | 定向 `vitest` | **7/7**（2 文件：契约覆盖 / 入参结构体契约）✅ |
-| 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅** / **批次 G2a ✅（本次）** / **批次 G2b ✅（1–6 步全部完成）** / **批次 G3a ✅** / **批次 G3b ✅（本次）** |
+| 已完成批次 | A ✅ / B ✅ / C ✅ / D1 ✅ / D2-a ✅ / D2-b ✅ / D2-c ✅ / **E ✅** / **F1 ✅** / **L3 ✅** / **F2 ✅** / **批次 E G1 ✅** / **H1 ✅** / **H2 ✅** / **H3 ✅** / **B12 ✅** / **批次 G 的 G1 ✅** / **批次 G2a ✅（本次）** / **批次 G2b ✅（1–6 步全部完成）** / **批次 G3a ✅** / **批次 G3b ✅** / **批次 G4 ✅（代码收口）** |
 | 当前阶段 | **批次 G4 代码已收口**（`kb:import-reference-text` 去占位 + 前端登记，提交 `94a1fe6a` + `5c4fd26e`；未迁移仍为 **9**，仅剩 mcp 9）——G3b 遗留的 13 频道状态机（执行租约 5 / 批次推进 4 / effect receipts 3 / 全局事实提交 1）亦已落地。**⚠️ G4 的 GUI 冒烟（导入参照章节链路）待做**（用户决定稍后）→ 之后仅剩 H4（mcp 9，暂缓）。其它待办：B13（导航防护）、B14（真 Windows 自更新）、上游合并专项、B24（整屏瞬黑，暂缓） |
 | 依赖 | `reqwest 0.13`（`default-features=false` + `native-tls` + `socks`）、`tauri-plugin-dialog 2`（锁 **2.8.1**）、`tauri-plugin-opener 2.7.0`、`windows-sys 0.61`（`[target.'cfg(windows)'.dependencies]`，仅 lock 提级，**0 新下载**；Ask first 已批准 2026-10-10）。**G2a 零新依赖**，**G3a 零新依赖**（仓储层平移，无 Cargo.toml 改动），**G3b 零新依赖**（命令层平移，无 Cargo.toml 改动）。向量层 `hnsw_rs 0.3.4` / `jieba-rs 0.7.0` / `tokio`；FTS5 由 `libsqlite3-sys` bundled 提供 |
 | GUI 冒烟 | ✅ 自 2026-10-07 起 **十三轮**。⏳ **第十四轮（G4 参照章节链路）待做**：① 作者原稿全链路回归；② 参考语料选 `.md` → 应得 `preparation` 而非诚实错误，重选应得 `exact-duplicate`；③ `importReference` 成功写库并记「参照章节 N 已进入知识库」（重复显示「（已存在）」）。**第十三轮（2026-10-10，弹窗动画统一）**：设置弹窗明显变快（修复前实为“静置 400ms + 播 220ms”）、四类弹窗进出场一致、Radix 弹窗仍居中且尺寸正常 ✅。**第十二轮（2026-10-10，冒烟发现的三项缺陷修复）**：① 弹窗 **ESC 关闭**（根因：Radix `DismissableLayer` 仅在 `index === layers.length-1` 时注册 ESC，而 Radix 关闭后仍保留 `DialogContent` 挂载——实测 `layers.length=7`，可见弹窗永远不是最高层）；② **窗口命令真实化**（批次 A 四个命令原为假成功骨架）；③ **标题栏拖拽**（`-webkit-app-region` 在 WebView2 无效 → 补 `data-tauri-drag-region`）。4 项人工验证全部 ✅。近三轮：第十一轮（G2a）、第十轮（G1）、第九轮（H 前三项 + B12） |
@@ -156,6 +156,14 @@ handler 前置断言，D4）。恢复 D1–D3 需用户确认。
 （仅剩 `mcp=9`）· 提交消息检查 + pre-commit gitleaks 无命中。
 
 （G3a 轮自检：643/643、193/172/171/22，无频道变化——纯仓储层。）
+
+（**2026-10-10 12:23 G4 后复测——实跑定案**：快照表此前停在 **645**，而 `docs-fork/todo.md` 的 G4 完成说明记 **652**，两处不一致，故重跑全部指标命令定案：
+`cargo test --lib` → `test result: ok. **652 passed; 0 failed**; 0 ignored; 0 measured; 0 filtered out; finished in 50.93s`（exit 0）；
+`cargo fmt --check` → 0 行输出（exit 0）；`cargo check --all-targets` → `Finished \`dev\` profile [unoptimized + debuginfo] target(s) in 0.85s`、**0 告警**（exit 0）；
+`pnpm typecheck` / `pnpm run lint` → exit 0 / exit 0（lint 命令：`eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0`）；
+`node scripts/verify-channel-coverage.mjs` → 契约 invoke 频道 **193**（事件频道 4）/ 已注册命令 **185** → 覆盖 invoke 频道 **184** / 未迁移 **9**（`mcp=9`）、`命令名与契约频道一一对应 ✅`。
+
+**结论：645 是 G4 之前的旧值；G4 的 `commands::kb` 新增 7 例后为 652**（与 `docs-fork/todo.md` 的 G4 记录一致）。频道覆盖各项与快照原值一致，无变化。）
 
 ---
 
