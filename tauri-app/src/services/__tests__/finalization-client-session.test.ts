@@ -17,6 +17,8 @@ const frozenSession = {
 beforeEach(() => {
   invoke.mockReset()
   invoke.mockResolvedValue({ success: true, committed: true })
+  // 被测模块会比较活动会话与调用方冻结会话，须先建立活动会话。
+  setActiveProjectSessionContext(frozenSession)
 })
 
 afterEach(() => {
@@ -24,9 +26,10 @@ afterEach(() => {
 })
 
 describe('retryFinalizationPublication', () => {
-  it('新桥接缺失时拒绝，不借旧桥接写入', async () => {
-    vi.stubGlobal('window', { velaAPI: { invoke } })
-    await expect(retryFinalizationPublication('finalization-1', frozenSession)).rejects.toThrow('无法提交定稿')
+  it('当前会话缺失时拒绝写入', async () => {
+    // Tauri 版无 window 桥接守卫；唯一守卫是活动会话与传入会话的一致性比较。
+    setActiveProjectSessionContext(null)
+    await expect(retryFinalizationPublication('finalization-1', frozenSession)).rejects.toThrow('项目会话已变化')
     expect(invoke).not.toHaveBeenCalled()
   })
   it('sends the caller-frozen session instead of recapturing one later', async () => {

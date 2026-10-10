@@ -11,6 +11,10 @@ import {
   useEditorStore,
 } from '../../../stores/editor-store'
 import TitleBar from '../TitleBar'
+import {
+  installTauriInternals,
+  type TauriInternalsHandle,
+} from '../../../../test/helpers/tauri-internals'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
 
@@ -21,8 +25,7 @@ const originalLocaleState = useLocaleStore.getState()
 
 let root: Root
 let container: HTMLDivElement
-let invoke: ReturnType<typeof vi.fn>
-let closeRequested: ((payload: { requestId: string }) => void) | undefined
+let tauriInternals: TauriInternalsHandle
 
 function deferred<T>() {
   let resolve!: (value: T) => void
@@ -44,22 +47,8 @@ beforeEach(() => {
   })
   useLocaleStore.setState({ locale: 'zh-CN' })
   useWorkflowStore.setState({ activeRuns: [] })
-  invoke = vi.fn(async () => ({ success: true }))
-  closeRequested = undefined
-  Object.defineProperty(window, 'aiNovelAPI', {
-    configurable: true,
-    value: {
-      invoke,
-      on: vi.fn((channel: string, callback: (payload: { requestId: string }) => void) => {
-        if (channel === 'window:close-requested') closeRequested = callback
-        return () => { closeRequested = undefined }
-      }),
-      once: vi.fn(),
-      send: vi.fn(),
-      setZoomLevel: vi.fn(),
-      setZoomFactor: vi.fn(),
-      getZoomLevel: vi.fn(() => 0),
-    },
+  tauriInternals = installTauriInternals({
+    commands: { window_resolve_close: { success: true } },
   })
   container = document.createElement('div')
   document.body.append(container)
@@ -72,16 +61,20 @@ afterEach(async () => {
   useEditorStore.setState(originalEditorState)
   useProjectStore.setState(originalProjectState)
   useLocaleStore.setState(originalLocaleState)
-  Reflect.deleteProperty(window, 'aiNovelAPI')
+  tauriInternals.uninstall()
 })
 
 describe('TitleBar native exit settlement', () => {
   it('lets a clean system close proceed without prompting', async () => {
     await act(async () => root.render(<TitleBar />))
 
-    await act(async () => closeRequested?.({ requestId: 'close-clean' }))
+    await act(async () => tauriInternals.emit('window:close-requested', { requestId: 'close-clean' }))
 
-    expect(invoke).toHaveBeenCalledWith('window:resolve-close', 'close-clean', 'proceed')
+    expect(tauriInternals.invoke).toHaveBeenCalledWith(
+      'window_resolve_close',
+      { requestId: 'close-clean', decision: 'proceed' },
+      undefined,
+    )
     await expect.element(page.getByRole('dialog')).not.toBeInTheDocument()
   })
 
@@ -99,10 +92,14 @@ describe('TitleBar native exit settlement', () => {
     })
     await act(async () => root.render(<TitleBar />))
 
-    await act(async () => closeRequested?.({ requestId: 'close-cancel' }))
+    await act(async () => tauriInternals.emit('window:close-requested', { requestId: 'close-cancel' }))
     await expect.element(page.getByRole('dialog')).toBeVisible()
     await act(async () => page.getByRole('button', { name: '取消' }).click())
-    expect(invoke).toHaveBeenCalledWith('window:resolve-close', 'close-cancel', 'cancel')
+    expect(tauriInternals.invoke).toHaveBeenCalledWith(
+      'window_resolve_close',
+      { requestId: 'close-cancel', decision: 'cancel' },
+      undefined,
+    )
     expect(useEditorStore.getState().tabs[0]?.dirty).toBe(true)
 
     registerEditorExitSaveHandler({
@@ -114,10 +111,14 @@ describe('TitleBar native exit settlement', () => {
         useEditorStore.getState().settleTabSave('draft-a', { content: 'AB', contentRevision: 2 })
       },
     })
-    await act(async () => closeRequested?.({ requestId: 'close-save-race' }))
+    await act(async () => tauriInternals.emit('window:close-requested', { requestId: 'close-save-race' }))
     await act(async () => page.getByRole('button', { name: '保存并退出' }).click())
     await expect.element(page.getByText('保存期间仍有未保存修改，已取消退出')).toBeVisible()
-    expect(invoke).not.toHaveBeenCalledWith('window:resolve-close', 'close-save-race', 'proceed')
+    expect(tauriInternals.invoke).not.toHaveBeenCalledWith(
+      'window_resolve_close',
+      { requestId: 'close-save-race', decision: 'proceed' },
+      undefined,
+    )
     expect(useEditorStore.getState().tabs[0]).toMatchObject({ content: 'ABC', dirty: true })
     useEditorStore.setState({
       draftLedgers: {
@@ -128,9 +129,17 @@ describe('TitleBar native exit settlement', () => {
       },
     })
     await act(async () => page.getByRole('button', { name: '放弃并退出' }).click())
-    expect(invoke).toHaveBeenCalledWith('window:resolve-close', 'close-save-race', 'proceed')
-    expect(invoke).not.toHaveBeenCalledWith('window:resolve-close', 'close-save-race', 'cancel')
-    expect(invoke).not.toHaveBeenCalledWith('window:close')
+    expect(tauriInternals.invoke).toHaveBeenCalledWith(
+      'window_resolve_close',
+      { requestId: 'close-save-race', decision: 'proceed' },
+      undefined,
+    )
+    expect(tauriInternals.invoke).not.toHaveBeenCalledWith(
+      'window_resolve_close',
+      { requestId: 'close-save-race', decision: 'cancel' },
+      undefined,
+    )
+    expect(tauriInternals.invoke).not.toHaveBeenCalledWith('window_close', {}, undefined)
     expect(useEditorStore.getState().tabs.some(tab => tab.dirty)).toBe(false)
     expect(JSON.parse(useEditorStore.getState().draftLedgers.config).projects).toEqual([])
     await expect.element(page.getByRole('dialog')).not.toBeInTheDocument()
@@ -150,10 +159,12 @@ describe('TitleBar native exit settlement', () => {
         dirty: true,
       }],
     })
-    invoke.mockImplementationOnce(failure)
     await act(async () => root.render(<TitleBar />))
+    // 事件监听也走 invoke 通道，render 期的 plugin:event|listen 会先吃掉
+    // once 桩，因此失败注入必须放在 render 之后。
+    tauriInternals.invoke.mockImplementationOnce(failure)
 
-    await act(async () => closeRequested?.({ requestId: 'close-rejected' }))
+    await act(async () => tauriInternals.emit('window:close-requested', { requestId: 'close-rejected' }))
     await act(async () => page.getByRole('button', { name: '放弃并退出' }).click())
 
     expect(useEditorStore.getState().tabs[0]).toMatchObject({
@@ -168,9 +179,10 @@ describe('TitleBar native exit settlement', () => {
       tabs: [{ id: 'draft-a', name: '第一章', type: 'chapter', projectKey: PROJECT, dirty: true }],
     })
     const cancellation = deferred<{ success: boolean }>()
-    invoke.mockReturnValueOnce(cancellation.promise)
     await act(async () => root.render(<TitleBar />))
-    await act(async () => closeRequested?.({ requestId: 'close-busy' }))
+    // 同上：once 桩须在 render 之后注入，否则会被事件监听注册消耗。
+    tauriInternals.invoke.mockReturnValueOnce(cancellation.promise)
+    await act(async () => tauriInternals.emit('window:close-requested', { requestId: 'close-busy' }))
 
     await act(async () => page.getByRole('button', { name: '取消' }).click())
 
@@ -188,15 +200,19 @@ describe('TitleBar native exit settlement', () => {
     })
     await act(async () => root.render(<TitleBar />))
 
-    await act(async () => closeRequested?.({ requestId: 'close-workflow' }))
+    await act(async () => tauriInternals.emit('window:close-requested', { requestId: 'close-workflow' }))
 
     await expect.element(page.getByText('创作任务仍在运行')).toBeVisible()
     await expect.element(page.getByText('请先等待当前创作任务完成，或在任务面板中取消任务后再退出。')).toBeVisible()
-    expect(invoke).not.toHaveBeenCalled()
-    expect(useWorkflowStore.getState().activeRuns).toHaveLength(1)
+    // 渲染期仅注册事件监听；close 请求被工作流拦截，不产生任何命令调用。
+    expect(tauriInternals.invoke.mock.calls.map(call => call[0])).toEqual(['plugin:event|listen'])
     expect(useWorkflowStore.getState().activeRuns[0]?.status).toBe('running')
     await expect.element(page.getByRole('button', { name: '放弃并退出' })).not.toBeInTheDocument()
     await act(async () => page.getByRole('button', { name: '知道了' }).click())
-    expect(invoke).toHaveBeenCalledWith('window:resolve-close', 'close-workflow', 'cancel')
+    expect(tauriInternals.invoke).toHaveBeenCalledWith(
+      'window_resolve_close',
+      { requestId: 'close-workflow', decision: 'cancel' },
+      undefined,
+    )
   })
 })

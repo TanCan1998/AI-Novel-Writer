@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useProjectStore } from '../../../../stores/project-store'
 import { useLLMStore } from '../../../../stores/llm-store'
 import type { StepCallbacks, WorkflowContext } from '../../../../stores/workflow-store'
+import { installTauriInternals, type TauriInternalsHandle } from '../../../../../test/helpers/tauri-internals'
 import { GenerateFieldCommand as RuntimeGenerateFieldCommand } from '../generate-field.command'
 import { workflowRuntimeDependencies } from './workflow-generation-runtime.fixture'
 
@@ -44,15 +45,14 @@ function project(path: string, writingStyle = '') {
   }
 }
 
+let tauriInternals: TauriInternalsHandle
+
 beforeEach(() => {
   vi.clearAllMocks()
-  vi.stubGlobal('window', {
-    aiNovelAPI: {
-      invoke: vi.fn(async (channel: string) => {
-        if (channel === 'prompt:load-global') return { templates: [], diagnostics: [] }
-        if (channel === 'fs:check-exists') return false
-        return { success: true }
-      }),
+  tauriInternals = installTauriInternals({
+    commands: {
+      prompt_load_global: { templates: [], diagnostics: [] },
+      fs_check_exists: false,
     },
   })
   useProjectStore.setState({
@@ -61,6 +61,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  tauriInternals.uninstall()
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   useProjectStore.setState({ currentProject: null })
@@ -101,8 +102,20 @@ describe('GenerateFieldCommand project identity', () => {
     expect(observedPrompts.join('\n')).toContain(authorText)
     expect(useProjectStore.getState().currentProject?.novelConfig.worldSetting)
       .toBe(`${authorText}\n\n${addition}`)
-  })
 
+    // 提示词水合走真实 IPC 接缝：全局提示词 + 项目提示词目录探测，
+    // 均带自动注入的 projectSession 尾参（命令名 + 命名参数契约）。
+    expect(tauriInternals.invoke).toHaveBeenCalledWith('prompt_load_global', {}, undefined)
+    expect(tauriInternals.invoke).toHaveBeenCalledWith(
+      'fs_check_exists',
+      {
+        filePath: 'C:\\novels\\A/.lore/prompts',
+        expectedProjectPath: 'C:\\novels\\A',
+        projectSession: { projectId: 'C:\\novels\\A', leaseId: 'lease-A', projectPath: 'C:\\novels\\A' },
+      },
+      undefined,
+    )
+  })
   it('sends a complete English configuration without Chinese model instructions', async () => {
     const longOutline = `A detective follows a forged flight manifest. ${'The clue remains authoritative. '.repeat(24)}`
     useProjectStore.setState({
