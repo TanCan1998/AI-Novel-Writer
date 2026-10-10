@@ -177,6 +177,34 @@ fn handle_line(line: &str, shared: &TransportShared) {
     let _ = sender.send(response);
 }
 
+/// stdout 读线程主循环（基线 `processBuffer` :301-318 的逐行语义）。
+///
+/// 按 `\n` 分帧（CRLF 容忍：行尾 `\r` 一并去掉）；**非 UTF-8 行仅损失
+/// 该行、连接继续存活**——基线对非法字节不敏感（替换字符不视为错误），
+/// 而 `BufReader::lines()` 遇非法 UTF-8 会返回 `Err`，故改按字节读行
+/// （`read_until`）。EOF / 读错误 → 退出循环，由调用方走既有 `close`
+/// 清理路径（对齐基线 `proc.on('exit')`）。
+
+fn read_dispatch_loop<R: BufRead>(reader: &mut R, shared: &TransportShared) {
+    let mut buf: Vec<u8> = Vec::new();
+    loop {
+        buf.clear();
+        match reader.read_until(b'\n', &mut buf) {
+            Ok(0) => break,
+            Ok(_) => {
+                if buf.last() == Some(&b'\n') {
+                    buf.pop();
+                    if buf.last() == Some(&b'\r') {
+                        buf.pop();
+                    }
+                }
+                let line = String::from_utf8_lossy(&buf);
+                handle_line(&line, shared);
+            }
+            Err(_) => break,
+        }
+    }
+}
 /// 等待请求回应（基线 :353-359 的 10 秒超时分支）。
 ///
 /// 超时 → 从 pending 表移除并拒绝 `MCP 请求超时: <method>`。
@@ -264,13 +292,8 @@ impl McpStdioTransport {
         {
             let shared = Arc::clone(&shared);
             std::thread::spawn(move || {
-                let reader = BufReader::new(stdout);
-                for line in reader.lines() {
-                    match line {
-                        Ok(line) => handle_line(&line, &shared),
-                        Err(_) => break,
-                    }
-                }
+                let mut reader = BufReader::new(stdout);
+                read_dispatch_loop(&mut reader, &shared);
                 // 基线 :278-284 `proc.on('exit')`：进程退出 / 管道
                 // 关闭 → 拒绝全部在途请求（`连接已断开`）。
                 shared.close("连接已断开");
@@ -533,5 +556,106 @@ mod tests {
             McpStdioTransport::spawn(&config).unwrap_err(),
             "stdio 模式需要 command 参数"
         );
+    }
+
+    #[test]
+    fn read_loop_frames_crlf_lines_test() {
+        // CRLF 容忍：行尾 `\r\n` 与 `\n` 同样分帧解析。
+        let (shared, receiver) = shared_with_pending(1);
+        let input = b"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}\r\n";
+        let mut cursor = std::io::Cursor::new(&input[..]);
+        read_dispatch_loop(&mut cursor, &shared);
+        assert_eq!(
+            receiver.recv_timeout(Duration::from_secs(1)),
+            Ok(Ok(json!({"ok": true})))
+        );
+        assert!(shared.take_pending(1).is_none());
+    }
+
+    #[test]
+    fn read_loop_skips_invalid_utf8_line_test() {
+        // 非 UTF-8 行仅损失该行、连接存活：其后合法响应仍能送达。
+        let (shared, receiver) = shared_with_pending(1);
+        let mut input: Vec<u8> = b"bad\xff\xfe line\n".to_vec();
+        input.extend_from_slice(
+            b"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"after\":\"lossy\"}}\n",
+        );
+        let mut cursor = std::io::Cursor::new(input);
+        read_dispatch_loop(&mut cursor, &shared);
+        assert_eq!(
+            receiver.recv_timeout(Duration::from_secs(1)),
+            Ok(Ok(json!({"after": "lossy"})))
+        );
+        assert!(shared.take_pending(1).is_none());
+    }
+
+    #[test]
+    fn wait_response_returns_disconnected_on_close_test() {
+        // 等待期间 close() → 在途请求以 `连接已断开` 拒绝。
+        let (shared, receiver) = shared_with_pending(9);
+        let closer = {
+            let shared = Arc::clone(&shared);
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(20));
+                shared.close("连接已断开");
+            })
+        };
+        let error =
+            wait_response(receiver, &shared, 9, Duration::from_secs(5), "tools/list").unwrap_err();
+        closer.join().unwrap();
+        assert_eq!(error, "连接已断开");
+        assert!(shared.take_pending(9).is_none());
+    }
+
+    #[test]
+    fn close_is_idempotent_test() {
+        // 幂等：连续两次 close 不 panic、不重复清理、
+        // 首条拒绝文案不被后一次覆盖。
+        let (shared, receiver) = shared_with_pending(3);
+        shared.close("连接已断开");
+        shared.close("MCP 服务器连接失败");
+        assert!(shared.is_closed());
+        assert_eq!(
+            receiver.recv_timeout(Duration::from_secs(1)),
+            Ok(Err("连接已断开".to_string()))
+        );
+        // pending 已在首次 close 时清空；第二次 close 未再处置任何请求。
+        assert!(shared.pending.lock().unwrap().is_empty());
+        assert!(shared.take_pending(3).is_none());
+    }
+
+    #[test]
+    fn spawn_node_subprocess_e2e_test() {
+        // 真实子进程 e2e：node 起一行假 MCP server，逐行应答
+        // initialize / tools/list / resources/list。
+        let script = r#"const rl=require('readline').createInterface({input:process.stdin});rl.on('line',l=>{let m;try{m=JSON.parse(l)}catch(e){return}let res=null;if(m.method==='initialize')res={serverInfo:{name:'fake'}};else if(m.method==='tools/list')res={tools:[{name:'fake_tool'}]};else if(m.method==='resources/list')res={resources:[{uri:'fake://res'}]};else return;process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result:res})+'\n')})"#;
+        let config = McpServerConfig {
+            id: "fake".to_string(),
+            name: "fake".to_string(),
+            transport: crate::mcp::types::McpTransport::Stdio,
+            command: Some("node".to_string()),
+            args: Some(vec!["-e".to_string(), script.to_string()]),
+            env: None,
+            url: None,
+        };
+        let transport = match McpStdioTransport::spawn(&config) {
+            Ok(transport) => transport,
+            Err(_) => {
+                // 环境无 node → 跳过（不允许因缺 node 而红）。
+                println!("跳过：环境无 node，子进程 e2e 测试未运行");
+                return;
+            }
+        };
+        // 握手：initialize → result.serverInfo。
+        let init = transport
+            .send_request("initialize", Some(json!({})))
+            .unwrap();
+        assert_eq!(init["serverInfo"]["name"], json!("fake"));
+        // tools/list → 一个工具。
+        let tools = transport.send_request("tools/list", None).unwrap();
+        assert_eq!(tools["tools"][0]["name"], json!("fake_tool"));
+        // resources/list → 一个资源。
+        let resources = transport.send_request("resources/list", None).unwrap();
+        assert_eq!(resources["resources"][0]["uri"], json!("fake://res"));
     }
 }

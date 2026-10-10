@@ -350,21 +350,41 @@ impl McpManager {
     /// （基线 `isDeepStrictEqual` ↔ `PartialEq` 结构等价）的
     /// 已连接服务器断开（kill 子进程 + 拒绝在途请求）。
     fn drop_stale_servers(&self, configs: &BTreeMap<String, McpServerConfig>) {
-        let stale: Vec<String> = {
-            let Ok(servers) = self.servers.lock() else {
+        // 在同一把表锁内「判定即摘除」：消除「先无锁收集 stale 列表、
+        // 再逐个 disconnect」的窗口——期间并发 connect 可能让同一 id
+        // 复活却被误杀（TOCTOU），保证「读到的就是摘掉的」。
+        let stale: Vec<Arc<McpServerRuntime>> = {
+            let Ok(mut servers) = self.servers.lock() else {
                 return;
             };
-            servers
-                .iter()
-                .filter(|(server_id, runtime)| match configs.get(*server_id) {
-                    None => true,
-                    Some(config) => runtime.config != *config,
-                })
-                .map(|(server_id, _)| server_id.clone())
-                .collect()
+            // 与 `servers` 同临界区同步 `loaded_configs`：被摘除运行时
+            // 的配置一并移除（外部不可见：`load_config` 随后整体写回
+            // 新配置表，对齐基线 :196 `this.loadedConfigs = ...`）。
+            let mut loaded_configs = self.loaded_configs.lock().ok();
+            let mut stale = Vec::new();
+            servers.retain(|server_id, runtime| {
+                let keep = match configs.get(server_id) {
+                    None => false,
+                    Some(config) => runtime.config == *config,
+                };
+                if !keep {
+                    stale.push(Arc::clone(runtime));
+                    if let Some(loaded_configs) = loaded_configs.as_mut() {
+                        loaded_configs.remove(server_id);
+                    }
+                }
+                keep
+            });
+            stale
         };
-        for server_id in stale {
-            let _ = self.disconnect(&server_id);
+        // 锁释放后再对摘下的运行时执行 shutdown（kill 子进程 + 拒绝
+        // 在途请求 `连接已断开`）：阻塞 I/O 不持表锁。运行时已从表内
+        // 移除，无需再走 `disconnect` 的查表路径——外部行为与错误
+        // 文案不变。
+        for runtime in stale {
+            if let Some(transport) = &runtime.transport {
+                transport.shutdown();
+            }
         }
     }
 }
