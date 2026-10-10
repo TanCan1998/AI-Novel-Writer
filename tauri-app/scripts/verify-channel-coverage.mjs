@@ -50,7 +50,7 @@ function collectChannels() {
   for (const line of readLines(channelsFile)) {
     const ifaceMatch = line.match(/^export interface (\w+)/u)
     if (ifaceMatch) iface = ifaceMatch[1]
-    const channel = line.match(/^\s*'([a-z0-9-]+:[a-z0-9-]+)'\s*:\s*\{/u)
+    const channel = line.match(/^\s*'([a-z0-9-]+:[a-z0-9-]+)'\s*:\s*[{A-Za-z]/u)
     if (!channel) continue
     if (/Event/u.test(iface)) events.add(channel[1])
     else invoke.add(channel[1])

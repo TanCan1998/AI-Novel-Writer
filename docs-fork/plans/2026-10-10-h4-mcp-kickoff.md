@@ -33,7 +33,7 @@
 
 类型全集（`src/shared/ipc-channels.ts:1096-1151`，Tauri 镜像 `:1142-1195`）：`MCPConnectionStatus`（`'disconnected' | 'connecting' | 'connected' | 'error'`，:1097）/ `MCPServerSummary`（:1099）/ `MCPServerStatus`（:1105）/ `MCPToolDescription`（:1113）/ `MCPResourceDescription`（:1120）/ `MCPConfigLoadResult`（:1128）/ `MCPConfigLoadResponse`（:1133）。Rust 侧按 camelCase 逐字段镜像。
 
-**无 MCP 事件频道**：契约事件频道仅 4 个（`AllEventChannels`，`:1198`：`LLMStreamEvents` + `UpdateStateEvents` + `WindowEvents`）。基线 `MCPManagerImpl.setCallbacks`（`mcp-manager.ts:110`）虽定义了 `onStatusChange`/`onToolsChange`，但**全仓库无调用点**（grep 仅命中定义本身）→ 基线实际靠 `mcp:get-servers-status` 轮询（`src/stores/mcp-store.ts:102-109` `refreshStatus`）。Tauri 侧**不需要**新增事件频道。
+**无 MCP 事件频道**：契约事件频道仅 5 个（`AllEventChannels`，`:1198`：`LLMStreamEvents` + `UpdateStateEvents` + `WindowEvents`）。（口径修正 2026-10-10：`verify-channel-coverage.mjs` 的频道正则曾只匹配对象字面量值，漏计 `'update:state': UpdateState`（类型引用值）而输出「事件频道 4」；正则已放宽为 `[{A-Za-z]`，实测事件频道 5。）基线 `MCPManagerImpl.setCallbacks`（`mcp-manager.ts:110`）虽定义了 `onStatusChange`/`onToolsChange`，但**全仓库无调用点**（grep 仅命中定义本身）→ 基线实际靠 `mcp:get-servers-status` 轮询（`src/stores/mcp-store.ts:102-109` `refreshStatus`）。Tauri 侧**不需要**新增事件频道。
 
 ## 3. 基线事实源清单（以下行号均为本次实际打开文件核对）
 
@@ -72,7 +72,7 @@
 | `tauri-app/src-tauri/src/state.rs` | :35 / :72 / :127 | `AppState`；`update: Mutex<Option<Arc<UpdateService>>>` + `update_service()` —— MCPManager 照此范式装配 |
 | `tauri-app/src-tauri/src/update/` | — | H3 模块范式（`backend` / `preferences` / `runtime` / `service` / `startup` / `time` / `types`） |
 | `tauri-app/src-tauri/capabilities/default.json` | — | `permissions: ["core:default"]`（无 shell 权限；文件描述要求「按批次追加最小权限，禁止一次性放开」） |
-| `tauri-app/scripts/verify-channel-coverage.mjs` | — | 当前实测输出：`契约 invoke 频道 193（事件频道 4）` / `已注册命令 185 → 覆盖 invoke 频道 184` / `未迁移 invoke 频道 9  [mcp=9]` / 9 行 `mcp:*` 清单 / `命令名与契约频道一一对应 ✅` |
+| `tauri-app/scripts/verify-channel-coverage.mjs` | — | 当前实测输出：`契约 invoke 频道 193（事件频道 5）` / `已注册命令 185 → 覆盖 invoke 频道 184` / `未迁移 invoke 频道 9  [mcp=9]` / 9 行 `mcp:*` 清单 / `命令名与契约频道一一对应 ✅` |
 
 ## 4. Ask-first 决策项：MCP 子进程信任模型 (a) vs (b)
 
@@ -158,7 +158,7 @@
 pnpm typecheck
 pnpm run lint
 node scripts/verify-channel-coverage.mjs
-#   期望：契约 invoke 频道 193（事件频道 4）
+#   期望：契约 invoke 频道 193（事件频道 5）
 #         已注册命令 194 → 覆盖 invoke 频道 193
 #         未迁移 invoke 频道 0（mcp=9 从清单消失）
 #         命令名与契约频道一一对应 ✅
